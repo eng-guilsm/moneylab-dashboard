@@ -80,7 +80,13 @@ RUN apt-get update && apt-get install -y \\
     libxml2-dev \\
     libsodium-dev \\
     git \\
-    pandoc \
+    pandoc \\
+    make \\
+    cmake \\
+    gfortran \\
+    libnlopt-dev \\
+    zlib1g-dev \\
+    libopenblas-dev \\
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
