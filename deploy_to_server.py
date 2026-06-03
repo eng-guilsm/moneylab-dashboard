@@ -96,7 +96,6 @@ RUN apt-get update && apt-get install -y \\
     r-cran-quantmod \\
     r-cran-rsqlite \\
     r-cran-lubridate \\
-    r-cran-httr2 \\
     r-cran-zoo \\
     r-cran-ttr \\
     r-cran-httpuv \\
@@ -106,7 +105,7 @@ WORKDIR /app
 
 COPY . /app
 
-RUN R -e "options(repos = c(CRAN = 'https://cloud.r-project.org')); install.packages(c('telegram.bot', 'rugarch', 'binancer', 'PerformanceAnalytics'))"
+RUN R -e "options(repos = c(CRAN = 'https://cloud.r-project.org')); install.packages(c('telegram.bot', 'rugarch', 'binancer', 'PerformanceAnalytics', 'httr2'))"
 
 CMD ["Rscript", "startLab.R"]
 """
