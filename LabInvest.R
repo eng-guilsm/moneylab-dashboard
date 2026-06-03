@@ -4,9 +4,12 @@
 options(warn = -1, encoding = "UTF-8")
 options(repos = c(CRAN = "https://cloud.r-project.org"), xts.warn_dplyr_breaks_lag = FALSE)
 
-LOCAL_R_LIB <- file.path(getwd(), "r-lib")
-if(!dir.exists(LOCAL_R_LIB)) dir.create(LOCAL_R_LIB, recursive = TRUE, showWarnings = FALSE)
-.libPaths(unique(c(LOCAL_R_LIB, .libPaths())))
+# Check if running in Docker container
+if (Sys.getenv("RUNNING_IN_DOCKER") == "") {
+  LOCAL_R_LIB <- file.path(getwd(), "r-lib")
+  if(!dir.exists(LOCAL_R_LIB)) dir.create(LOCAL_R_LIB, recursive = TRUE, showWarnings = FALSE)
+  .libPaths(unique(c(LOCAL_R_LIB, .libPaths())))
+}
 
 log_analyst <- function(msg) cat(sprintf("[LabInvest | %s] %s\n", format(Sys.time(), "%H:%M:%S"), msg))
 
@@ -16,7 +19,10 @@ log_analyst <- function(msg) cat(sprintf("[LabInvest | %s] %s\n", format(Sys.tim
 pkgs <- c("quantmod", "jsonlite", "telegram.bot", "lubridate", "dplyr",
           "tidyr", "stringr", "RSQLite", "DBI", "httr2")
 for(p in pkgs) {
-  if(!require(p, character.only = TRUE, quietly = TRUE)) install.packages(p); library(p, character.only = TRUE)
+  if (Sys.getenv("RUNNING_IN_DOCKER") == "") {
+    if(!require(p, character.only = TRUE, quietly = TRUE)) install.packages(p)
+  }
+  library(p, character.only = TRUE)
 }
 
 if(file.exists("config_auth.R")) source("config_auth.R")

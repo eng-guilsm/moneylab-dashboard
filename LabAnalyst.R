@@ -5,16 +5,21 @@
 options(encoding = "UTF-8", scipen = 999, xts.warn_dplyr_breaks_lag = FALSE)
 options(repos = c(CRAN = "https://cloud.r-project.org"))
 
-LOCAL_R_LIB <- file.path(getwd(), "r-lib")
-if (!dir.exists(LOCAL_R_LIB)) dir.create(LOCAL_R_LIB, recursive = TRUE, showWarnings = FALSE)
-.libPaths(unique(c(LOCAL_R_LIB, .libPaths())))
+# Check if running in Docker container
+if (Sys.getenv("RUNNING_IN_DOCKER") == "") {
+  LOCAL_R_LIB <- file.path(getwd(), "r-lib")
+  if (!dir.exists(LOCAL_R_LIB)) dir.create(LOCAL_R_LIB, recursive = TRUE, showWarnings = FALSE)
+  .libPaths(unique(c(LOCAL_R_LIB, .libPaths())))
+}
 
 pkgs <- c("quantmod", "dplyr", "lubridate", "jsonlite", "PerformanceAnalytics",
           "TTR", "zoo", "tidyr", "vars", "DBI", "RSQLite", "ggplot2",
           "scales", "tidyRSS", "stringr", "digest", "rugarch", "nnet")
 
 invisible(lapply(pkgs, function(p) {
-  if (!require(p, character.only = TRUE, quietly = TRUE)) install.packages(p, quiet = TRUE)
+  if (Sys.getenv("RUNNING_IN_DOCKER") == "") {
+    if (!require(p, character.only = TRUE, quietly = TRUE)) install.packages(p, quiet = TRUE)
+  }
   library(p, character.only = TRUE)
 }))
 

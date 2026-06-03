@@ -6,13 +6,19 @@ message(">>> [SISTEMA CENTRAL] Iniciando orquestração unificada...")
 
 # Forçar pacotes essenciais para evitar conflito de namespace
 options(repos = c(CRAN = "https://cloud.r-project.org"), xts.warn_dplyr_breaks_lag = FALSE)
-LOCAL_R_LIB <- file.path(getwd(), "r-lib")
-if(!dir.exists(LOCAL_R_LIB)) dir.create(LOCAL_R_LIB, recursive = TRUE, showWarnings = FALSE)
-.libPaths(unique(c(LOCAL_R_LIB, .libPaths())))
+
+# Check if running in Docker container
+if (Sys.getenv("RUNNING_IN_DOCKER") == "") {
+  LOCAL_R_LIB <- file.path(getwd(), "r-lib")
+  if(!dir.exists(LOCAL_R_LIB)) dir.create(LOCAL_R_LIB, recursive = TRUE, showWarnings = FALSE)
+  .libPaths(unique(c(LOCAL_R_LIB, .libPaths())))
+}
 
 pkgs_start <- c("dplyr", "tidyr", "jsonlite", "quantmod", "lubridate")
 invisible(lapply(pkgs_start, function(p) {
-  if(!require(p, character.only = TRUE, quietly = TRUE)) install.packages(p, quiet = TRUE)
+  if (Sys.getenv("RUNNING_IN_DOCKER") == "") {
+    if(!require(p, character.only = TRUE, quietly = TRUE)) install.packages(p, quiet = TRUE)
+  }
   library(p, character.only = TRUE)
 }))
 
