@@ -89,25 +89,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \\
     libnlopt-dev \\
     zlib1g-dev \\
     libopenblas-dev \\
-    r-cran-rmarkdown \\
-    r-cran-knitr \\
-    r-cran-googlesheets4 \\
-    r-cran-googledrive \\
-    r-cran-dplyr \\
-    r-cran-tidyr \\
-    r-cran-quantmod \\
-    r-cran-rsqlite \\
-    r-cran-lubridate \\
-    r-cran-zoo \\
-    r-cran-ttr \\
-    r-cran-httpuv \\
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY . /app
 
-RUN R -e "options(repos = c(CRAN = 'https://cloud.r-project.org')); install.packages(c('telegram.bot', 'rugarch', 'binancer', 'PerformanceAnalytics', 'httr2'))"
+RUN R -e "install.packages(c('quantmod', 'jsonlite', 'telegram.bot', 'lubridate', 'dplyr', 'tidyr', 'stringr', 'RSQLite', 'DBI', 'httr2', 'PerformanceAnalytics', 'TTR', 'zoo', 'rugarch', 'nnet', 'rmarkdown', 'knitr', 'googlesheets4', 'googledrive', 'binancer'))"
 
 CMD ["Rscript", "startLab.R"]
 """
