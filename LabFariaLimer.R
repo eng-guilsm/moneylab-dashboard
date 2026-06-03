@@ -2,14 +2,20 @@
 # LabFariaLimer.R — Motor Full Market Watcher (Versão 11.3 - Robust SQL)
 # ==============================================================================
 options(repos = c(CRAN = "https://cloud.r-project.org"), xts.warn_dplyr_breaks_lag = FALSE)
-LOCAL_R_LIB <- file.path(getwd(), "r-lib")
-if(!dir.exists(LOCAL_R_LIB)) dir.create(LOCAL_R_LIB, recursive = TRUE, showWarnings = FALSE)
-.libPaths(unique(c(LOCAL_R_LIB, .libPaths())))
+
+# Check if running in Docker container
+if (Sys.getenv("RUNNING_IN_DOCKER") == "") {
+  LOCAL_R_LIB <- file.path(getwd(), "r-lib")
+  if(!dir.exists(LOCAL_R_LIB)) dir.create(LOCAL_R_LIB, recursive = TRUE, showWarnings = FALSE)
+  .libPaths(unique(c(LOCAL_R_LIB, .libPaths())))
+}
 
 pkgs_faria <- c("jsonlite", "quantmod", "dplyr", "lubridate", "telegram.bot",
                 "binancer", "tidyr", "DBI", "RSQLite")
 invisible(lapply(pkgs_faria, function(p) {
-  if(!require(p, character.only = TRUE, quietly = TRUE)) install.packages(p, quiet = TRUE)
+  if (Sys.getenv("RUNNING_IN_DOCKER") == "") {
+    if(!require(p, character.only = TRUE, quietly = TRUE)) install.packages(p, quiet = TRUE)
+  }
   library(p, character.only = TRUE)
 }))
 

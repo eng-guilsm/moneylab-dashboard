@@ -75,27 +75,28 @@ def deploy():
     dockerfile_content = """FROM rocker/r-ver:4.3.2
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV RUNNING_IN_DOCKER=TRUE
 
-RUN apt-get update && apt-get install -y --no-install-recommends \\
-    libcurl4-openssl-dev \\
-    libssl-dev \\
-    libxml2-dev \\
-    libsodium-dev \\
-    git \\
-    pandoc \\
-    make \\
-    cmake \\
-    gfortran \\
-    libnlopt-dev \\
-    zlib1g-dev \\
-    libopenblas-dev \\
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    libxml2-dev \
+    libsodium-dev \
+    git \
+    pandoc \
+    make \
+    cmake \
+    gfortran \
+    libnlopt-dev \
+    zlib1g-dev \
+    libopenblas-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY . /app
 
-RUN R -e "install.packages(c('quantmod', 'jsonlite', 'telegram.bot', 'lubridate', 'dplyr', 'tidyr', 'stringr', 'RSQLite', 'DBI', 'httr2', 'PerformanceAnalytics', 'TTR', 'zoo', 'rugarch', 'nnet', 'rmarkdown', 'knitr', 'googlesheets4', 'googledrive', 'binancer'))"
+RUN R -e "install.packages(c('quantmod', 'jsonlite', 'telegram.bot', 'lubridate', 'dplyr', 'tidyr', 'stringr', 'RSQLite', 'DBI', 'httr', 'httr2', 'PerformanceAnalytics', 'TTR', 'zoo', 'rugarch', 'nnet', 'rmarkdown', 'knitr', 'googlesheets4', 'googledrive', 'binancer', 'vars', 'ggplot2', 'scales', 'tidyRSS', 'digest', 'flexdashboard', 'dygraphs', 'xts'))"
 
 CMD ["Rscript", "startLab.R"]
 """
@@ -116,6 +117,7 @@ services:
       - .:/app
     environment:
       - TZ=America/Sao_Paulo
+      - RUNNING_IN_DOCKER=TRUE
 
   moneydeploy:
     build: .
@@ -125,6 +127,7 @@ services:
       - .:/app
     environment:
       - TZ=America/Sao_Paulo
+      - RUNNING_IN_DOCKER=TRUE
     entrypoint: ["Rscript", "LabDeploy.R"]
 """
     
