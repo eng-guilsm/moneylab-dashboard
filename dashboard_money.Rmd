@@ -5,114 +5,163 @@ output:
     orientation: rows
     vertical_layout: fill
     theme: cosmo
-runtime: shiny
+    self_contained: true  # <--- ISSO AQUI É O SEGREDO
 ---
 
 ```{r setup, include=FALSE}
-# ==============================================================================
-# 1. SETUP E CACHE INTELIGENTE
-# ==============================================================================
 library(flexdashboard)
 library(quantmod)
 library(dygraphs)
 library(xts)
 library(dplyr)
+library(googlesheets4)
+library(lubridate)
+library(knitr)
 
-# Definição do Arquivo de Cache (Para não baixar dados toda hora)
-ARQUIVO_CACHE <- "moneybot_cache_historico.rds"
+# --- 1. ENCODING ---
+options(encoding = "UTF-8")
+if (.Platform$OS.type == "windows") {
+  Sys.setlocale("LC_ALL", "Portuguese_Brazil.65001") 
+}
+
+# --- 2. CONFIGS ---
+if(file.exists("config_auth.R")) {
+  source("config_auth.R", encoding = "UTF-8")
+}
+
+# --- 3. AUTH ---
+if(exists("MAIL_USER")) {
+  gs4_auth(cache = ".secrets", email = MAIL_USER, use_oob = TRUE)
+}
+
+# Variáveis Globais
+ARQUIVO_CACHE <- "moneybot_cache_v2_brl.rds" 
 DATA_INICIO   <- "2021-01-01"
+if(!exists("ERRO_INTERNO")) ERRO_INTERNO <- "Nenhum erro registrado"
+VALOR_PROBLEMATICO <- "" 
+```
 
-# Função para carregar ou baixar dados
-carregar_dados_blindados <- function() {
-  # Se o arquivo existe e foi modificado hoje, usa o cache
-  if (file.exists(ARQUIVO_CACHE)) {
-    info <- file.info(ARQUIVO_CACHE)
-    if (as.Date(info$mtime) == Sys.Date()) {
-      return(readRDS(ARQUIVO_CACHE))
-    }
-  }
-  
-  # Caso contrário, baixa do Yahoo Finance
+```{r carga_dados, include=FALSE}
+# ==============================================================================
+# 2. CARGA DE DADOS COM DEBUG DE LINHAS
+# ==============================================================================
+
+ARQUIVO_CACHE <- "moneybot_cache_v2_brl.rds"
+DATA_INICIO   <- "2021-01-01"
+# Criamos contadores para o diagnóstico
+LINHAS_YAHOO <- 0
+LINHAS_SHEETS <- 0
+
+carregar_yahoo <- function() {
   tryCatch({
-    # Baixa BTC e USD
-    btc <- getSymbols("BTC-USD", src = "yahoo", from = DATA_INICIO, auto.assign = FALSE)
-    usd <- getSymbols("USDBRL=X", src = "yahoo", from = DATA_INICIO, auto.assign = FALSE)
+    # A. Tenta baixar (Yahoo Finance)
+    usd  <- getSymbols("USDBRL=X", src = "yahoo", from = DATA_INICIO, auto.assign = FALSE)
     ibov <- getSymbols("^BVSP", src = "yahoo", from = DATA_INICIO, auto.assign = FALSE)
     
-    # Limpeza e Merge (Apenas Fechamento Ajustado)
+    # Fallback robusto para BTC
+    btc <- tryCatch({
+      getSymbols("BTC-BRL", src = "yahoo", from = DATA_INICIO, auto.assign = FALSE)
+    }, error = function(e) {
+      btc_usd <- getSymbols("BTC-USD", src = "yahoo", from = DATA_INICIO, auto.assign = FALSE)
+      return(Ad(btc_usd) * Ad(usd)) 
+    })
+    
+    # B. Unifica
     dados <- merge.xts(Ad(btc), Ad(usd), Ad(ibov))
     colnames(dados) <- c("BTC", "USD", "IBOV")
     
-    # Salva no disco
-    saveRDS(dados, ARQUIVO_CACHE)
+    # C. Limpeza
+    dados <- na.omit(dados)
+    LINHAS_YAHOO <<- nrow(dados) # Registra quantas linhas temos
+    
     return(dados)
   }, error = function(e) {
-    # Se der erro (sem internet), tenta ler o cache antigo mesmo que desatualizado
-    if (file.exists(ARQUIVO_CACHE)) return(readRDS(ARQUIVO_CACHE))
+    ERRO_INTERNO <<- paste("Erro Yahoo:", e$message)
     return(NULL)
   })
 }
 
-# Executa a carga
-dados_historicos <- carregar_dados_blindados()
+carregar_db_sheets <- function() {
+  tryCatch({
+    df_raw <- read_sheet(SHEET_ID_DB, sheet = "Historico_rapido", col_types = "ccccccc")
+    df_aux <- as.data.frame(df_raw)
+    df_aux <- df_aux[!is.na(df_aux[,1]), ]
+    df_aux <- df_aux[!grepl("Data", df_aux[,1]), ]
+    
+    datas_posix <- lubridate::as_datetime(df_aux[,1])
+    df_final <- df_aux[!is.na(datas_posix), ]
+    datas_finais <- datas_posix[!is.na(datas_posix)]
+    
+    for(i in 2:7) {
+      df_final[[i]] <- as.numeric(gsub(",", ".", as.character(df_final[[i]])))
+    }
+    
+    LINHAS_SHEETS <<- nrow(df_final) # Registra o tamanho
+    
+    return(xts(tail(df_final[,-1], 1000), order.by = tail(datas_finais, 1000)))
+  }, error = function(e) {
+    ERRO_INTERNO <<- e$message
+    return(NULL)
+  })
+}
+
+dados_hist <- carregar_yahoo()
+dados_db   <- carregar_db_sheets()
 ```
 
 Row {data-height=500}
 -----------------------------------------------------------------------
 
-### 🪙 Evolução do Bitcoin (Em Dólar)
+### 🪙 Bitcoin (Yahoo - BRL)
+```{r}
+if (!is.null(dados_hist)) dygraph(dados_hist$BTC) %>% dyOptions(colors = "#f2a900")
+```
+
+### 💵 Dólar (Yahoo - BRL)
+```{r}
+if (!is.null(dados_hist)) dygraph(dados_hist$USD) %>% dyOptions(colors = "#228b22")
+```
+
+Row {data-height=500}
+-----------------------------------------------------------------------
+
+### 📊 Monitoramento Real-Time (MoneyBot_DB)
 
 ```{r}
-# Gráfico 1: Bitcoin com Seletor de Data
-if (!is.null(dados_historicos)) {
-  dygraph(dados_historicos$BTC, main = "Bitcoin (USD) - Histórico desde 2021") %>%
-    dyAxis("y", label = "Preço (USD)") %>%
-    dyOptions(colors = RColorBrewer::brewer.pal(3, "Set2")[1], fillGraph = TRUE, fillAlpha = 0.1) %>%
-    dyRangeSelector(height = 20) %>%
-    dyHighlight(highlightCircleSize = 5, highlightSeriesBackgroundAlpha = 0.2, hideOnMouseOut = FALSE)
+if (!is.null(dados_db)) {
+  dygraph(dados_db[, c("BTC_BRL", "ETH_BRL")], main = "BTC vs ETH (Escalas Independentes)") %>%
+    # Eixo Principal (Esquerda) para o BTC
+    dySeries("BTC_BRL", label = "BTC (Eixo Esq.)", color = "orange", strokeWidth = 2) %>%
+    dyAxis("y", label = "BTC em Reais (R$)", 
+           valueRange = c(min(dados_db$BTC_BRL, na.rm=T)*0.95, max(dados_db$BTC_BRL, na.rm=T)*1.05)) %>%
+    
+    # Eixo Secundário (Direita) para o ETH
+    dySeries("ETH_BRL", label = "ETH (Eixo Dir.)", color = "blue", strokeWidth = 2, axis = "y2") %>%
+    dyAxis("y2", label = "ETH em Reais (R$)", independentTicks = TRUE) %>%
+    
+    # Estética e Interatividade
+    dyOptions(gridLineColor = "lightgrey", 
+              fillGraph = TRUE, 
+              fillAlpha = 0.05) %>%
+    dyHighlight(highlightSeriesOpts = list(strokeWidth = 3)) %>%
+    dyLegend(width = 400, show = "always", hideOnMouseOut = FALSE) %>%
+    dyRangeSelector(height = 30)
 } else {
-  print("Erro ao carregar dados.")
+  plot.new()
+  text(0.5, 0.5, paste("ERRO DE DADOS:\n", ERRO_INTERNO), col="red", cex=1.2)
 }
 ```
 
-### 💵 Evolução do Dólar (BRL)
+### 📊 Log de Integridade e Performance
 
 ```{r}
-# Gráfico 2: Dólar com Linha de Referência
-if (!is.null(dados_historicos)) {
-  media_usd <- mean(dados_historicos$USD, na.rm = TRUE)
-  
-  dygraph(dados_historicos$USD, main = "Dólar (BRL) - Taxa de Câmbio") %>%
-    dyAxis("y", label = "Cotação (R$)") %>%
-    dyOptions(colors = RColorBrewer::brewer.pal(3, "Set2")[2], stepPlot = FALSE) %>%
-    dyLimit(media_usd, color = "red", label = "Média do Período") %>%
-    dyRangeSelector(height = 20) %>%
-    dyHighlight(highlightCircleSize = 5, highlightSeriesBackgroundAlpha = 0.2, hideOnMouseOut = FALSE)
-}
-```
-
-Row {data-height=500}
------------------------------------------------------------------------
-
-### 📊 Ibovespa (Pontos)
-
-```{r}
-# Gráfico 3 (Placeholder para completar a linha visual)
-if (!is.null(dados_historicos)) {
-  dygraph(dados_historicos$IBOV, main = "Ibovespa - Benchmark Local") %>%
-    dyOptions(colors = "navy", fillGraph = TRUE, fillAlpha = 0.05) %>%
-    dyRangeSelector(height = 20)
-}
-```
-
-### 🧠 Indicadores Quant (Z-Score & Sharpe)
-
-```{r}
-# Aqui entraremos com os dados do LabAnalyst.R no futuro
-# Por enquanto, um placeholder visual
-valueBox(
-  value = "Aguardando LabAnalyst",
-  icon = "fa-cogs",
-  color = "warning"
+diag <- data.frame(
+  Item = c("Linhas Yahoo (BTC/USD)", "Linhas Google Sheets", "Último Erro"),
+  Valor = c(
+    ifelse(is.null(dados_hist), "0 (NULL)", LINHAS_YAHOO),
+    ifelse(is.null(dados_db), "0 (NULL)", LINHAS_SHEETS),
+    ERRO_INTERNO
+  )
 )
+knitr::kable(diag)
 ```
