@@ -48,7 +48,7 @@ def deploy():
     print("======================================================================")
     
     # 1. Clone repository on the server
-    clone_cmd = f"rm -rf {remote_dir} && git clone {repo_url} {remote_dir}"
+    clone_cmd = f"sudo rm -rf {remote_dir} && git clone {repo_url} {remote_dir}"
     if not run_ssh_command(clone_cmd, "Clonando repositorio Git no servidor"):
         sys.exit(1)
         
