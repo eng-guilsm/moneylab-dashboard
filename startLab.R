@@ -98,16 +98,71 @@ repeat {
   
   if(difftime(agora, last_run_rapido, units = "secs") >= TIMER_RAPIDO) {
     cat("\n⚡ [MICRO] Yahoo & AwesomeAPI...\n")
+    
+    usd_val <- NA
+    eth_val <- NA
+    btc_val <- NA
+    eur_val <- NA
+    
+    # 1. Tenta AwesomeAPI isoladamente
     tryCatch({
       json_moedas <- fromJSON("https://economia.awesomeapi.com.br/json/last/USD-BRL,BTC-BRL,ETH-BRL,EUR-BRL")
-      quotes <- get_safe_quote(c("^BVSP", "^GSPC", "EWZ", "QQQ", "CL=F"))
-      
+      usd_val <- as.numeric(json_moedas$USDBRL$bid)
+      eth_val <- as.numeric(json_moedas$ETHBRL$bid)
+      btc_val <- as.numeric(json_moedas$BTCBRL$bid)
+      eur_val <- as.numeric(json_moedas$EURBRL$bid)
+    }, error = function(e) {
+      cat("    ⚠️ AwesomeAPI falhou (possível rate-limit). Tentando fallbacks...\n")
+    })
+    
+    # 2. Fallback para moedas fiduciárias via Yahoo Finance
+    if (is.na(usd_val) || is.na(eur_val)) {
+      tryCatch({
+        fallback_quotes <- get_safe_quote(c("USDBRL=X", "EURBRL=X"))
+        if (!is.null(fallback_quotes)) {
+          if (is.na(usd_val)) usd_val <- as.numeric(fallback_quotes["USDBRL=X", "Last"])
+          if (is.na(eur_val)) eur_val <- as.numeric(fallback_quotes["EURBRL=X", "Last"])
+          cat("    ✅ Fallback Yahoo Finance para moedas fiduciárias funcionou!\n")
+        }
+      }, error = function(e) {
+        cat("    ❌ Fallback Yahoo Finance para fiduciárias falhou:", conditionMessage(e), "\n")
+      })
+    }
+    
+    # 3. Fallback para criptomoedas via Yahoo Finance
+    if (is.na(btc_val) || is.na(eth_val)) {
+      tryCatch({
+        fallback_crypto <- get_safe_quote(c("BTC-BRL", "ETH-BRL"))
+        if (!is.null(fallback_crypto)) {
+          if (is.na(btc_val)) btc_val <- as.numeric(fallback_crypto["BTC-BRL", "Last"])
+          if (is.na(eth_val)) eth_val <- as.numeric(fallback_crypto["ETH-BRL", "Last"])
+          cat("    ✅ Fallback Yahoo Finance para criptomoedas funcionou!\n")
+        }
+      }, error = function(e) {
+        # Fallback de USD convertido
+        tryCatch({
+          fallback_usd_crypto <- get_safe_quote(c("BTC-USD", "ETH-USD"))
+          if (!is.null(fallback_usd_crypto) && !is.na(usd_val)) {
+            if (is.na(btc_val)) btc_val <- as.numeric(fallback_usd_crypto["BTC-USD", "Last"]) * usd_val
+            if (is.na(eth_val)) eth_val <- as.numeric(fallback_usd_crypto["ETH-USD", "Last"]) * usd_val
+            cat("    ✅ Fallback Yahoo Finance (Crypto USD -> BRL) funcionou!\n")
+          }
+        }, error = function(e2) {
+          cat("    ❌ Fallback Yahoo Finance para cripto falhou:", conditionMessage(e2), "\n")
+        })
+      })
+    }
+    
+    # 4. Outros índices e commodities
+    quotes <- get_safe_quote(c("^BVSP", "^GSPC", "EWZ", "QQQ", "CL=F"))
+    
+    tryCatch({
       df_rapido <- data.frame(
         Data_Hora = format(agora, "%Y-%m-%d %H:%M:%S"),
-        BTC_BRL   = as.numeric(json_moedas$BTCBRL$bid),
-        ETH_BRL   = as.numeric(json_moedas$ETHBRL$bid),
-        USD_BRL   = as.numeric(json_moedas$USDBRL$bid),
-        EUR_BRL   = as.numeric(json_moedas$EURBRL$bid),
+        BTC_BRL   = btc_val,
+        ETH_BRL   = eth_val,
+        USD_BRL   = usd_val,
+        EUR_BRL   = eur_val,
         IBOV_Pts  = if(!is.null(quotes)) quotes["^BVSP", "Last"] else NA,
         SP500_Pts = if(!is.null(quotes)) quotes["^GSPC", "Last"] else NA,
         EWZ_Bolsa = if(!is.null(quotes)) quotes["EWZ", "Last"] else NA,
@@ -115,11 +170,14 @@ repeat {
         WTI_Oil   = if(!is.null(quotes)) quotes["CL=F", "Last"] else NA
       )
       
-      if(!is.na(df_rapido$BTC_BRL)) {
+      if(!is.na(df_rapido$BTC_BRL) && !is.na(df_rapido$USD_BRL)) {
         db_safe_append("Historico_rapido", df_rapido)
         cat("    ✅ DB: Rápido OK.\n")
+      } else {
+        cat("    ⚠️ Bloco Rápido ignorado: BTC ou USD ausentes.\n")
       }
-    }, error = function(e) cat("    ❌ Erro no Bloco Rápido:", conditionMessage(e), "\n"))
+    }, error = function(e) cat("    ❌ Erro ao salvar Bloco Rápido:", conditionMessage(e), "\n"))
+    
     last_run_rapido <- Sys.time()
   }
   
