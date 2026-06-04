@@ -129,27 +129,17 @@ repeat {
       })
     }
     
-    # 3. Fallback para criptomoedas via Yahoo Finance
+    # 3. Fallback para criptomoedas via Yahoo Finance (Crypto USD -> BRL)
     if (is.na(btc_val) || is.na(eth_val)) {
       tryCatch({
-        fallback_crypto <- get_safe_quote(c("BTC-BRL", "ETH-BRL"))
-        if (!is.null(fallback_crypto)) {
-          if (is.na(btc_val)) btc_val <- as.numeric(fallback_crypto["BTC-BRL", "Last"])
-          if (is.na(eth_val)) eth_val <- as.numeric(fallback_crypto["ETH-BRL", "Last"])
-          cat("    ✅ Fallback Yahoo Finance para criptomoedas funcionou!\n")
+        fallback_usd_crypto <- get_safe_quote(c("BTC-USD", "ETH-USD"))
+        if (!is.null(fallback_usd_crypto) && !is.na(usd_val)) {
+          if (is.na(btc_val)) btc_val <- as.numeric(fallback_usd_crypto["BTC-USD", "Last"]) * usd_val
+          if (is.na(eth_val)) eth_val <- as.numeric(fallback_usd_crypto["ETH-USD", "Last"]) * usd_val
+          cat("    ✅ Fallback Yahoo Finance (Crypto USD -> BRL) funcionou!\n")
         }
       }, error = function(e) {
-        # Fallback de USD convertido
-        tryCatch({
-          fallback_usd_crypto <- get_safe_quote(c("BTC-USD", "ETH-USD"))
-          if (!is.null(fallback_usd_crypto) && !is.na(usd_val)) {
-            if (is.na(btc_val)) btc_val <- as.numeric(fallback_usd_crypto["BTC-USD", "Last"]) * usd_val
-            if (is.na(eth_val)) eth_val <- as.numeric(fallback_usd_crypto["ETH-USD", "Last"]) * usd_val
-            cat("    ✅ Fallback Yahoo Finance (Crypto USD -> BRL) funcionou!\n")
-          }
-        }, error = function(e2) {
-          cat("    ❌ Fallback Yahoo Finance para cripto falhou:", conditionMessage(e2), "\n")
-        })
+        cat("    ❌ Fallback Yahoo Finance para cripto falhou:", conditionMessage(e), "\n")
       })
     }
     
