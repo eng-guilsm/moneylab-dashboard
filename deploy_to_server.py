@@ -94,9 +94,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY . /app
-
 RUN R -e "install.packages(c('quantmod', 'jsonlite', 'telegram.bot', 'lubridate', 'dplyr', 'tidyr', 'stringr', 'RSQLite', 'DBI', 'httr', 'httr2', 'PerformanceAnalytics', 'TTR', 'zoo', 'rugarch', 'nnet', 'rmarkdown', 'knitr', 'googlesheets4', 'googledrive', 'binancer', 'vars', 'ggplot2', 'scales', 'tidyRSS', 'digest', 'flexdashboard', 'dygraphs', 'xts'))"
+
+COPY . /app
 
 CMD ["Rscript", "startLab.R"]
 """
