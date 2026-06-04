@@ -228,6 +228,38 @@ disp$add_handler(CommandHandler("ativos", function(bot, update) {
   }
 }))
 
+
+# 1.5 Comando: /minigame
+disp$add_handler(CommandHandler("minigame", function(bot, update) {
+  if(verificar_acesso(bot, update)) {
+    msg <- paste0("🎮 <b>DOLLARUS HFT SIMULATOR</b>\n\n",
+                  "Como as portas HTTP do servidor estão fechadas por padrão por motivos de segurança, você pode jogar de duas formas:\n\n",
+                  "1️⃣ <b>Local (Recomendado):</b> Abra o arquivo localmente no seu computador sincronizado com o OneDrive:\n",
+                  "📂 <code>dollarus/index.html</code>\n\n",
+                  "2️⃣ <b>Via Túnel SSH:</b> Execute o comando abaixo no terminal da sua máquina local para mapear a porta do servidor:\n",
+                  "💻 <code>ssh -N -L 8080:localhost:8080 ubuntu@136.248.80.104 -i [caminho_da_chave]</code>\n",
+                  "E depois acesse: http://localhost:8080/dollarus/")
+    
+    bot$sendMessage(chat_id = update$message$chat_id, text = msg, parse_mode = "HTML")
+    registrar_log_interacao(update, "COMANDO /minigame", "/minigame", "Enviou instruções de acesso do jogo.")
+  }
+}))
+
+# 1.6 Comando: /ajuda
+disp$add_handler(CommandHandler("ajuda", function(bot, update) {
+  if(verificar_acesso(bot, update)) {
+    msg <- paste0("🛠️ <b>MENU DE COMANDOS DO MONEYLAB</b>\n\n",
+                  "🔹 /ativos - Exibe a cotação instantânea dos ativos no banco de dados e a latência da captura.\n",
+                  "🔹 /risco - Abre o menu do oráculo quantitativo para previsão de volatilidade (MLP+Langevin/GARCH).\n",
+                  "🔹 /minigame - Inicia o simulador HFT Dollarus com limites percentuais de trade no navegador.\n",
+                  "🔹 /ajuda - Exibe este menu de comandos.\n\n",
+                  "💡 <i>Você também pode simplesmente digitar qualquer pergunta livremente no chat para falar com o analista quantitativo.</i>")
+    
+    bot$sendMessage(chat_id = update$message$chat_id, text = msg, parse_mode = "HTML")
+    registrar_log_interacao(update, "COMANDO /ajuda", "/ajuda", "Menu de ajuda enviado.")
+  }
+}))
+
 # 2. Comando: /risco (Menu Raiz)
 disp$add_handler(CommandHandler("risco", function(bot, update) {
   if(verificar_acesso(bot, update)) {

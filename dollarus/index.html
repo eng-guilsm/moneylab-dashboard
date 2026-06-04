@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dollarus HFT Simulator</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Dollarus HFT Minigame</h1>
+            <p>Simulate grid trading with risk region avoidance</p>
+        </header>
+
+        <div class="controls-panel">
+            <div class="control-group">
+                <label for="buyThreshold">Buy Threshold (% drop):</label>
+                <input type="number" id="buyThreshold" value="0.1" step="0.01">
+            </div>
+            <div class="control-group">
+                <label for="sellThreshold">Sell Threshold (% rise):</label>
+                <input type="number" id="sellThreshold" value="0.1" step="0.01">
+            </div>
+            <div class="control-group">
+                <label for="buyAmountPct">Buy Amount (% of Fiat):</label>
+                <input type="number" id="buyAmountPct" value="10" step="1" max="100" min="1">
+            </div>
+            <div class="control-group">
+                <label for="sellAmountPct">Sell Amount (% of Crypto):</label>
+                <input type="number" id="sellAmountPct" value="10" step="1" max="100" min="1">
+            </div>
+            <div class="control-group">
+                <label for="avoidRisk">Avoid Risk Regions:</label>
+                <input type="checkbox" id="avoidRisk" checked>
+            </div>
+            <button id="startSimBtn">Run Simulation</button>
+        </div>
+
+        <div class="stats-panel">
+            <div class="stat-box">
+                <h3>Initial Capital</h3>
+                <p id="initialCapital">R$ 1000.00</p>
+            </div>
+            <div class="stat-box">
+                <h3>Final Portfolio Value</h3>
+                <p id="finalCapital">---</p>
+            </div>
+            <div class="stat-box">
+                <h3>Total Trades</h3>
+                <p id="totalTrades">0</p>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <canvas id="priceChart"></canvas>
+        </div>
+    </div>
+    
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
