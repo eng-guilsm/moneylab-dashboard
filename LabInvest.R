@@ -232,16 +232,18 @@ disp$add_handler(CommandHandler("ativos", function(bot, update) {
 # 1.5 Comando: /minigame
 disp$add_handler(CommandHandler("minigame", function(bot, update) {
   if(verificar_acesso(bot, update)) {
-    msg <- paste0("🎮 <b>DOLLARUS HFT SIMULATOR</b>\n\n",
-                  "Como as portas HTTP do servidor estão fechadas por padrão por motivos de segurança, você pode jogar de duas formas:\n\n",
-                  "1️⃣ <b>Local (Recomendado):</b> Abra o arquivo localmente no seu computador sincronizado com o OneDrive:\n",
-                  "📂 <code>dollarus/index.html</code>\n\n",
-                  "2️⃣ <b>Via Túnel SSH:</b> Execute o comando abaixo no terminal da sua máquina local para mapear a porta do servidor:\n",
-                  "💻 <code>ssh -N -L 8080:localhost:8080 ubuntu@136.248.80.104 -i [caminho_da_chave]</code>\n",
-                  "E depois acesse: http://localhost:8080/dollarus/")
+    msg <- "🎮 <b>DOLLARUS HFT SIMULATOR</b>\n\nJogue o simulador do robô HFT com limites percentuais de trade!"
     
-    bot$sendMessage(chat_id = update$message$chat_id, text = msg, parse_mode = "HTML")
-    registrar_log_interacao(update, "COMANDO /minigame", "/minigame", "Enviou instruções de acesso do jogo.")
+    url <- "https://eng-guilsm.github.io/moneylab-dashboard/dollarus/"
+    
+    teclado <- InlineKeyboardMarkup(
+      inline_keyboard = list(
+        list(InlineKeyboardButton(text = "▶️ Jogar Online", url = url))
+      )
+    )
+    
+    bot$sendMessage(chat_id = update$message$chat_id, text = msg, reply_markup = teclado, parse_mode = "HTML")
+    registrar_log_interacao(update, "COMANDO /minigame", "/minigame", "Enviou link de acesso online do jogo.")
   }
 }))
 
