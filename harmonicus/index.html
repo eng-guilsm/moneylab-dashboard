@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Harmonicus — Topologia Espectral & Equalizador Multi-Ativo</title>
   <meta name="description" content="Terminal Quant de Topologia Espectral de Mercados Financeiros. Análise de Coerência de Fourier, MST de Mantegna e Grafos Multi-Ativos.">
   
@@ -12,7 +15,7 @@
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Orbitron:wght@500;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://d3js.org/d3.v7.min.js"></script>
   
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20260816_v4">
 </head>
 <body class="dark-hud">
   <!-- Scanlines & Ambient Background Grid -->
@@ -25,21 +28,21 @@
       <div class="brand-section">
         <div class="pulse-indicator online"></div>
         <div class="brand-titles">
-          <h1 class="hud-logo">HARMONICUS <span class="badge-tag">QUANT HUD v2.5</span></h1>
-          <p class="hud-subtitle">Espectroscopia de Sinais & Topologia de Redes Multi-Ativos</p>
+          <h1 class="hud-logo">HARMONICUS <span class="badge-tag">QUANT HUD v3.0</span></h1>
+          <p class="hud-subtitle">Espectroscopia de Sinais & Topologia de Redes Multi-Ativos (26 Sensores)</p>
         </div>
       </div>
 
       <div class="header-controls">
         <div class="audio-toggle-container">
-          <button id="audioToggleBtn" class="hud-btn hud-btn-icon" title="Ativar Sonificação Harmônica">
+          <button id="audioToggleBtn" class="hud-btn hud-btn-icon" title="Ativar Sonificação Harmônica do Mercado">
             <span class="audio-icon">🔇</span>
             <span class="btn-text">ÁUDIO MUTADO</span>
           </button>
         </div>
         <div class="system-status-chip">
           <span class="chip-label">BASE:</span>
-          <span class="chip-val">SQL 2026 LIVE</span>
+          <span class="chip-val">SQL 2026 LIVE (26 ATIVOS)</span>
         </div>
       </div>
     </header>
@@ -132,11 +135,16 @@
             </label>
           </div>
 
-          <div class="legend-grid">
-            <div class="legend-item"><span class="color-dot dot-crypto"></span> Cripto</div>
-            <div class="legend-item"><span class="color-dot dot-tradfi"></span> TradFi</div>
-            <div class="legend-item"><span class="color-dot dot-fx"></span> Câmbio (FX)</div>
-            <div class="legend-item"><span class="color-dot dot-macro"></span> Macro/Taxas</div>
+          <!-- Sector Category Filter Pills -->
+          <div class="sector-filter-group">
+            <label class="group-label">ISOLAR CLUSTER SETORIAL</label>
+            <div class="sector-pills" id="sectorPills">
+              <button class="pill-btn active" data-sector="all">Todos (26)</button>
+              <button class="pill-btn" data-sector="crypto">Cripto (9)</button>
+              <button class="pill-btn" data-sector="tradfi">TradFi (6)</button>
+              <button class="pill-btn" data-sector="fx">Câmbio (4)</button>
+              <button class="pill-btn" data-sector="macro">Macro (7)</button>
+            </div>
           </div>
         </div>
       </aside>
@@ -145,12 +153,12 @@
       <section class="hud-viewport">
         <div class="viewport-header">
           <div class="hud-badge-group">
-            <span class="hud-badge-title">TOPOLOGIA DO GRAFO</span>
-            <span class="hud-badge-info" id="nodeEdgeCounter">19 Ativos | 94 Conexões</span>
+            <span class="hud-badge-title">TOPOLOGIA DO GRAFO MULTIATIVO</span>
+            <span class="hud-badge-info" id="nodeEdgeCounter">26 Ativos | Conexões Carregando...</span>
           </div>
           <div class="canvas-actions">
             <button id="resetViewBtn" class="hud-btn-ghost" title="Resetar Câmera / Centralizar">🎯 Centralizar</button>
-            <button id="togglePhysicsBtn" class="hud-btn-ghost" title="Congelar Física">❄️ Fixar</button>
+            <button id="togglePhysicsBtn" class="hud-btn-ghost" title="Congelar ou Liberar Física">❄️ Fixar</button>
           </div>
         </div>
 
@@ -184,7 +192,7 @@
               </div>
             </div>
             <div class="tooltip-footer">
-              <span class="tt-hint">Clique para isolar vizinhança</span>
+              <span class="tt-hint">Clique para isolar conexões | Som ativo</span>
             </div>
           </div>
         </div>
@@ -232,17 +240,13 @@
         <!-- Top Correlated Synergy Pairs -->
         <div class="telemetry-card">
           <span class="metric-title">TOP PARES DE SINCRONIA (+&rho;)</span>
-          <div class="pairs-list" id="syncPairsList">
-            <!-- Dynamically populated -->
-          </div>
+          <div class="pairs-list" id="syncPairsList"></div>
         </div>
 
         <!-- Top Negative Hedge Pairs -->
         <div class="telemetry-card">
           <span class="metric-title">TOP PARES DE HEDGE (-&rho;)</span>
-          <div class="pairs-list" id="hedgePairsList">
-            <!-- Dynamically populated -->
-          </div>
+          <div class="pairs-list" id="hedgePairsList"></div>
         </div>
 
         <!-- Spectral Insights Box -->
@@ -256,7 +260,7 @@
     </main>
   </div>
 
-  <script src="data.js"></script>
-  <script src="app.js"></script>
+  <script src="data.js?v=20260816_v4"></script>
+  <script src="app.js?v=20260816_v4"></script>
 </body>
 </html>

@@ -11,6 +11,7 @@
     dataset: null,
     activeEpoch: '2026-ALL',
     activeBand: 'daily',
+    activeSector: 'all',
     corrThreshold: 0.25,
     mstOnly: false,
     selectedNodeId: null,
@@ -72,6 +73,7 @@
     thresholdSlider: document.getElementById('thresholdSlider'),
     thresholdVal: document.getElementById('thresholdVal'),
     mstOnlyToggle: document.getElementById('mstOnlyToggle'),
+    sectorPills: document.getElementById('sectorPills'),
     nodeEdgeCounter: document.getElementById('nodeEdgeCounter'),
     bandDescBox: document.getElementById('bandDescBox'),
     arValue: document.getElementById('arValue'),
@@ -98,15 +100,15 @@
   async function loadData() {
     if (window.HARMONICUS_DATA && window.HARMONICUS_DATA.data) {
       state.dataset = window.HARMONICUS_DATA;
-      console.log('Harmonicus dataset loaded instantly from memory:', Object.keys(state.dataset.data));
+      console.log('Harmonicus loaded from memory. Total assets:', window.HARMONICUS_DATA.metadata.total_assets);
       return;
     }
 
     try {
-      const resp = await fetch('network_spectrum_data.json');
+      const resp = await fetch('network_spectrum_data.json?v=' + Date.now());
       if (!resp.ok) throw new Error(`HTTP error ${resp.status}`);
       state.dataset = await resp.json();
-      console.log('Harmonicus dataset loaded via fetch:', Object.keys(state.dataset.data));
+      console.log('Harmonicus dataset loaded via fetch:', state.dataset);
     } catch (err) {
       console.error('Error loading dataset:', err);
     }
@@ -120,7 +122,6 @@
     svg = d3.select('#networkSvg')
       .attr('viewBox', [0, 0, width, height]);
 
-    // Defs for Glow Filters and Gradients
     const defs = svg.append('defs');
     
     // Glow filter
@@ -147,12 +148,12 @@
 
     svg.call(zoomBehavior);
 
-    // D3 Force Simulation tuned for 25+ nodes
+    // D3 Force Simulation tuned for 26 nodes
     simulation = d3.forceSimulation()
-      .force('link', d3.forceLink().id(d => d.id).distance(d => (d.distance || 1.0) * 125 + 30))
-      .force('charge', d3.forceManyBody().strength(-420).distanceMax(600))
+      .force('link', d3.forceLink().id(d => d.id).distance(d => (d.distance || 1.0) * 115 + 28))
+      .force('charge', d3.forceManyBody().strength(-380).distanceMax(550))
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collide', d3.forceCollide().radius(d => (d.size || 18) + 14))
+      .force('collide', d3.forceCollide().radius(d => (d.size || 18) + 12))
       .on('tick', ticked);
 
     // Click on canvas resets isolation
@@ -178,16 +179,10 @@
     if (!state.dataset || !state.dataset.data) return;
 
     const epochData = state.dataset.data[state.activeEpoch];
-    if (!epochData) {
-      console.warn(`Epoch ${state.activeEpoch} not found`);
-      return;
-    }
+    if (!epochData) return;
 
     const bandData = epochData[state.activeBand];
-    if (!bandData) {
-      console.warn(`Band ${state.activeBand} not found in epoch ${state.activeEpoch}`);
-      return;
-    }
+    if (!bandData) return;
 
     // Filter edges by threshold & MST
     const rawEdges = bandData.edges || [];
@@ -196,7 +191,7 @@
       return Math.abs(e.weight) >= state.corrThreshold || e.is_mst;
     });
 
-    // Deep copy nodes to retain D3 simulation state (x, y, vx, vy)
+    // Deep copy nodes to retain D3 simulation state
     const rawNodes = bandData.nodes || [];
     const currentNodesMap = new Map((simulation.nodes() || []).map(n => [n.id, n]));
 
@@ -226,6 +221,13 @@
 
     // Render D3 Graph
     renderGraph(nodes, links);
+
+    // Apply Sector Filter if active
+    if (state.activeSector !== 'all') {
+      applySectorFilter(state.activeSector);
+    } else {
+      resetHighlights();
+    }
 
     // Update Telemetry Panel & Descriptions
     updateTelemetry(bandData.telemetry);
@@ -302,7 +304,7 @@
     // Node Label
     nodeEnter.append('text')
       .attr('class', 'node-label')
-      .attr('dy', 4)
+      .attr('dy', 3.5)
       .text(d => d.id);
 
     // Interactivity
@@ -312,6 +314,7 @@
       .on('click', (event, d) => {
         event.stopPropagation();
         isolateNode(d);
+        playNodeChime(d);
       });
 
     const nodeMerged = nodeEnter.merge(node);
@@ -363,7 +366,7 @@
     }
   }
 
-  // 6. Tooltips & Isolation
+  // 6. Tooltips, Sector Filtering & Isolation
   function showTooltip(event, d) {
     dom.nodeTooltip.classList.remove('hidden');
     document.getElementById('ttCategory').textContent = (d.category || 'ASSET').toUpperCase();
@@ -410,6 +413,22 @@
 
     nodeLayer.selectAll('g.node-group')
       .style('opacity', d => connectedNodeIds.has(d.id) ? 1.0 : 0.15);
+  }
+
+  function applySectorFilter(sector) {
+    if (sector === 'all') {
+      resetHighlights();
+      return;
+    }
+    nodeLayer.selectAll('g.node-group')
+      .style('opacity', d => d.category === sector ? 1.0 : 0.18);
+
+    linkLayer.selectAll('line.link-line')
+      .style('stroke-opacity', d => {
+        const sCat = d.source.category;
+        const tCat = d.target.category;
+        return (sCat === sector && tCat === sector) ? 0.9 : 0.05;
+      });
   }
 
   function resetHighlights() {
@@ -466,10 +485,8 @@
   // 8. Event Listeners & UI Controls
   function setupEventListeners() {
     // Equalizer Band Buttons (Click anywhere on the column or button)
-    document.querySelectorAll('.eq-col, .eq-btn').forEach(elem => {
-      elem.addEventListener('click', (e) => {
-        const col = e.target.closest('.eq-col');
-        if (!col) return;
+    document.querySelectorAll('.eq-col').forEach(col => {
+      col.addEventListener('click', (e) => {
         const targetBand = col.getAttribute('data-band');
         if (!targetBand) return;
 
@@ -514,11 +531,23 @@
       updateView();
     });
 
+    // Sector Filter Pills
+    dom.sectorPills.querySelectorAll('.pill-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        dom.sectorPills.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.activeSector = btn.getAttribute('data-sector');
+        updateView();
+      });
+    });
+
     // Reset View Button
     dom.resetViewBtn.addEventListener('click', () => {
       svg.transition().duration(600).call(zoomBehavior.transform, d3.zoomIdentity);
       state.selectedNodeId = null;
       dom.nodeTooltip.classList.add('hidden');
+      state.activeSector = 'all';
+      dom.sectorPills.querySelectorAll('.pill-btn').forEach(b => b.classList.toggle('active', b.getAttribute('data-sector') === 'all'));
       resetHighlights();
     });
 
@@ -616,6 +645,35 @@
       state.audioNodes = { masterGain, filter, oscs, baseFreqs };
     } else {
       state.audioCtx.resume();
+    }
+  }
+
+  function playNodeChime(node) {
+    if (state.isAudioMuted || !state.audioCtx) return;
+    try {
+      const osc = state.audioCtx.createOscillator();
+      const gain = state.audioCtx.createGain();
+      
+      const categoryBaseFreq = {
+        'crypto': 523.25, // C5
+        'tradfi': 659.25, // E5
+        'fx': 783.99,     // G5
+        'macro': 987.77   // B5
+      }[node.category] || 440.0;
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(categoryBaseFreq + (node.betweenness * 400), state.audioCtx.currentTime);
+      
+      gain.gain.setValueAtTime(0.15, state.audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, state.audioCtx.currentTime + 0.6);
+
+      osc.connect(gain);
+      gain.connect(state.audioCtx.destination);
+
+      osc.start();
+      osc.stop(state.audioCtx.currentTime + 0.6);
+    } catch(e) {
+      console.warn('Audio chime error:', e);
     }
   }
 
