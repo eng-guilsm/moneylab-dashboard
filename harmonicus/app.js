@@ -94,16 +94,21 @@
     updateView();
   }
 
-  // 2. Load JSON Data
+  // 2. Load Data (Supports Direct window.HARMONICUS_DATA or fetch)
   async function loadData() {
+    if (window.HARMONICUS_DATA && window.HARMONICUS_DATA.data) {
+      state.dataset = window.HARMONICUS_DATA;
+      console.log('Harmonicus dataset loaded instantly from memory:', Object.keys(state.dataset.data));
+      return;
+    }
+
     try {
       const resp = await fetch('network_spectrum_data.json');
       if (!resp.ok) throw new Error(`HTTP error ${resp.status}`);
       state.dataset = await resp.json();
-      console.log('Harmonicus dataset loaded successfully:', state.dataset);
+      console.log('Harmonicus dataset loaded via fetch:', Object.keys(state.dataset.data));
     } catch (err) {
-      console.warn('Could not fetch network_spectrum_data.json directly. Using fallback embedded structure.', err);
-      state.dataset = generateFallbackData();
+      console.error('Error loading dataset:', err);
     }
   }
 
@@ -124,7 +129,7 @@
       .attr('x', '-50%').attr('y', '-50%')
       .attr('width', '200%').attr('height', '200%');
     filter.append('feGaussianBlur')
-      .attr('stdDeviation', '4')
+      .attr('stdDeviation', '3.5')
       .attr('result', 'coloredBlur');
     const feMerge = filter.append('feMerge');
     feMerge.append('feMergeNode').attr('in', 'coloredBlur');
@@ -135,19 +140,19 @@
     nodeLayer = gZoom.append('g').attr('class', 'node-layer');
 
     zoomBehavior = d3.zoom()
-      .scaleExtent([0.3, 4])
+      .scaleExtent([0.25, 4])
       .on('zoom', (event) => {
         gZoom.attr('transform', event.transform);
       });
 
     svg.call(zoomBehavior);
 
-    // D3 Force Simulation
+    // D3 Force Simulation tuned for 25+ nodes
     simulation = d3.forceSimulation()
-      .force('link', d3.forceLink().id(d => d.id).distance(d => (d.distance || 1.0) * 110 + 35))
-      .force('charge', d3.forceManyBody().strength(-350).distanceMax(500))
+      .force('link', d3.forceLink().id(d => d.id).distance(d => (d.distance || 1.0) * 125 + 30))
+      .force('charge', d3.forceManyBody().strength(-420).distanceMax(600))
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collide', d3.forceCollide().radius(d => (d.size || 20) + 16))
+      .force('collide', d3.forceCollide().radius(d => (d.size || 18) + 14))
       .on('tick', ticked);
 
     // Click on canvas resets isolation
@@ -160,11 +165,11 @@
     });
 
     window.addEventListener('resize', () => {
-      const w = dom.graphContainer.clientWidth;
-      const h = dom.graphContainer.clientHeight;
+      const w = dom.graphContainer.clientWidth || 800;
+      const h = dom.graphContainer.clientHeight || 600;
       svg.attr('viewBox', [0, 0, w, h]);
       simulation.force('center', d3.forceCenter(w / 2, h / 2));
-      simulation.alpha(0.2).restart();
+      simulation.alpha(0.25).restart();
     });
   }
 
@@ -173,10 +178,16 @@
     if (!state.dataset || !state.dataset.data) return;
 
     const epochData = state.dataset.data[state.activeEpoch];
-    if (!epochData) return;
+    if (!epochData) {
+      console.warn(`Epoch ${state.activeEpoch} not found`);
+      return;
+    }
 
     const bandData = epochData[state.activeBand];
-    if (!bandData) return;
+    if (!bandData) {
+      console.warn(`Band ${state.activeBand} not found in epoch ${state.activeEpoch}`);
+      return;
+    }
 
     // Filter edges by threshold & MST
     const rawEdges = bandData.edges || [];
@@ -221,10 +232,12 @@
 
     // Update Equalizer Description
     const bInfo = bandDescriptions[state.activeBand];
-    dom.bandDescBox.innerHTML = `
-      <span class="band-name">${bInfo.title}</span>
-      <p class="band-detail">${bInfo.desc}</p>
-    `;
+    if (bInfo) {
+      dom.bandDescBox.innerHTML = `
+        <span class="band-name">${bInfo.title}</span>
+        <p class="band-detail">${bInfo.desc}</p>
+      `;
+    }
 
     // Trigger Audio drone update if unmuted
     if (!state.isAudioMuted) {
@@ -238,24 +251,26 @@
     const link = linkLayer.selectAll('line.link-line')
       .data(links, d => `${d.source.id || d.source}_${d.target.id || d.target}`);
 
-    link.exit().transition().duration(300).style('stroke-opacity', 0).remove();
+    link.exit().transition().duration(250).style('stroke-opacity', 0).remove();
 
     const linkEnter = link.enter().append('line')
       .attr('class', d => `link-line ${d.type} ${d.is_mst ? 'mst-edge' : ''}`)
-      .style('stroke-width', d => d.is_mst ? 2.5 : Math.max(1, Math.abs(d.weight) * 3))
+      .style('stroke-width', d => d.is_mst ? 2.5 : Math.max(1, Math.abs(d.weight) * 3.5))
       .style('stroke-opacity', 0)
       .style('stroke', d => d.type === 'sync' ? 'var(--neon-cyan)' : 'var(--neon-magenta)');
 
     const linkMerged = linkEnter.merge(link);
-    linkMerged.transition().duration(400)
-      .style('stroke-opacity', d => d.is_mst ? 0.85 : Math.min(0.7, Math.abs(d.weight) * 0.8))
-      .style('stroke-width', d => d.is_mst ? 2.5 : Math.max(1, Math.abs(d.weight) * 3));
+    linkMerged.transition().duration(350)
+      .attr('class', d => `link-line ${d.type} ${d.is_mst ? 'mst-edge' : ''}`)
+      .style('stroke-opacity', d => d.is_mst ? 0.9 : Math.min(0.75, Math.abs(d.weight) * 0.85))
+      .style('stroke-width', d => d.is_mst ? 2.5 : Math.max(1, Math.abs(d.weight) * 3.5))
+      .style('stroke', d => d.type === 'sync' ? 'var(--neon-cyan)' : 'var(--neon-magenta)');
 
     // NODES
     const node = nodeLayer.selectAll('g.node-group')
       .data(nodes, d => d.id);
 
-    node.exit().transition().duration(300).style('opacity', 0).remove();
+    node.exit().transition().duration(250).style('opacity', 0).remove();
 
     const nodeEnter = node.enter().append('g')
       .attr('class', 'node-group')
@@ -280,7 +295,7 @@
       .attr('class', 'node-core')
       .attr('r', d => d.size || 18)
       .attr('fill', d => d.color || '#06B6D4')
-      .attr('fill-opacity', 0.25)
+      .attr('fill-opacity', 0.28)
       .attr('stroke', d => d.color || '#06B6D4')
       .attr('stroke-width', 2);
 
@@ -301,20 +316,20 @@
 
     const nodeMerged = nodeEnter.merge(node);
     nodeMerged.select('circle.node-core')
-      .transition().duration(400)
+      .transition().duration(350)
       .attr('r', d => d.size || 18)
       .attr('fill', d => d.color)
       .attr('stroke', d => d.color);
 
     nodeMerged.select('circle.node-halo')
-      .transition().duration(400)
+      .transition().duration(350)
       .attr('r', d => (d.size || 18) + 5)
       .attr('stroke', d => d.color);
 
-    // Restart Simulation
+    // Restart Simulation with reheat
     simulation.nodes(nodes);
     simulation.force('link').links(links);
-    simulation.alpha(0.35).restart();
+    simulation.alpha(0.45).restart();
   }
 
   function ticked() {
@@ -376,7 +391,6 @@
 
     const connectedNodeIds = new Set([selected.id]);
     
-    // Highlight links
     linkLayer.selectAll('line.link-line')
       .style('stroke-opacity', d => {
         const s = d.source.id || d.source;
@@ -394,15 +408,14 @@
         return (s === selected.id || t === selected.id) ? 3.5 : 1;
       });
 
-    // Dim other nodes
     nodeLayer.selectAll('g.node-group')
-      .style('opacity', d => connectedNodeIds.has(d.id) ? 1.0 : 0.2);
+      .style('opacity', d => connectedNodeIds.has(d.id) ? 1.0 : 0.15);
   }
 
   function resetHighlights() {
     linkLayer.selectAll('line.link-line')
-      .style('stroke-opacity', d => d.is_mst ? 0.85 : Math.min(0.7, Math.abs(d.weight) * 0.8))
-      .style('stroke-width', d => d.is_mst ? 2.5 : Math.max(1, Math.abs(d.weight) * 3));
+      .style('stroke-opacity', d => d.is_mst ? 0.9 : Math.min(0.75, Math.abs(d.weight) * 0.85))
+      .style('stroke-width', d => d.is_mst ? 2.5 : Math.max(1, Math.abs(d.weight) * 3.5));
 
     nodeLayer.selectAll('g.node-group')
       .style('opacity', 1.0);
@@ -412,16 +425,13 @@
   function updateTelemetry(telemetry) {
     if (!telemetry) return;
 
-    // Absorption Ratio
     const ar = telemetry.absorption_ratio_pc1 || 35.0;
     dom.arValue.textContent = `${ar.toFixed(1)}%`;
     dom.arBarFill.style.width = `${Math.min(100, ar)}%`;
 
-    // Dominant Hub & Coherence
     dom.dominantHubVal.textContent = telemetry.dominant_hub || 'BTC';
     dom.coherenceVal.textContent = (telemetry.mean_coherence || 0.3).toFixed(3);
 
-    // Top Sync Pairs
     dom.syncPairsList.innerHTML = (telemetry.top_sync_pairs || []).map(p => `
       <div class="pair-row sync">
         <span class="pair-name">${p.pair}</span>
@@ -429,7 +439,6 @@
       </div>
     `).join('') || '<div class="pair-row"><span class="pair-name">Nenhum par forte</span></div>';
 
-    // Top Hedge Pairs
     dom.hedgePairsList.innerHTML = (telemetry.top_hedge_pairs || []).map(p => `
       <div class="pair-row hedge">
         <span class="pair-name">${p.pair}</span>
@@ -437,7 +446,6 @@
       </div>
     `).join('') || '<div class="pair-row"><span class="pair-name">Nenhum par de hedge</span></div>';
 
-    // Dynamic Spectral Insight
     generateSpectralInsight(ar, telemetry.dominant_hub, state.activeBand);
   }
 
@@ -457,12 +465,20 @@
 
   // 8. Event Listeners & UI Controls
   function setupEventListeners() {
-    // Equalizer Band Buttons
-    document.querySelectorAll('.eq-col').forEach(col => {
-      col.addEventListener('click', () => {
+    // Equalizer Band Buttons (Click anywhere on the column or button)
+    document.querySelectorAll('.eq-col, .eq-btn').forEach(elem => {
+      elem.addEventListener('click', (e) => {
+        const col = e.target.closest('.eq-col');
+        if (!col) return;
+        const targetBand = col.getAttribute('data-band');
+        if (!targetBand) return;
+
         document.querySelectorAll('.eq-col').forEach(c => c.classList.remove('active'));
+        document.querySelectorAll('.eq-btn').forEach(b => b.classList.remove('active'));
         col.classList.add('active');
-        state.activeBand = col.getAttribute('data-band');
+        col.querySelector('.eq-btn')?.classList.add('active');
+
+        state.activeBand = targetBand;
         updateView();
       });
     });
@@ -513,7 +529,7 @@
       if (state.isPhysicsFrozen) {
         simulation.stop();
       } else {
-        simulation.alpha(0.3).restart();
+        simulation.alpha(0.35).restart();
       }
     });
 
@@ -523,7 +539,7 @@
 
   function setEpochByIndex(idx) {
     state.activeEpoch = epochKeys[idx];
-    dom.epochBadge.textContent = epochNames[state.activeEpoch];
+    dom.epochBadge.textContent = epochNames[state.activeEpoch] || state.activeEpoch;
     
     dom.timelineTicks.querySelectorAll('.tick').forEach(t => {
       t.classList.toggle('active', parseInt(t.getAttribute('data-idx'), 10) === idx);
@@ -542,10 +558,9 @@
       let curIdx = parseInt(dom.timelineSlider.value, 10);
       state.timelineInterval = setInterval(() => {
         curIdx = (curIdx + 1) % epochKeys.length;
-        // Skip ALL when playing loop for pure chronological experience if preferred, or include it
         dom.timelineSlider.value = curIdx;
         setEpochByIndex(curIdx);
-      }, 1800);
+      }, 1600);
     } else {
       clearInterval(state.timelineInterval);
       dom.playIcon.textContent = '▶';
@@ -577,17 +592,14 @@
       const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
       state.audioCtx = new AudioCtxClass();
       
-      // Master Gain
       const masterGain = state.audioCtx.createGain();
       masterGain.gain.setValueAtTime(0.12, state.audioCtx.currentTime);
 
-      // Lowpass Biquad Filter (Simulating Spectral Resonator)
       const filter = state.audioCtx.createBiquadFilter();
       filter.type = 'lowpass';
       filter.frequency.setValueAtTime(450, state.audioCtx.currentTime);
       filter.Q.setValueAtTime(3.5, state.audioCtx.currentTime);
 
-      // 3 Harmonic Drone Oscillators (C minor Chord: C3=130.81Hz, G3=196.00Hz, Eb4=311.13Hz)
       const baseFreqs = [130.81, 196.00, 311.13];
       const oscs = baseFreqs.map(f => {
         const osc = state.audioCtx.createOscillator();
@@ -611,11 +623,9 @@
     if (!state.audioNodes || !state.audioCtx) return;
     
     const ar = (telemetry && telemetry.absorption_ratio_pc1) ? telemetry.absorption_ratio_pc1 : 35;
-    // Map AR (20% to 60%) to filter cutoff (200Hz to 1200Hz)
     const targetFreq = 250 + (ar * 15);
     state.audioNodes.filter.frequency.setTargetAtTime(targetFreq, state.audioCtx.currentTime, 0.5);
 
-    // Detune based on band
     const bandPitchShift = {
       'ultra_high': 20,
       'intraday': 10,
@@ -626,41 +636,6 @@
     state.audioNodes.oscs.forEach((osc, i) => {
       osc.frequency.setTargetAtTime(state.audioNodes.baseFreqs[i] + bandPitchShift, state.audioCtx.currentTime, 0.4);
     });
-  }
-
-  // 10. Fallback data generator if JSON cannot be loaded
-  function generateFallbackData() {
-    return {
-      metadata: { total_assets: 6 },
-      data: {
-        '2026-ALL': {
-          'daily': {
-            nodes: [
-              { id: 'BTC', name: 'Bitcoin', category: 'crypto', color: '#F59E0B', betweenness: 0.04, degree: 4, volatility: 0.32, cum_return: 14.5, size: 24 },
-              { id: 'ETH', name: 'Ethereum', category: 'crypto', color: '#F59E0B', betweenness: 0.03, degree: 4, volatility: 0.38, cum_return: 8.2, size: 22 },
-              { id: 'SP500', name: 'S&P 500', category: 'tradfi', color: '#06B6D4', betweenness: 0.06, degree: 5, volatility: 0.16, cum_return: 12.1, size: 28 },
-              { id: 'IBOV', name: 'Ibovespa', category: 'tradfi', color: '#06B6D4', betweenness: 0.03, degree: 3, volatility: 0.21, cum_return: 5.4, size: 20 },
-              { id: 'USD/BRL', name: 'Dólar Spot', category: 'fx', color: '#10B981', betweenness: 0.05, degree: 4, volatility: 0.14, cum_return: -3.2, size: 26 },
-              { id: 'US10Y', name: 'Treasury 10Y', category: 'macro', color: '#EC4899', betweenness: 0.02, degree: 2, volatility: 0.18, cum_return: 1.8, size: 18 }
-            ],
-            edges: [
-              { source: 'BTC', target: 'ETH', weight: 0.88, distance: 0.48, is_mst: true, type: 'sync' },
-              { source: 'SP500', target: 'IBOV', weight: 0.65, distance: 0.83, is_mst: true, type: 'sync' },
-              { source: 'SP500', target: 'BTC', weight: 0.42, distance: 1.07, is_mst: true, type: 'sync' },
-              { source: 'USD/BRL', target: 'IBOV', weight: -0.71, distance: 1.84, is_mst: true, type: 'hedge' },
-              { source: 'USD/BRL', target: 'US10Y', weight: 0.54, distance: 0.95, is_mst: true, type: 'sync' }
-            ],
-            telemetry: {
-              absorption_ratio_pc1: 38.4,
-              mean_coherence: 0.35,
-              dominant_hub: 'SP500',
-              top_sync_pairs: [{ pair: 'BTC / ETH', corr: 0.88 }, { pair: 'SP500 / IBOV', corr: 0.65 }],
-              top_hedge_pairs: [{ pair: 'USD/BRL / IBOV', corr: -0.71 }]
-            }
-          }
-        }
-      }
-    };
   }
 
   // Launch application
