@@ -85,12 +85,10 @@ verificar_acesso <- function(bot, update) {
   admin_id <- if(exists("TG_USERID")) TG_USERID else (if(exists("ID_DONO_ADMIN")) ID_DONO_ADMIN else "")
   grupo_id <- if(exists("TG_INVEST_CHATID")) TG_INVEST_CHATID else (if(exists("ID_GRUPO_AMIGOS")) ID_GRUPO_AMIGOS else "")
   
-  vip_list <- c(
-    as.character(admin_id),
-    if(exists("TG_USERLAI"))  as.character(TG_USERLAI)  else NULL,
-    if(exists("TG_USERTORI")) as.character(TG_USERTORI) else NULL,
-    if(exists("TG_USERGABS")) as.character(TG_USERGABS) else NULL
-  )
+  # Coleta dinamicamente todos os IDs que começam com TG_USER definidos em config_auth.R
+  tg_user_vars <- ls(pattern = "^TG_USER", envir = .GlobalEnv)
+  tg_user_vals <- unlist(mget(tg_user_vars, envir = .GlobalEnv, ifnotfound = list("")))
+  vip_list <- unique(as.character(c(admin_id, tg_user_vals)))
   
   if (user_id %in% vip_list || chat_id == as.character(grupo_id)) return(TRUE)
   
