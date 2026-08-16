@@ -247,6 +247,26 @@ disp$add_handler(CommandHandler("minigame", function(bot, update) {
   }
 }))
 
+# 1.55 Comando: /musica
+disp$add_handler(CommandHandler("musica", function(bot, update) {
+  if(verificar_acesso(bot, update)) {
+    msg <- paste0("🎵 <b>HARMONICUS — ESPECTRO & TOPOLOGIA DE MERCADOS</b>\n\n",
+                  "Equalizador Espectral Quântico e Grafo de Correlação Multi-Ativos.\n",
+                  "Explore a decomposição de Fourier (15m a 7d), a Árvore Geradora Mínima (MST) e a sonificação harmônica dos mercados de 2026!")
+    
+    url <- "https://eng-guilsm.github.io/moneylab-dashboard/harmonicus/"
+    
+    teclado <- InlineKeyboardMarkup(
+      inline_keyboard = list(
+        list(InlineKeyboardButton(text = "🎚️ Abrir Harmonicus", url = url))
+      )
+    )
+    
+    bot$sendMessage(chat_id = update$message$chat_id, text = msg, reply_markup = teclado, parse_mode = "HTML")
+    registrar_log_interacao(update, "COMANDO /musica", "/musica", "Enviou link de acesso ao Harmonicus.")
+  }
+}))
+
 # 1.6 Comando: /ajuda
 disp$add_handler(CommandHandler("ajuda", function(bot, update) {
   if(verificar_acesso(bot, update)) {
@@ -254,6 +274,7 @@ disp$add_handler(CommandHandler("ajuda", function(bot, update) {
                   "🔹 /ativos - Exibe a cotação instantânea dos ativos no banco de dados e a latência da captura.\n",
                   "🔹 /risco - Abre o menu do oráculo quantitativo para previsão de volatilidade (MLP+Langevin/GARCH).\n",
                   "🔹 /minigame - Inicia o simulador HFT Dollarus com limites percentuais de trade no navegador.\n",
+                  "🔹 /musica - Abre o Harmonicus: visualizador espectral e grafo dinâmico multiativo (Fourier + MST).\n",
                   "🔹 /ajuda - Exibe este menu de comandos.\n\n",
                   "💡 <i>Você também pode simplesmente digitar qualquer pergunta livremente no chat para falar com o analista quantitativo.</i>")
     
