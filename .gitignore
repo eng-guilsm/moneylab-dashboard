@@ -1,0 +1,15 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.secrets
+r-lib/
+config_auth.R
+MoneyBot_Local.db
+*.db
+*.db.bak
+keys/
+scratch/
+Backup/
+MoneyLab_Interacoes_Log.txt
+log_bot.txt

@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Harmonicus — Topologia Espectral & Equalizador Multi-Ativo</title>
+  <meta name="description" content="Terminal Quant de Topologia Espectral de Mercados Financeiros. Análise de Coerência de Fourier, MST de Mantegna e Grafos Multi-Ativos.">
+  
+  <!-- Google Fonts & D3.js -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Orbitron:wght@500;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="dark-hud">
+  <!-- Scanlines & Ambient Background Grid -->
+  <div class="hud-grid-overlay"></div>
+  <div class="hud-vignette"></div>
+
+  <div class="app-container">
+    <!-- Header Navigation & Status -->
+    <header class="hud-header">
+      <div class="brand-section">
+        <div class="pulse-indicator online"></div>
+        <div class="brand-titles">
+          <h1 class="hud-logo">HARMONICUS <span class="badge-tag">QUANT HUD v2.5</span></h1>
+          <p class="hud-subtitle">Espectroscopia de Sinais & Topologia de Redes Multi-Ativos</p>
+        </div>
+      </div>
+
+      <div class="header-controls">
+        <div class="audio-toggle-container">
+          <button id="audioToggleBtn" class="hud-btn hud-btn-icon" title="Ativar Sonificação Harmônica">
+            <span class="audio-icon">🔇</span>
+            <span class="btn-text">ÁUDIO MUTADO</span>
+          </button>
+        </div>
+        <div class="system-status-chip">
+          <span class="chip-label">BASE:</span>
+          <span class="chip-val">SQL 2026 LIVE</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="hud-workspace">
+      <!-- Left Equalizer & Controls Deck -->
+      <aside class="hud-deck control-deck">
+        <div class="deck-header">
+          <span class="deck-icon">🎚️</span>
+          <h2>EQUALIZADOR ESPECTRAL</h2>
+        </div>
+
+        <!-- Spectral Frequency Band Selector -->
+        <div class="deck-group">
+          <label class="group-label">BANDA DE FREQUÊNCIA DE FOURIER</label>
+          <div class="frequency-equalizer">
+            <div class="equalizer-bars">
+              <div class="eq-col" data-band="ultra_high">
+                <div class="meter-bar"><div class="meter-fill" style="height: 90%;"></div></div>
+                <button class="eq-btn" data-band="ultra_high">15m-1h</button>
+                <span class="eq-label">RUÍDO</span>
+              </div>
+              <div class="eq-col" data-band="intraday">
+                <div class="meter-bar"><div class="meter-fill" style="height: 65%;"></div></div>
+                <button class="eq-btn" data-band="intraday">4h-8h</button>
+                <span class="eq-label">SESSÃO</span>
+              </div>
+              <div class="eq-col active" data-band="daily">
+                <div class="meter-bar"><div class="meter-fill" style="height: 45%;"></div></div>
+                <button class="eq-btn active" data-band="daily">24h</button>
+                <span class="eq-label">DIÁRIO</span>
+              </div>
+              <div class="eq-col" data-band="macro">
+                <div class="meter-bar"><div class="meter-fill" style="height: 25%;"></div></div>
+                <button class="eq-btn" data-band="macro">3d-7d</button>
+                <span class="eq-label">MACRO</span>
+              </div>
+            </div>
+            <div class="band-description-box" id="bandDescBox">
+              <span class="band-name">Swing / Diário (24h)</span>
+              <p class="band-detail">Ciclo diário consolidado. Pontes entre TradFi e Criptoativos emergem com clareza estrutural.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Temporal Playback Controller -->
+        <div class="deck-group">
+          <div class="group-header-flex">
+            <label class="group-label">TIMELINE TEMPORAL (2026)</label>
+            <span class="epoch-badge" id="epochBadge">ANO COMPLETO</span>
+          </div>
+          
+          <div class="timeline-controls">
+            <button id="playTimelineBtn" class="hud-btn hud-btn-primary" title="Reproduzir Linha do Tempo">
+              <span id="playIcon">▶</span> <span id="playText">PLAY</span>
+            </button>
+            <input type="range" id="timelineSlider" min="0" max="8" step="1" value="0" class="hud-slider timeline-slider">
+          </div>
+          <div class="timeline-ticks" id="timelineTicks">
+            <span class="tick active" data-idx="0">ALL</span>
+            <span class="tick" data-idx="1">JAN</span>
+            <span class="tick" data-idx="2">FEV</span>
+            <span class="tick" data-idx="3">MAR</span>
+            <span class="tick" data-idx="4">ABR</span>
+            <span class="tick" data-idx="5">MAI</span>
+            <span class="tick" data-idx="6">JUN</span>
+            <span class="tick" data-idx="7">JUL</span>
+            <span class="tick" data-idx="8">AGO</span>
+          </div>
+        </div>
+
+        <!-- Graph Filter Knobs -->
+        <div class="deck-group">
+          <label class="group-label">FILTROS TOPOLÓGICOS</label>
+          
+          <div class="filter-item">
+            <div class="filter-label-row">
+              <span>Limiar de Correlação (|&rho;|)</span>
+              <span id="thresholdVal" class="filter-val">&ge; 0.25</span>
+            </div>
+            <input type="range" id="thresholdSlider" min="0.0" max="0.8" step="0.05" value="0.25" class="hud-slider">
+          </div>
+
+          <div class="toggle-row">
+            <label class="hud-toggle">
+              <input type="checkbox" id="mstOnlyToggle">
+              <span class="toggle-switch"></span>
+              <span class="toggle-text">Apenas Árvore Geradora Mínima (MST)</span>
+            </label>
+          </div>
+
+          <div class="legend-grid">
+            <div class="legend-item"><span class="color-dot dot-crypto"></span> Cripto</div>
+            <div class="legend-item"><span class="color-dot dot-tradfi"></span> TradFi</div>
+            <div class="legend-item"><span class="color-dot dot-fx"></span> Câmbio (FX)</div>
+            <div class="legend-item"><span class="color-dot dot-macro"></span> Macro/Taxas</div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Center Graph Canvas Area -->
+      <section class="hud-viewport">
+        <div class="viewport-header">
+          <div class="hud-badge-group">
+            <span class="hud-badge-title">TOPOLOGIA DO GRAFO</span>
+            <span class="hud-badge-info" id="nodeEdgeCounter">19 Ativos | 94 Conexões</span>
+          </div>
+          <div class="canvas-actions">
+            <button id="resetViewBtn" class="hud-btn-ghost" title="Resetar Câmera / Centralizar">🎯 Centralizar</button>
+            <button id="togglePhysicsBtn" class="hud-btn-ghost" title="Congelar Física">❄️ Fixar</button>
+          </div>
+        </div>
+
+        <!-- Main SVG Graph Container -->
+        <div id="graphContainer" class="graph-canvas-wrapper">
+          <svg id="networkSvg" width="100%" height="100%"></svg>
+          
+          <!-- Interactive Node Hover Card -->
+          <div id="nodeTooltip" class="hud-tooltip hidden">
+            <div class="tooltip-header">
+              <span id="ttCategory" class="tt-category">CRYPTO</span>
+              <h3 id="ttSymbol">BTC</h3>
+              <span id="ttName" class="tt-name">Bitcoin</span>
+            </div>
+            <div class="tooltip-body">
+              <div class="tt-metric">
+                <span class="lbl">Centralidade Betweenness:</span>
+                <span class="val highlight" id="ttBetweenness">0.042</span>
+              </div>
+              <div class="tt-metric">
+                <span class="lbl">Grau de Conectividade:</span>
+                <span class="val" id="ttDegree">9 conexões</span>
+              </div>
+              <div class="tt-metric">
+                <span class="lbl">Volatilidade Anualizada:</span>
+                <span class="val" id="ttVol">29.7%</span>
+              </div>
+              <div class="tt-metric">
+                <span class="lbl">Retorno no Período:</span>
+                <span class="val" id="ttReturn">+14.2%</span>
+              </div>
+            </div>
+            <div class="tooltip-footer">
+              <span class="tt-hint">Clique para isolar vizinhança</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Telemetry Deck -->
+      <aside class="hud-deck telemetry-deck">
+        <div class="deck-header">
+          <span class="deck-icon">📊</span>
+          <h2>TELEMETRIA DE RISCO</h2>
+        </div>
+
+        <!-- Absorption Ratio Gauge -->
+        <div class="telemetry-card">
+          <div class="card-title-row">
+            <span class="metric-title">RAZÃO DE ABSORÇÃO (PC₁)</span>
+            <span class="metric-help" title="Mede a fração de variância total explicada pelo 1º Componente Principal. Valores altos indicam contágio sistêmico.">ℹ️</span>
+          </div>
+          <div class="gauge-display">
+            <div class="gauge-value" id="arValue">35.7%</div>
+            <div class="gauge-status-bar">
+              <div class="gauge-bar-fill" id="arBarFill" style="width: 35.7%;"></div>
+            </div>
+          </div>
+          <div class="gauge-labels">
+            <span>Mercado Desacoplado</span>
+            <span>Contágio Sistêmico</span>
+          </div>
+        </div>
+
+        <!-- Dominant Hub & Coherence -->
+        <div class="telemetry-grid">
+          <div class="mini-stat-card">
+            <span class="mini-lbl">HUB DOMINANTE</span>
+            <span class="mini-val highlight" id="dominantHubVal">SP500</span>
+            <span class="mini-sub">Maior Intermediação</span>
+          </div>
+          <div class="mini-stat-card">
+            <span class="mini-lbl">COERÊNCIA MÉDIA</span>
+            <span class="mini-val" id="coherenceVal">0.314</span>
+            <span class="mini-sub">Sincronia Global</span>
+          </div>
+        </div>
+
+        <!-- Top Correlated Synergy Pairs -->
+        <div class="telemetry-card">
+          <span class="metric-title">TOP PARES DE SINCRONIA (+&rho;)</span>
+          <div class="pairs-list" id="syncPairsList">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Top Negative Hedge Pairs -->
+        <div class="telemetry-card">
+          <span class="metric-title">TOP PARES DE HEDGE (-&rho;)</span>
+          <div class="pairs-list" id="hedgePairsList">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Spectral Insights Box -->
+        <div class="telemetry-card insight-card">
+          <span class="metric-title">💡 VEREDITO ESPECTRAL</span>
+          <p id="spectralInsightText" class="insight-body">
+            Nas frequências diárias, ativos de renda variável global (SP500, QQQ) formam o eixo dorsal da rede, conectando-se a commodities através do canal do dólar.
+          </p>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
