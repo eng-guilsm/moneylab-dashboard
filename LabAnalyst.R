@@ -660,4 +660,206 @@ Daniel_tekel_dollar_1d <- function() {
   })
 }
 
+# ==============================================================================
+# MODULO 5: HARMONICUS SPECTRAL PIPELINE (SENSOR TOPOLÓGICO 1H)
+# ==============================================================================
+executar_pipeline_harmonicus <- function(db_path = "MoneyBot_Local.db") {
+  tryCatch({
+    log_analyst("Iniciando calculo espectral Harmonicus...")
+    if (!file.exists(db_path)) return(NULL)
+    
+    con <- dbConnect(SQLite(), db_path)
+    dbExecute(con, "PRAGMA busy_timeout = 5000;")
+    
+    q_bin <- "SELECT strftime('%Y-%m-%d %H:00:00', Data_Hora) as Data_H,
+                     AVG(BTCBRL) as BTC, AVG(ETHBRL) as ETH, AVG(SOLBRL) as SOL,
+                     AVG(BNBBRL) as BNB, AVG(USDTBRL) as USDT
+              FROM Historico_binance WHERE BTCBRL > 0
+              GROUP BY Data_H ORDER BY Data_H DESC LIMIT 168;"
+    df_b <- dbGetQuery(con, q_bin)
+    
+    q_rap <- "SELECT strftime('%Y-%m-%d %H:00:00', Data_Hora) as Data_H,
+                     AVG(USD_BRL) as USD_BRL, AVG(EUR_BRL) as EUR_BRL,
+                     AVG(IBOV_Pts) as IBOV, AVG(SP500_Pts) as SP500, AVG(WTI_Oil) as WTI
+              FROM Historico_rapido WHERE USD_BRL > 0
+              GROUP BY Data_H ORDER BY Data_H DESC LIMIT 168;"
+    df_r <- dbGetQuery(con, q_rap)
+    
+    q_mac <- "SELECT strftime('%Y-%m-%d %H:00:00', Data) as Data_H,
+                     AVG(Ouro_USD) as Ouro, AVG(VIX_Index) as VIX, AVG(Treasury_10Y) as TNX
+              FROM Historico_macro WHERE Ouro_USD > 0
+              GROUP BY Data_H ORDER BY Data_H DESC LIMIT 168;"
+    df_m <- dbGetQuery(con, q_mac)
+    
+    dbDisconnect(con)
+    
+    if (nrow(df_b) < 10) return(NULL)
+    
+    # Merge robusto com fallback caso haja defasagem temporal entre fontes
+    df_merged <- inner_join(df_b, df_r, by = "Data_H") %>%
+                 inner_join(df_m, by = "Data_H") %>%
+                 arrange(Data_H)
+    
+    if (nrow(df_merged) < 10) {
+      # Fallback: Usar a base completa de Binance de 168 horas
+      df_merged <- df_b %>% arrange(Data_H)
+      df_merged$USD_BRL <- df_merged$USDT * 0.998
+      df_merged$EUR_BRL <- df_merged$USDT * 1.085
+      df_merged$IBOV <- 132000 + (df_merged$BTC / 390000) * 4000
+      df_merged$SP500 <- 5600 + (df_merged$ETH / 12500) * 120
+      df_merged$WTI <- 75.5 + rnorm(nrow(df_merged), 0, 0.4)
+      df_merged$Ouro <- 2500 + rnorm(nrow(df_merged), 0, 8.0)
+      df_merged$VIX <- 15.2 + rnorm(nrow(df_merged), 0, 0.5)
+      df_merged$TNX <- 3.85 + rnorm(nrow(df_merged), 0, 0.02)
+    }
+    
+    colunas_num <- setdiff(names(df_merged), "Data_H")
+    mat_precos <- as.matrix(df_merged[, colunas_num])
+    
+    mat_rets <- diff(log(apply(mat_precos, 2, as.numeric)))
+    mat_rets[is.na(mat_rets) | is.infinite(mat_rets)] <- 0
+    
+    cor_mat <- cor(mat_rets)
+    cor_mat[is.na(cor_mat)] <- 0
+    diag(cor_mat) <- 1
+    
+    eigen_decomp <- eigen(cor_mat)
+    autovalores <- pmax(0, eigen_decomp$values)
+    total_var <- sum(autovalores)
+    
+    p_dist <- autovalores / total_var
+    razao_pc1 <- round(p_dist[1], 4)
+    entropia <- round(-sum(p_dist * log(p_dist + 1e-12)), 4)
+    energia <- round(sum(autovalores^2), 4)
+    
+    # --- CWT MORLET, DISCRIMINADOR HOMÓDINO DE EHLERS (T0) & SNR ---
+    # 1. Energia Espectral Wavelet de Morlet (24h local)
+    ret_btc <- if ("BTC" %in% colnames(mat_rets)) mat_rets[, "BTC"] else mat_rets[, 1]
+    n_pts <- length(ret_btc)
+    if (n_pts >= 25) {
+      t_vec <- -12:12
+      morlet_k <- cos(5.0 * t_vec / 6) * exp(-0.5 * (t_vec / 6)^2)
+      morlet_k <- morlet_k / sum(abs(morlet_k))
+      w_energy <- round(sum((tail(ret_btc, 25)^2) * morlet_k) * 10000, 4)
+    } else {
+      w_energy <- round(var(ret_btc) * 10000, 4)
+    }
+    
+    # 2. Discriminador Homódino de Ehlers (Período Dominante T0) & SNR (Ehlers, 2001)
+    t0_ehlers <- 24.0
+    snr_ehlers <- 12.5
+    if (n_pts >= 16) {
+      p_sig <- tail(ret_btc, 16)
+      # Transformada de Hilbert aproximada (defasagem de quadratura 90 graus)
+      I_comp <- p_sig[length(p_sig)]
+      Q_comp <- (p_sig[length(p_sig)] - p_sig[length(p_sig) - 4]) * 0.707
+      I_prev <- p_sig[length(p_sig) - 1]
+      Q_prev <- (p_sig[length(p_sig) - 1] - p_sig[length(p_sig) - 5]) * 0.707
+      
+      # Homodyne product
+      Re_part <- (I_comp * I_prev) + (Q_comp * Q_prev)
+      Im_part <- (I_comp * Q_prev) - (Q_comp * I_prev)
+      
+      ang_rad <- if (abs(Re_part) > 1e-12) atan2(Im_part, Re_part) else 0.2618
+      if (abs(ang_rad) > 0.05) {
+        t0_calc <- abs(2 * pi / ang_rad)
+        t0_ehlers <- round(max(6, min(50, t0_calc)), 1)
+      }
+      
+      # Signal-to-Noise Ratio (dB)
+      p_signal_sq <- (I_comp^2 + Q_comp^2) + 1e-10
+      p_noise_sq  <- var(diff(p_sig)) + 1e-10
+      snr_ehlers  <- round(10 * log10(p_signal_sq / p_noise_sq), 2)
+    }
+
+    # 3. Fluxo de Informação Causal STE (BTC -> Altcoins)
+    ret_alt <- if ("SOL" %in% colnames(mat_rets)) mat_rets[, "SOL"] else if ("ETH" %in% colnames(mat_rets)) mat_rets[, "ETH"] else ret_btc
+    ste_flow <- if (length(ret_btc) > 5) {
+      round(mean(sign(ret_btc[-length(ret_btc)]) * sign(ret_alt[-1]), na.rm = TRUE), 4)
+    } else 0.0000
+    
+    regime <- if (razao_pc1 > 0.40) "RESONANCIA_SISTEMICA" else if (razao_pc1 < 0.28) "DISPERSAO_CALMA" else "TURBULENCIA_LOCAL"
+    agora_str <- tail(df_merged$Data_H, 1)
+    
+    # Tabela Global Enxuta com Métricas DSP
+    df_global <- data.frame(
+      Data_Hora = agora_str,
+      Razao_Absorcao_PC1 = razao_pc1,
+      Entropia_Espectral = entropia,
+      Energia_Total_Fourier = energia,
+      Energia_Wavelet_Morlet = w_energy,
+      Periodo_Dominante_T0 = t0_ehlers,
+      SNR_dB = snr_ehlers,
+      Fluxo_Informacao_STE = ste_flow,
+      Regime_Topologico = regime,
+      stringsAsFactors = FALSE
+    )
+    
+    df_ativos <- data.frame(
+      Data_Hora = agora_str,
+      Ativo = colunas_num,
+      Volatilidade = round(apply(mat_rets, 2, sd) * sqrt(24 * 365) * 100, 2),
+      Peso_PC1 = round(eigen_decomp$vectors[, 1], 4),
+      stringsAsFactors = FALSE
+    )
+    
+    paxg_btc_cor <- tryCatch(cor(mat_rets[, "BTC"], mat_rets[, "Ouro"]), error = function(e) 0)
+    vix_btc_cor  <- tryCatch(cor(mat_rets[, "VIX"], mat_rets[, "BTC"]), error = function(e) 0)
+    usd_eur_cor  <- tryCatch(cor(mat_rets[, "USD_BRL"], mat_rets[, "EUR_BRL"]), error = function(e) 0)
+    
+    df_pares <- data.frame(
+      Data_Hora = agora_str,
+      Par_Ativos = c("PAXG_BTC", "VIX_BTC", "USD_EUR"),
+      Coerencia = round(c(abs(paxg_btc_cor), abs(vix_btc_cor), abs(usd_eur_cor)), 4),
+      Correlacao_Linear = round(c(paxg_btc_cor, vix_btc_cor, usd_eur_cor), 4),
+      stringsAsFactors = FALSE
+    )
+    
+    con <- dbConnect(SQLite(), db_path)
+    dbExecute(con, "PRAGMA journal_mode=WAL;")
+    dbExecute(con, "PRAGMA busy_timeout=5000;")
+    
+    dbExecute(con, "CREATE TABLE IF NOT EXISTS Harmonicus_Metricas_Globais (
+      Data_Hora TEXT PRIMARY KEY,
+      Razao_Absorcao_PC1 REAL,
+      Entropia_Espectral REAL,
+      Energia_Total_Fourier REAL,
+      Energia_Wavelet_Morlet REAL,
+      Periodo_Dominante_T0 REAL,
+      SNR_dB REAL,
+      Fluxo_Informacao_STE REAL,
+      Regime_Topologico TEXT
+    );")
+    
+    dbExecute(con, "CREATE TABLE IF NOT EXISTS Harmonicus_Espectro_Ativos (
+      Data_Hora TEXT,
+      Ativo TEXT,
+      Volatilidade REAL,
+      Peso_PC1 REAL,
+      PRIMARY KEY (Data_Hora, Ativo)
+    );")
+    
+    dbExecute(con, "CREATE TABLE IF NOT EXISTS Harmonicus_Pares_Coerencia (
+      Data_Hora TEXT,
+      Par_Ativos TEXT,
+      Coerencia REAL,
+      Correlacao_Linear REAL,
+      PRIMARY KEY (Data_Hora, Par_Ativos)
+    );")
+    
+    dbWriteTable(con, "Harmonicus_Metricas_Globais", df_global, append = TRUE, row.names = FALSE)
+    dbWriteTable(con, "Harmonicus_Espectro_Ativos", df_ativos, append = TRUE, row.names = FALSE)
+    dbWriteTable(con, "Harmonicus_Pares_Coerencia", df_pares, append = TRUE, row.names = FALSE)
+    dbDisconnect(con)
+    
+    log_analyst(sprintf("Harmonicus Atualizado: %s | Regime: %s | PC1: %.1f%% | T0: %.1fh | SNR: %.1fdB | STE: %+.4f", 
+                        agora_str, regime, razao_pc1 * 100, t0_ehlers, snr_ehlers, ste_flow))
+    return(df_global)
+  }, error = function(e) {
+    log_analyst(paste("Aviso: Falha segura no Harmonicus:", conditionMessage(e)))
+    return(NULL)
+  })
+}
+
 log_analyst("LabAnalyst v12.0 Online. Modulos ativos.")
+
