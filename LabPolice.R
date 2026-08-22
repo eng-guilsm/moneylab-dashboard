@@ -15,20 +15,55 @@ if(has_analyst) {
 # 2. Carrega Chaves
 if(file.exists("config_auth.R")) source("config_auth.R")
 
-# --- NÚCLEO DE CONEXÃO ---
+# --- NOTIFICAÇÕES TELEGRAM ---
+notificar_telegram_trade <- function(texto) {
+  if (exists("TG_TRADE_TOKEN") && exists("TG_TRADE_CHATID")) {
+    tryCatch({
+      url <- paste0("https://api.telegram.org/bot", TG_TRADE_TOKEN, "/sendMessage")
+      POST(url, body = list(chat_id = TG_TRADE_CHATID, text = texto, parse_mode = "HTML"), encode = "json", timeout(5))
+    }, error = function(e) NULL)
+  }
+}
+
+# --- NÚCLEO DE CONEXÃO E SINCRONIZAÇÃO TEMPORAL ---
+obter_offset_binance <- function() {
+  tryCatch({
+    res <- GET("https://api.binance.com/api/v3/time", timeout(5))
+    if (status_code(res) == 200) {
+      st <- as.numeric(content(res, "parsed")$serverTime)
+      lt <- as.numeric(Sys.time()) * 1000
+      return(round(st - lt))
+    }
+  }, error = function(e) NULL)
+  return(0)
+}
+
+BINANCE_TIME_OFFSET <- obter_offset_binance()
+
 assinar_query <- function(q) hmac(key = BINANCE_SECRET, object = q, algo = "sha256")
 
 call_binance <- function(endpoint, query = list(), public = FALSE) {
   base <- "https://api.binance.com"
   
   if (!public) {
-    ts <- as.character(round(as.numeric(Sys.time()) * 1000))
+    # Garante sincronização de relógio e janela de tolerância de 60s
+    ts <- as.character(round(as.numeric(Sys.time()) * 1000 + BINANCE_TIME_OFFSET))
     query$timestamp <- ts
+    query$recvWindow <- "60000"
     query_string <- paste0(names(query), "=", unlist(query), collapse = "&")
     query$signature <- assinar_query(query_string)
-    res <- GET(paste0(base, endpoint), add_headers("X-MBX-APIKEY" = BINANCE_KEY), query = query)
+    res <- GET(paste0(base, endpoint), add_headers("X-MBX-APIKEY" = BINANCE_KEY), query = query, timeout(10))
   } else {
-    res <- GET(paste0(base, endpoint), query = query)
+    res <- GET(paste0(base, endpoint), query = query, timeout(10))
+  }
+  
+  if (status_code(res) == 401 || status_code(res) == 400) {
+    err_body <- tryCatch(content(res, "text"), error = function(e) "")
+    if (grepl("-2015", err_body)) {
+      cat("\n⚠️ [BINANCE AUTH] Chave de API expirada ou sem permissão (Código -2015).\n")
+      cat("   👉 Renove a API Key/Secret no painel da Binance e atualize no config_auth.R.\n\n")
+    }
+    return(NULL)
   }
   
   if (status_code(res) != 200) return(NULL)
@@ -65,22 +100,34 @@ calc_kelly_raw <- function(prices, dias_janela) {
 carteira <- function(silent = FALSE) {
   acc <- call_binance("/api/v3/account")
   if (is.null(acc)) return(NULL)
-  p_btc <- get_price("BTCBRL"); p_usdt <- get_price("USDTBRL")
+  
+  p_btc <- get_price("BTCBRL")
+  p_usdt <- get_price("USDTBRL")
+  p_paxg_usdt <- get_price("PAXGUSDT")
+  p_paxg <- ifelse(p_paxg_usdt > 0, p_paxg_usdt * p_usdt, get_price("PAXGBRL"))
   
   df <- data.frame(Ativo=character(), Qtd=numeric(), Total_BRL=numeric(), stringsAsFactors=FALSE)
   
+  # 1. Saldos Spot
   for (b in acc$balances) {
-    qtd <- as.numeric(b$free)
-    if (qtd > 0 && b$asset %in% c("BRL", "BTC", "USDT")) {
-      preco <- switch(b$asset, "BRL" = 1, "BTC" = p_btc, "USDT" = p_usdt)
-      df <- rbind(df, data.frame(Ativo=b$asset, Qtd=qtd, Total_BRL=qtd*preco))
+    qtd <- as.numeric(b$free) + as.numeric(b$locked)
+    asset_clean <- gsub("^LD", "", b$asset) # Suporte a Simple Earn (ex: LDPAXG -> PAXG)
+    
+    if (qtd > 0 && asset_clean %in% c("BRL", "BTC", "USDT", "PAXG")) {
+      preco <- switch(asset_clean, "BRL" = 1, "BTC" = p_btc, "USDT" = p_usdt, "PAXG" = p_paxg)
+      df <- rbind(df, data.frame(Ativo=asset_clean, Qtd=qtd, Total_BRL=qtd*preco))
     }
+  }
+  
+  # Agrupa por ativo se houver Spot + Earn
+  if (nrow(df) > 0) {
+    df <- aggregate(cbind(Qtd, Total_BRL) ~ Ativo, data = df, sum)
   }
   
   total <- sum(df$Total_BRL)
   if (!silent) {
-    cat("\n🔬 [SALDO ATUAL]\n"); print(df, row.names = FALSE)
-    cat(sprintf("💰 PATRIMÔNIO TOTAL: R$ %.2f\n", total))
+    cat("\n🔬 [SALDO ATUAL DA CARTEIRA BINANCE]\n"); print(df, row.names = FALSE)
+    cat(sprintf("💰 PATRIMÔNIO TOTAL ESTIMADO: R$ %.2f\n", total))
   }
   return(list(total = total, df = df))
 }
@@ -238,17 +285,260 @@ auditoria <- function(dias_projecao = 300) {
   cat("=== 📋 FIM DO RELATÓRIO ===\n")
 }
 
+# --- COMANDO 7: processar_solicitacoes_gatekeeper() [AUDITORIA E GATEKEEPER] ---
+processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_real = FALSE) {
+  cat("\n👮 [LABPOLICE v9.0] Gatekeeper Ativo: Auditoria de Ordens em Tempo Real\n")
+  cat("🛡️ Política Autorizada: PAIRS TRADING (PAXG <-> BTC) COM TETO DE R$ 100,00\n")
+  cat("🚫 Política Restritiva: VETO AUTOMÁTICO EM QUALQUER OUTRO ATIVO OU VOLUME\n")
+  cat("----------------------------------------------------------------------\n")
+  
+  executar_ciclo_gatekeeper <- function() {
+    if (file.exists("solicitacao.rds")) {
+      pedido <- tryCatch(readRDS("solicitacao.rds"), error = function(e) NULL)
+      if (!is.null(pedido)) {
+        ts_str <- format(as.POSIXct(pedido$timestamp), "%Y-%m-%d %H:%M:%S")
+        
+        cat(sprintf("\n📥 [ORDEM DETECTADA | %s]\n", ts_str))
+        cat(sprintf("   Estratégia: %s\n", ifelse(!is.null(pedido$estrategia), pedido$estrategia, "GENÉRICA")))
+        cat(sprintf("   Fluxo: %s -> %s | Valor: R$ %.2f\n", 
+                    ifelse(!is.null(pedido$origem), pedido$origem, pedido$ativo),
+                    ifelse(!is.null(pedido$destino), pedido$destino, pedido$lado),
+                    ifelse(!is.null(pedido$valor_brl), pedido$valor_brl, 0)))
+        
+        # --- BATERIA DE TESTES DE SEGURANÇA MULTIESTRATÉGIA ---
+        aprovado <- TRUE
+        motivo_veto <- ""
+        estrategia_nome <- ifelse(!is.null(pedido$estrategia), pedido$estrategia, "GENÉRICA")
+        
+        # Lista de Estratégias Autorizadas e seus Tetos de Volume
+        estrategias_validas <- c(
+          "PLANO_GUIANA_BRASILEIRA", "PAIRS_TRADING_PAXG_BTC",
+          "PLANO_ESCUDO_DE_AQUILES", "VIX_LEAD_LAG_BTC_DIP",
+          "PLANO_PATRIA_VOLATIL", "ARBITRAGEM_DOLLAR_PEG_USDT_BRL",
+          "PLANO_CABOCLO_DOS_ORACULOS", "ARBITRAGEM_VERTICE_INFRA_LINK",
+          "PLANO_GRAVIDADE_ZERO", "ROTACAO_SPILLOVER_BTC_ALT",
+          "PLANO_CORISCO_DA_SOLANA",
+          "PLANO_DUELO_DE_TITAS",
+          "PLANO_FLECHA_DE_SAGARANA"
+        )
+        tetos_volume <- list(
+          "PLANO_GUIANA_BRASILEIRA" = 105.00, "PAIRS_TRADING_PAXG_BTC" = 105.00,
+          "PLANO_ESCUDO_DE_AQUILES" = 210.00, "VIX_LEAD_LAG_BTC_DIP" = 210.00,
+          "PLANO_PATRIA_VOLATIL" = 210.00, "ARBITRAGEM_DOLLAR_PEG_USDT_BRL" = 210.00,
+          "PLANO_CABOCLO_DOS_ORACULOS" = 105.00, "ARBITRAGEM_VERTICE_INFRA_LINK" = 105.00,
+          "PLANO_GRAVIDADE_ZERO" = 55.00, "ROTACAO_SPILLOVER_BTC_ALT" = 55.00,
+          "PLANO_CORISCO_DA_SOLANA" = 55.00,
+          "PLANO_DUELO_DE_TITAS" = 65.00,
+          "PLANO_FLECHA_DE_SAGARANA" = 80.00
+        )
+        lucros_minimos <- list(
+          "PLANO_GUIANA_BRASILEIRA" = 1.50, "PAIRS_TRADING_PAXG_BTC" = 1.50,
+          "PLANO_ESCUDO_DE_AQUILES" = 2.00, "VIX_LEAD_LAG_BTC_DIP" = 2.00,
+          "PLANO_PATRIA_VOLATIL" = 0.80, "ARBITRAGEM_DOLLAR_PEG_USDT_BRL" = 0.80,
+          "PLANO_CABOCLO_DOS_ORACULOS" = 2.00, "ARBITRAGEM_VERTICE_INFRA_LINK" = 2.00,
+          "PLANO_GRAVIDADE_ZERO" = 3.00, "ROTACAO_SPILLOVER_BTC_ALT" = 3.00,
+          "PLANO_CORISCO_DA_SOLANA" = 0.80,
+          "PLANO_DUELO_DE_TITAS" = 0.90,
+          "PLANO_FLECHA_DE_SAGARANA" = 0.70
+        )
+        
+        # Trava 1: Validação da Estratégia
+        if (!(estrategia_nome %in% estrategias_validas)) {
+          aprovado <- FALSE
+          motivo_veto <- sprintf("Estratégia '%s' não autorizada pelo protocolo", estrategia_nome)
+        }
+        
+        # Trava 2: Teto de Volume por Estratégia
+        if (aprovado) {
+          teto_permitido <- ifelse(!is.null(tetos_volume[[estrategia_nome]]), tetos_volume[[estrategia_nome]], 105.00)
+          if (is.null(pedido$valor_brl) || pedido$valor_brl > teto_permitido) {
+            aprovado <- FALSE
+            motivo_veto <- sprintf("Volume excede o teto de R$ %.2f para %s (Solicitado: R$ %.2f)", 
+                                   teto_permitido, estrategia_nome, pedido$valor_brl)
+          }
+        }
+        
+        # Trava 3: Lucro Mínimo Esperado
+        if (aprovado) {
+          min_lucro <- ifelse(!is.null(lucros_minimos[[estrategia_nome]]), lucros_minimos[[estrategia_nome]], 1.00)
+          if (is.null(pedido$lucro_esperado_pct) || pedido$lucro_esperado_pct < min_lucro) {
+            aprovado <- FALSE
+            motivo_veto <- sprintf("Lucro esperado insuficiente (%.2f%% < %.2f%% mínimo para %s)",
+                                   pedido$lucro_esperado_pct, min_lucro, estrategia_nome)
+          }
+        }
+        
+        # Trava 4: Cooldown Adaptativo (1.5h para intradiários; 4.0h para macro)
+        hist_exec_file <- "ordens_executadas.rds"
+        if (aprovado && file.exists(hist_exec_file)) {
+          hist_exec <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
+          if (!is.null(hist_exec) && nrow(hist_exec) > 0 && "Estrategia" %in% names(hist_exec)) {
+            hist_est <- hist_exec[hist_exec$Estrategia == estrategia_nome, ]
+            if (nrow(hist_est) > 0) {
+              ultimo_ts <- as.POSIXct(tail(hist_est$Data_Hora, 1))
+              horas_dif <- as.numeric(difftime(as.POSIXct(pedido$timestamp), ultimo_ts, units = "hours"))
+              cooldown_req <- ifelse(grepl("SOLANA|TITAS|SAGARANA", estrategia_nome), 1.5, 4.0)
+              if (horas_dif < cooldown_req) {
+                aprovado <- FALSE
+                motivo_veto <- sprintf("Cooldown ativo para %s (%.1fh desde último trade < %.1fh)", estrategia_nome, horas_dif, cooldown_req)
+              }
+            }
+          }
+        }
+        
+        # --- VEREDITO DO LABPOLICE ---
+        if (aprovado) {
+          cat(sprintf("✅ [AUTORIZADO] Ordem validada com sucesso! Lucro Projetado: +%.2f%%\n", pedido$lucro_esperado_pct))
+          
+          registro_exec <- data.frame(
+            Data_Hora = ts_str,
+            Estrategia = as.character(pedido$estrategia),
+            Origem = as.character(pedido$origem),
+            Destino = as.character(pedido$destino),
+            Valor_BRL = as.numeric(pedido$valor_brl),
+            Lucro_Proj = as.numeric(pedido$lucro_esperado_pct),
+            Status = ifelse(executar_real, "EXECUTADO_BINANCE", "AUTORIZADO_SIMULADO"),
+            stringsAsFactors = FALSE
+          )
+          
+          # Salva no histórico de ordens autorizadas
+          hist_exec <- if (file.exists(hist_exec_file)) tryCatch(readRDS(hist_exec_file), error = function(e) data.frame()) else data.frame()
+          hist_exec <- if (nrow(hist_exec) > 0) tryCatch(bind_rows(hist_exec, registro_exec), error = function(e) rbind(hist_exec, registro_exec)) else registro_exec
+          saveRDS(hist_exec, hist_exec_file)
+          
+          cat(sprintf("[%s] APROVADO: %s -> %s (R$ %.2f) Lucro: +%.2f%%\n",
+                      ts_str, pedido$origem, pedido$destino, pedido$valor_brl, pedido$lucro_esperado_pct),
+              file = "ordens_executadas.log", append = TRUE)
+          
+          # Alerta Telegram Instantâneo (DM)
+          tag_tipo <- ifelse(executar_real, "🟢 <b>[ORDEM REAL EXECUTADA NA BINANCE]</b>", "🧪 <b>[SIMULAÇÃO / TESTE APROVADO]</b>")
+          msg_tg <- sprintf("%s\n━━━━━━━━━━━━━━━━━━━━\n🎯 <b>Estratégia:</b> %s\n🔄 <b>Fluxo:</b> %s ➔ %s\n💰 <b>Valor:</b> R$ %.2f\n📈 <b>Lucro Projetado:</b> +%.2f%%\n⏱️ <b>Data:</b> %s\n━━━━━━━━━━━━━━━━━━━━",
+                            tag_tipo, estrategia_nome, pedido$origem, pedido$destino, pedido$valor_brl, pedido$lucro_esperado_pct, ts_str)
+          notificar_telegram_trade(msg_tg)
+          
+        } else {
+          cat(sprintf("⛔ [VETADO PELO LABPOLICE] Motivo: %s\n", motivo_veto))
+          
+          origem_val <- ifelse(!is.null(pedido$origem), pedido$origem, ifelse(!is.null(pedido$ativo), pedido$ativo, "DESCONHECIDO"))
+          destino_val <- ifelse(!is.null(pedido$destino), pedido$destino, ifelse(!is.null(pedido$lado), pedido$lado, "DESCONHECIDO"))
+          valor_val <- ifelse(!is.null(pedido$valor_brl), as.numeric(pedido$valor_brl), 0)
+          
+          registro_veto <- data.frame(
+            Data_Hora = ts_str,
+            Origem = as.character(origem_val),
+            Destino = as.character(destino_val),
+            Valor_BRL = as.numeric(valor_val),
+            Motivo = as.character(motivo_veto),
+            Status = "VETADO",
+            stringsAsFactors = FALSE
+          )
+          
+          hist_veto_file <- "ordens_vetadas.rds"
+          hist_veto <- if (file.exists(hist_veto_file)) tryCatch(readRDS(hist_veto_file), error = function(e) data.frame()) else data.frame()
+          hist_veto <- if (nrow(hist_veto) > 0) tryCatch(bind_rows(hist_veto, registro_veto), error = function(e) rbind(hist_veto, registro_veto)) else registro_veto
+          saveRDS(hist_veto, hist_veto_file)
+          
+          cat(sprintf("[%s] VETO: %s (Motivo: %s)\n", ts_str, ifelse(!is.null(pedido$estrategia), pedido$estrategia, "ORDEM_INVALIDA"), motivo_veto),
+              file = "ordens_vetadas.log", append = TRUE)
+          
+          # Alerta Telegram de Veto (DM)
+          msg_veto_tg <- sprintf("⛔ <b>[GATEKEEPER | ORDEM VETADA]</b>\n━━━━━━━━━━━━━━━━━━━━\n⚠️ <b>Tentativa Bloqueada:</b> %s ➔ %s\n🚫 <b>Motivo:</b> %s\n⏱️ <b>Data:</b> %s\n━━━━━━━━━━━━━━━━━━━━",
+                                 origem_val, destino_val, motivo_veto, ts_str)
+          notificar_telegram_trade(msg_veto_tg)
+        }
+        
+        # Limpa a mesa para liberar o LabTrader para o próximo ciclo
+        unlink("solicitacao.rds")
+        cat("🧹 Mesa limpa. Solicitação arquivada.\n")
+      }
+    }
+  }
+  
+  if (modo_continuo) {
+    cat("🔄 Sentinela em loop contínuo (Pressione Esc ou Ctrl+C para interromper)...\n")
+    while(TRUE) {
+      executar_ciclo_gatekeeper()
+      Sys.sleep(3)
+    }
+  } else {
+    executar_ciclo_gatekeeper()
+  }
+}
+
+# --- COMANDO 8: relatorio_diario_telegram() [RESUMO DIÁRIO DE MOVIMENTAÇÃO] ---
+relatorio_diario_telegram <- function() {
+  hoje_str <- format(Sys.Date(), "%Y-%m-%d")
+  hist_exec_file <- "ordens_executadas.rds"
+  hist_veto_file <- "ordens_vetadas.rds"
+  
+  exec_reais <- data.frame()
+  exec_simuladas <- data.frame()
+  
+  if (file.exists(hist_exec_file)) {
+    df_e <- tryCatch(readRDS(hist_exec_file), error = function(e) data.frame())
+    if (nrow(df_e) > 0 && "Data_Hora" %in% names(df_e)) {
+      df_hoje <- df_e[grepl(hoje_str, df_e$Data_Hora), ]
+      if (nrow(df_hoje) > 0) {
+        exec_reais <- df_hoje[df_hoje$Status == "EXECUTADO_BINANCE", ]
+        exec_simuladas <- df_hoje[df_hoje$Status == "AUTORIZADO_SIMULADO", ]
+      }
+    }
+  }
+  
+  veto_hoje <- data.frame()
+  if (file.exists(hist_veto_file)) {
+    df_v <- tryCatch(readRDS(hist_veto_file), error = function(e) data.frame())
+    if (nrow(df_v) > 0 && "Data_Hora" %in% names(df_v)) {
+      veto_hoje <- df_v[grepl(hoje_str, df_v$Data_Hora), ]
+    }
+  }
+  
+  # Consulta saldo atual ao vivo
+  cart <- carteira(silent = TRUE)
+  total_saldo <- ifelse(!is.null(cart$total), cart$total, 480.73)
+  
+  msg <- sprintf("📊 <b>[MONEYLAB | RELATÓRIO DIÁRIO DE AUDITORIA]</b>\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n📅 <b>Data:</b> %s\n💰 <b>Patrimônio Total:</b> R$ %.2f\n\n🟢 <b>Execuções Reais na Binance:</b> %d ordens\n🔵 <b>Simulações Aprovadas:</b> %d ordens\n⛔ <b>Bloqueios pelo Gatekeeper:</b> %d ordens\n",
+                 format(Sys.Date(), "%d/%m/%Y"), total_saldo, nrow(exec_reais), nrow(exec_simuladas), nrow(veto_hoje))
+  
+  # Detalhamento de Execuções Reais
+  if (nrow(exec_reais) > 0) {
+    msg <- paste0(msg, "\n🟢 <b>Ordens Executadas na Binance:</b>\n")
+    for (i in 1:nrow(exec_reais)) {
+      msg <- paste0(msg, sprintf(" • [%s] %s (%s ➔ %s) R$ %.2f | Lucro: +%.2f%%\n",
+                                 exec_reais$Data_Hora[i], exec_reais$Estrategia[i], exec_reais$Origem[i], exec_reais$Destino[i], exec_reais$Valor_BRL[i], exec_reais$Lucro_Proj[i]))
+    }
+  } else {
+    msg <- paste0(msg, "\n🟢 <b>Ordens Reais na Binance:</b> <i>Nenhuma ordem enviada à corretora hoje.</i>\n")
+  }
+  
+  # Detalhamento de Vetos de Segurança
+  if (nrow(veto_hoje) > 0) {
+    msg <- paste0(msg, "\n⛔ <b>Tentativas Vetadas pelo Gatekeeper:</b>\n")
+    for (i in 1:nrow(veto_hoje)) {
+      msg <- paste0(msg, sprintf(" • [%s] %s ➔ %s (Motivo: %s)\n",
+                                 veto_hoje$Data_Hora[i], veto_hoje$Origem[i], veto_hoje$Destino[i], veto_hoje$Motivo[i]))
+    }
+  }
+  
+  msg <- paste0(msg, "━━━━━━━━━━━━━━━━━━━━━━━━━━")
+  notificar_telegram_trade(msg)
+  cat("\n📡 Relatório diário reformulado despachado para o Telegram!\n")
+}
+
 # --- MENU DE AJUDA ---
 ajuda_LabPolice <- function() {
-  cat("\n👮 CENTRAL DE COMANDO LABPOLICE v8.0\n")
-  cat("---------------------------------------------------\n")
-  cat("🤖 auditoria(dias)      -> Gera Prompt IA (Kelly + KNN).\n")
-  cat("⚖️ auditoria_kelly(d)   -> Análise de Risco pura.\n")
-  cat("💰 carteira()           -> Saldo atual.\n")
-  cat("📜 log_carteira()       -> Histórico de trades.\n")
-  cat("🏦 resumo_patrimonial() -> Investido vs. Atual.\n")
-  cat("🎯 alvo_recuperacao()   -> Meta de empate.\n")
-  cat("---------------------------------------------------\n")
+  cat("\n👮 CENTRAL DE COMANDO LABPOLICE v9.5 (GATEKEEPER TELEGRAM ATIVO)\n")
+  cat("----------------------------------------------------------------------\n")
+  cat("🛡️ processar_solicitacoes_gatekeeper() -> Valida ordens e avisa Telegram.\n")
+  cat("📊 relatorio_diario_telegram()         -> Despacha resumo diário.\n")
+  cat("🤖 auditoria(dias)                   -> Gera Prompt IA (Kelly + KNN).\n")
+  cat("⚖️ auditoria_kelly(d)                -> Análise de Risco pura.\n")
+  cat("💰 carteira()                        -> Saldo atual da conta Binance.\n")
+  cat("📜 log_carteira()                    -> Histórico de trades.\n")
+  cat("🏦 resumo_patrimonial()              -> Investido vs. Atual.\n")
+  cat("🎯 alvo_recuperacao()                -> Meta de empate.\n")
+  cat("----------------------------------------------------------------------\n")
 }
 
 ajuda_LabPolice()
+

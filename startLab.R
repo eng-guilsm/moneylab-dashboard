@@ -61,11 +61,13 @@ if(!exists("TIMER_BINANCE"))    TIMER_BINANCE    <- 60
 if(!exists("TIMER_RAPIDO"))     TIMER_RAPIDO     <- 300
 if(!exists("TIMER_MACRO"))      TIMER_MACRO      <- 3600
 if(!exists("TIMER_SENTIMENTO")) TIMER_SENTIMENTO <- 1800 
+if(!exists("TIMER_HARMONICUS")) TIMER_HARMONICUS <- 3600
 
 last_run_binance    <- agora - TIMER_BINANCE
 last_run_rapido     <- agora - TIMER_RAPIDO
 last_run_macro      <- agora - TIMER_MACRO
 last_run_sentimento <- agora - TIMER_SENTIMENTO 
+last_run_harmonicus <- agora - TIMER_HARMONICUS 
 
 if(exists("user_env")) rm(list = ls(user_env), envir = user_env)
 
@@ -217,6 +219,19 @@ repeat {
   }
   
   # ----------------------------------------------------------------------------
+  # MÓDULO 2.1: LabAnalyst (Harmonicus Spectral Pipeline 1h)
+  # ----------------------------------------------------------------------------
+  if(difftime(agora, last_run_harmonicus, units = "secs") >= TIMER_HARMONICUS) {
+    cat("\n🎼 [HARMONICUS] Processando Decomposição Espectral e Topologia...\n")
+    tryCatch({
+      executar_pipeline_harmonicus("MoneyBot_Local.db")
+    }, error = function(e) {
+      cat("    ⚠️ Aviso: Falha segura no pipeline Harmonicus:", conditionMessage(e), "\n")
+    })
+    last_run_harmonicus <- Sys.time()
+  }
+  
+  # ----------------------------------------------------------------------------
   # MÓDULO 3: LabInvest (Mensageria Telegram - AMARRAÇÃO DE ESCOPO LOCAL)
   # ----------------------------------------------------------------------------
   tryCatch({
@@ -232,8 +247,6 @@ repeat {
     }
   }, error = function(e) {
     cat("❌ [MÓDULO 3 | TELEGRAM ERROR]:", conditionMessage(e), "\n")
-    # Avanço defensivo utilizando atribuição local consistente
-    tg_last_update_id <- tg_last_update_id + 1
   })
   
   # ----------------------------------------------------------------------------
