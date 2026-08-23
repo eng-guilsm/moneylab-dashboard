@@ -238,14 +238,26 @@ executar_radar_labtrader <- function() {
   # ----------------------------------------------------------------------------
   # MOTOR 3: PLANO PÁTRIA VOLÁTIL (BRL <-> USDT | R$ 200)
   # ----------------------------------------------------------------------------
-  if (is.null(pedido) && !is.null(usd_oficial)) {
+  if (is.null(pedido) && !is.null(usd_oficial) && usd_oficial > 0) {
     spread_peg <- p_usdt_brl - usd_oficial
+    
+    # Ponta 1: Desconto do USDT frente ao Dólar Comercial (Spread <= -0.0400) -> Compra USDT
     if (spread_peg <= -0.0400) {
       lucro_proj <- (abs(spread_peg) / usd_oficial) * 100
       if (lucro_proj >= 0.80) {
         pedido <- list(
           estrategia = "PLANO_PATRIA_VOLATIL",
           origem = "BRL", destino = "USDT",
+          valor_brl = VALOR_PEG_BRL * fator_lote, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+        )
+      }
+    } else if (spread_peg >= 0.0400) {
+      # Ponta 2: Ágio expressivo do USDT frente ao Dólar Comercial (Spread >= +0.0400) -> Venda USDT
+      lucro_proj <- (spread_peg / usd_oficial) * 100
+      if (lucro_proj >= 0.80) {
+        pedido <- list(
+          estrategia = "PLANO_PATRIA_VOLATIL",
+          origem = "USDT", destino = "BRL",
           valor_brl = VALOR_PEG_BRL * fator_lote, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
         )
       }
@@ -275,6 +287,8 @@ executar_radar_labtrader <- function() {
   if (is.null(pedido) && !is.null(p_sol_brl) && !is.null(p_btc_brl) && pc1_atual >= 0.40 && pc1_atual < 0.70 && ste_atual >= 0.0) {
     ratio_sol_btc <- p_sol_brl / p_btc_brl
     z_sol_btc     <- (ratio_sol_btc - stats_sol_btc$media) / stats_sol_btc$sd
+    
+    # Ponta 1: Solana Sobrevendida em relação ao BTC (Z <= -1.75) -> Rotação BTC para SOL
     if (z_sol_btc <= -1.75) {
       lucro_proj <- ((stats_sol_btc$media / ratio_sol_btc) - 1) * 100
       if (lucro_proj >= 3.00) {
@@ -283,6 +297,24 @@ executar_radar_labtrader <- function() {
           origem = "BTC", destino = "SOL",
           valor_brl = VALOR_SPILL_BRL * fator_lote, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
         )
+      }
+    } else if (z_sol_btc >= 1.75) {
+      # Ponta 2: Solana Sobrecomprada em relação ao BTC (Z >= +1.75) -> Rotação SOL para BTC
+      # Só gera solicitação se houver saldo positivo de SOL na carteira
+      df_w <- tryCatch(carteira(silent = TRUE), error = function(e) NULL)
+      saldo_sol <- 0
+      if (!is.null(df_w) && is.data.frame(df_w) && "SOL" %in% df_w$asset) {
+        saldo_sol <- sum(df_w$free[df_w$asset == "SOL"], na.rm = TRUE)
+      }
+      if (saldo_sol > 0.001) {
+        lucro_proj <- ((ratio_sol_btc / stats_sol_btc$media) - 1) * 100
+        if (lucro_proj >= 3.00) {
+          pedido <- list(
+            estrategia = "PLANO_GRAVIDADE_ZERO",
+            origem = "SOL", destino = "BTC",
+            valor_brl = VALOR_SPILL_BRL * fator_lote, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+          )
+        }
       }
     }
   }
