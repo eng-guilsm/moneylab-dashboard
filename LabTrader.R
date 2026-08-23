@@ -320,21 +320,28 @@ executar_radar_labtrader <- function() {
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 6: PLANO CORISCO DA SOLANA (BRL <-> SOL 15m | R$ 50)
+  # MOTOR 6: PLANO CORISCO DA SOLANA (BRL <-> SOL 15m | Harmonicus SC | R$ 50)
   # ----------------------------------------------------------------------------
   if (is.null(pedido) && !is.null(p_sol_brl) && ste_atual >= 0.0 && pc1_atual < 0.70 && w_energy < 50.0) {
     z_sol_15m <- (p_sol_brl - stats_sol_15m$media) / stats_sol_15m$sd
     
-    # Ponta 1: COMPRA NO FUNDO DA BANDA (100% da Meta / Z <= -2.00σ)
-    if (z_sol_15m <= -2.00) {
-      lucro_proj <- max(0.80, ((stats_sol_15m$media / p_sol_brl) - 1) * 100)
+    # Filtro de Co-Movimento Harmonicus SC: Não compra dip de SOL se BTC estiver em queda rápida em 15m
+    ret_btc_15m <- tryCatch({
+      if (!is.null(df_hist_binance) && nrow(df_hist_binance) >= 15) {
+        (tail(df_hist_binance$BTCBRL, 1) / tail(df_hist_binance$BTCBRL, 15)[1]) - 1.0
+      } else { 0.0 }
+    }, error = function(e) 0.0)
+    
+    # Ponta 1: COMPRA NO FUNDO DA BANDA (100% da Meta / Z <= -2.00σ E BTC Estável >= -0.15%)
+    if (z_sol_15m <= -2.00 && ret_btc_15m >= -0.0015) {
+      lucro_proj <- max(1.20, ((stats_sol_15m$media / p_sol_brl) - 1) * 100)
       pedido <- list(
         estrategia = "PLANO_CORISCO_DA_SOLANA",
         origem = "BRL", destino = "SOL",
         valor_brl = VALOR_CORISCO_BRL * fator_lote, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
       )
     } else if (z_sol_15m >= 0.0) {
-      # Ponta 2: REALIZAÇÃO DE LUCRO NO REPIQUE À MÉDIA (Z >= 0.0σ)
+      # Ponta 2: REALIZAÇÃO DE LUCRO NO REPIQUE À MÉDIA (Z >= 0.0σ COM LUCRO >= +0.75%)
       # Só atua se houver saldo positivo de SOL na carteira para realizar
       df_w <- tryCatch(carteira(silent = TRUE), error = function(e) NULL)
       saldo_sol <- 0
@@ -342,9 +349,9 @@ executar_radar_labtrader <- function() {
         saldo_sol <- sum(df_w$free[df_w$asset == "SOL"], na.rm = TRUE)
       }
       if (saldo_sol > 0.001) {
-        lucro_proj <- max(0.80, ((p_sol_brl / stats_sol_15m$media) - 1) * 100)
+        lucro_proj <- max(0.75, ((p_sol_brl / stats_sol_15m$media) - 1) * 100)
         valor_venda_brl <- min(VALOR_CORISCO_BRL, saldo_sol * p_sol_brl)
-        if (valor_venda_brl >= 15.0) {
+        if (valor_venda_brl >= 15.0 && lucro_proj >= 0.75) {
           pedido <- list(
             estrategia = "PLANO_CORISCO_DA_SOLANA",
             origem = "SOL", destino = "BRL",
@@ -361,6 +368,8 @@ executar_radar_labtrader <- function() {
   if (is.null(pedido) && !is.null(p_eth_brl) && !is.null(p_btc_brl) && pc1_atual < 0.75) {
     ratio_eth_btc <- p_eth_brl / p_btc_brl
     z_eth_btc     <- (ratio_eth_btc - stats_eth_btc$media) / stats_eth_btc$sd
+    
+    # Ponta 1: ETH BARATO / BTC CARO -> Gira BTC para COMPRAR ETH
     if (z_eth_btc <= -1.50) {
       lucro_proj <- ((stats_eth_btc$media / ratio_eth_btc) - 1) * 100
       if (lucro_proj >= 0.90) {
@@ -371,13 +380,23 @@ executar_radar_labtrader <- function() {
         )
       }
     } else if (z_eth_btc >= 1.50) {
-      lucro_proj <- ((ratio_eth_btc / stats_eth_btc$media) - 1) * 100
-      if (lucro_proj >= 0.90) {
-        pedido <- list(
-          estrategia = "PLANO_DUELO_DE_TITAS",
-          origem = "ETH", destino = "BTC",
-          valor_brl = VALOR_TITAS_BRL * fator_lote, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-        )
+      # Ponta 2: ETH CARO / BTC BARATO -> Vende ETH para COMPRAR BTC
+      # Checagem de custódia prévia: só gera pedido se houver ETH em carteira!
+      df_w <- tryCatch(carteira(silent = TRUE), error = function(e) NULL)
+      saldo_eth <- 0
+      if (!is.null(df_w) && is.data.frame(df_w) && "ETH" %in% df_w$asset) {
+        saldo_eth <- sum(df_w$free[df_w$asset == "ETH"], na.rm = TRUE)
+      }
+      if (saldo_eth > 0.0005) {
+        lucro_proj <- ((ratio_eth_btc / stats_eth_btc$media) - 1) * 100
+        if (lucro_proj >= 0.90) {
+          pedido <- list(
+            estrategia = "PLANO_DUELO_DE_TITAS",
+            origem = "ETH", destino = "BTC",
+            valor_brl = min(VALOR_TITAS_BRL * fator_lote, saldo_eth * p_eth_brl),
+            lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+          )
+        }
       }
     }
   }
