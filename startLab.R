@@ -1,6 +1,6 @@
 # ==============================================================================
-# SISTEMA CENTRAL: startLab.R (Orquestrador do MoneyLab)
-# Versão: 12.0 | Status: Ordem de Escopo e Proteção de Fila Corrigidas
+# SISTEMA CENTRAL: startLab.R (Orquestrador Unificado do MoneyLab)
+# Versão: 13.0 | Status: LabTrader + LabPolice Gatekeeper Integrados no Loop
 # ==============================================================================
 message(">>> [SISTEMA CENTRAL] Iniciando orquestração unificada...")
 
@@ -14,7 +14,7 @@ if (Sys.getenv("RUNNING_IN_DOCKER") == "") {
   .libPaths(unique(c(LOCAL_R_LIB, .libPaths())))
 }
 
-pkgs_start <- c("dplyr", "tidyr", "jsonlite", "quantmod", "lubridate")
+pkgs_start <- c("dplyr", "tidyr", "jsonlite", "quantmod", "lubridate", "httr", "RSQLite", "digest")
 invisible(lapply(pkgs_start, function(p) {
   if (Sys.getenv("RUNNING_IN_DOCKER") == "") {
     if(!require(p, character.only = TRUE, quietly = TRUE)) install.packages(p, quiet = TRUE)
@@ -23,20 +23,19 @@ invisible(lapply(pkgs_start, function(p) {
 }))
 
 # ------------------------------------------------------------------------------
-# 1. CARREGAMENTO INVERSO DE DEPENDÊNCIAS (FIX DE NAMESPACE)
+# 1. CARREGAMENTO DOS MÓDULOS INTELIGENTES
 # ------------------------------------------------------------------------------
-# Carregamos primeiro a inteligência e os coletores, e por ÚLTIMO o Front-End (Bot),
-# garantindo que todas as funções matemáticas já existam na memória da máquina.
 source("LabFariaLimer.R") 
 source("LabAnalyst.R")   
-source("LabInvest.R")    
+source("LabInvest.R")
+source("LabPolice.R")
+source("LabTrader.R")
 
 # ------------------------------------------------------------------------------
 # 1.1 LIMPEZA DE FILA DO TELEGRAM (RASTREIO EXTERNO DE ID)
 # ------------------------------------------------------------------------------
 message(">>> [TELEGRAM] Limpando mensagens antigas para evitar loop...")
 
-# Garantido como tipo numérico estável para evitar estouro de pilha
 tg_last_update_id <- 0
 
 tryCatch({
@@ -62,16 +61,18 @@ if(!exists("TIMER_RAPIDO"))     TIMER_RAPIDO     <- 300
 if(!exists("TIMER_MACRO"))      TIMER_MACRO      <- 3600
 if(!exists("TIMER_SENTIMENTO")) TIMER_SENTIMENTO <- 1800 
 if(!exists("TIMER_HARMONICUS")) TIMER_HARMONICUS <- 3600
+if(!exists("TIMER_RADAR"))      TIMER_RADAR      <- 30
 
 last_run_binance    <- agora - TIMER_BINANCE
 last_run_rapido     <- agora - TIMER_RAPIDO
 last_run_macro      <- agora - TIMER_MACRO
 last_run_sentimento <- agora - TIMER_SENTIMENTO 
 last_run_harmonicus <- agora - TIMER_HARMONICUS 
+last_run_radar      <- agora - TIMER_RADAR
 
 if(exists("user_env")) rm(list = ls(user_env), envir = user_env)
 
-message(">>> [SISTEMA] Motor Principal Ativo. Iniciando Event Loop.")
+message(">>> [SISTEMA] Motor Principal Ativo (Coletores, Analista, Trader, Polícia e Telegram).")
 
 # ==============================================================================
 # SUPER LOOP (EVENT LOOP MESTRE)
@@ -80,7 +81,7 @@ repeat {
   agora <- Sys.time()
   
   # ----------------------------------------------------------------------------
-  # MÓDULO 1: LabFariaLimer (Coleta de Dados Puros)
+  # MÓDULO 1: LabFariaLimer (Coletores de Preço)
   # ----------------------------------------------------------------------------
   if(difftime(agora, last_run_binance, units = "secs") >= TIMER_BINANCE) {
     cat("\n🔶 [BINANCE] Tick Data...\n")
@@ -106,7 +107,7 @@ repeat {
     btc_val <- NA
     eur_val <- NA
     
-    # 1. Tenta AwesomeAPI isoladamente
+    # 1. Tenta AwesomeAPI
     tryCatch({
       json_moedas <- fromJSON("https://economia.awesomeapi.com.br/json/last/USD-BRL,BTC-BRL,ETH-BRL,EUR-BRL")
       usd_val <- as.numeric(json_moedas$USDBRL$bid)
@@ -114,35 +115,31 @@ repeat {
       btc_val <- as.numeric(json_moedas$BTCBRL$bid)
       eur_val <- as.numeric(json_moedas$EURBRL$bid)
     }, error = function(e) {
-      cat("    ⚠️ AwesomeAPI falhou (possível rate-limit). Tentando fallbacks...\n")
+      cat("    ⚠️ AwesomeAPI falhou. Tentando fallbacks...\n")
     })
     
-    # 2. Fallback para moedas fiduciárias via Yahoo Finance
+    # 2. Fallback moedas fiduciárias via Yahoo Finance
     if (is.na(usd_val) || is.na(eur_val)) {
       tryCatch({
         fallback_quotes <- get_safe_quote(c("USDBRL=X", "EURBRL=X"))
         if (!is.null(fallback_quotes)) {
           if (is.na(usd_val)) usd_val <- as.numeric(fallback_quotes["USDBRL=X", "Last"])
           if (is.na(eur_val)) eur_val <- as.numeric(fallback_quotes["EURBRL=X", "Last"])
-          cat("    ✅ Fallback Yahoo Finance para moedas fiduciárias funcionou!\n")
+          cat("    ✅ Fallback Yahoo Finance fiduciárias OK!\n")
         }
-      }, error = function(e) {
-        cat("    ❌ Fallback Yahoo Finance para fiduciárias falhou:", conditionMessage(e), "\n")
-      })
+      }, error = function(e) NULL)
     }
     
-    # 3. Fallback para criptomoedas via Yahoo Finance (Crypto USD -> BRL)
+    # 3. Fallback criptomoedas via Yahoo Finance
     if (is.na(btc_val) || is.na(eth_val)) {
       tryCatch({
         fallback_usd_crypto <- get_safe_quote(c("BTC-USD", "ETH-USD"))
         if (!is.null(fallback_usd_crypto) && !is.na(usd_val)) {
           if (is.na(btc_val)) btc_val <- as.numeric(fallback_usd_crypto["BTC-USD", "Last"]) * usd_val
           if (is.na(eth_val)) eth_val <- as.numeric(fallback_usd_crypto["ETH-USD", "Last"]) * usd_val
-          cat("    ✅ Fallback Yahoo Finance (Crypto USD -> BRL) funcionou!\n")
+          cat("    ✅ Fallback Yahoo Finance cripto OK!\n")
         }
-      }, error = function(e) {
-        cat("    ❌ Fallback Yahoo Finance para cripto falhou:", conditionMessage(e), "\n")
-      })
+      }, error = function(e) NULL)
     }
     
     # 4. Outros índices e commodities
@@ -165,10 +162,8 @@ repeat {
       if(!is.na(df_rapido$BTC_BRL) && !is.na(df_rapido$USD_BRL)) {
         db_safe_append("Historico_rapido", df_rapido)
         cat("    ✅ DB: Rápido OK.\n")
-      } else {
-        cat("    ⚠️ Bloco Rápido ignorado: BTC ou USD ausentes.\n")
       }
-    }, error = function(e) cat("    ❌ Erro ao salvar Bloco Rápido:", conditionMessage(e), "\n"))
+    }, error = function(e) cat("    ❌ Erro no Bloco Rápido:", conditionMessage(e), "\n"))
     
     last_run_rapido <- Sys.time()
   }
@@ -232,21 +227,35 @@ repeat {
   }
   
   # ----------------------------------------------------------------------------
-  # MÓDULO 3: LabInvest (Mensageria Telegram - AMARRAÇÃO DE ESCOPO LOCAL)
+  # MÓDULO 3: LabTrader (Radar de Estratégias Quant) & LabPolice (Gatekeeper)
+  # ----------------------------------------------------------------------------
+  if(difftime(agora, last_run_radar, units = "secs") >= TIMER_RADAR) {
+    tryCatch({
+      # 1. Executa radar dos 8 motores quânticos e gera solicitacao.rds se houver disparo
+      executar_radar_labtrader()
+      
+      # 2. Gatekeeper valida as 4 travas, executa na Binance se aprovado e notifica o Telegram
+      processar_solicitacoes_gatekeeper(modo_continuo = FALSE, executar_real = TRUE)
+    }, error = function(e) {
+      cat("❌ [MÓDULO 3 | RADAR/GATEKEEPER ERROR]:", conditionMessage(e), "\n")
+    })
+    last_run_radar <- Sys.time()
+  }
+  
+  # ----------------------------------------------------------------------------
+  # MÓDULO 4: LabInvest (Mensageria Telegram - AMARRAÇÃO DE ESCOPO LOCAL)
   # ----------------------------------------------------------------------------
   tryCatch({
-    # Aumentado o timeout para 2s para mitigar falsos positivos de queda de rede
     updates <- updater$bot$get_updates(offset = tg_last_update_id + 1, timeout = 2L)
     
     if (length(updates) > 0) {
       for (update in updates) {
         updater$dispatcher$process_update(update)
-        # Atribuição local padrão e segura
         tg_last_update_id <- as.numeric(update$update_id)
       }
     }
   }, error = function(e) {
-    cat("❌ [MÓDULO 3 | TELEGRAM ERROR]:", conditionMessage(e), "\n")
+    cat("❌ [MÓDULO 4 | TELEGRAM ERROR]:", conditionMessage(e), "\n")
   })
   
   # ----------------------------------------------------------------------------
