@@ -435,10 +435,35 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           cat(sprintf("[%s] VETO: %s (Motivo: %s)\n", ts_str, ifelse(!is.null(pedido$estrategia), pedido$estrategia, "ORDEM_INVALIDA"), motivo_veto),
               file = "ordens_vetadas.log", append = TRUE)
           
-          # Alerta Telegram de Veto (DM Privada)
-          msg_veto_tg <- sprintf("⛔ <b>[GATEKEEPER | ORDEM VETADA]</b>\n━━━━━━━━━━━━━━━━━━━━\n⚠️ <b>Tentativa:</b> %s ➔ %s\n🚫 <b>Motivo:</b> %s\n⏱️ <b>Data:</b> %s\n━━━━━━━━━━━━━━━━━━━━",
-                                 origem_val, destino_val, motivo_veto, ts_str)
-          notificar_telegram_trade(msg_veto_tg)
+          # Throttling de Notificação de Veto no Telegram (Máximo 1 alerta a cada 30 min por plano/motivo)
+          veto_throttle_file <- "veto_tg_throttle.rds"
+          deve_notificar_tg <- TRUE
+          chave_veto <- paste0(estrategia_nome, "_", motivo_veto)
+          
+          if (file.exists(veto_throttle_file)) {
+            throttle_db <- tryCatch(readRDS(veto_throttle_file), error = function(e) list())
+            if (!is.null(throttle_db[[chave_veto]])) {
+              ultimo_envio <- as.POSIXct(throttle_db[[chave_veto]])
+              minutos_dif <- as.numeric(difftime(Sys.time(), ultimo_envio, units = "mins"))
+              if (minutos_dif < 30) {
+                deve_notificar_tg <- FALSE
+              }
+            }
+          } else {
+            throttle_db <- list()
+          }
+          
+          if (deve_notificar_tg) {
+            throttle_db[[chave_veto]] <- Sys.time()
+            tryCatch(saveRDS(throttle_db, veto_throttle_file), error = function(e) NULL)
+            
+            # Alerta Telegram de Veto (DM Privada)
+            msg_veto_tg <- sprintf("⛔ <b>[GATEKEEPER | ORDEM VETADA]</b>\n━━━━━━━━━━━━━━━━━━━━\n🎯 <b>Plano:</b> %s\n⚠️ <b>Tentativa:</b> %s ➔ %s\n🚫 <b>Motivo:</b> %s\n⏱️ <b>Data:</b> %s\n🔕 <i>Avisos para este mesmo veto silenciados por 30 min no Telegram (logs gravados no servidor).</i>\n━━━━━━━━━━━━━━━━━━━━",
+                                   estrategia_nome, origem_val, destino_val, motivo_veto, ts_str)
+            notificar_telegram_trade(msg_veto_tg)
+          } else {
+            cat(sprintf("🔕 [TELEGRAM SILENCIADO] Notificação de veto para %s suprimida (último envio há < 30 min).\n", estrategia_nome))
+          }
         }
         
         # Limpa a mesa para liberar o LabTrader para o próximo ciclo
