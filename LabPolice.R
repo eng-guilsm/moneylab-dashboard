@@ -223,6 +223,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
         motivo_veto <- ""
         estrategia_nome <- as.character(pedido$estrategia)
         
+        # --- TABELA DE TETOS DE VOLUME E LUCROS MÍNIMOS ---
         estrategias_validas <- c(
           "PLANO_GUIANA_BRASILEIRA",
           "PLANO_ESCUDO_DE_AQUILES",
@@ -256,8 +257,40 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_FLECHA_DE_SAGARANA" = 0.70
         )
         
+        # Trava 0: Validação de Saldo em Custódia Real (Anti-Venda a Descoberto)
+        if (executar_real) {
+          df_wallet <- tryCatch(carteira(silent = TRUE), error = function(e) NULL)
+          if (!is.null(df_wallet) && is.data.frame(df_wallet) && nrow(df_wallet) > 0) {
+            origem_asset <- as.character(pedido$origem)
+            
+            saldo_disp <- 0
+            if (origem_asset == "PAXG") {
+              row_paxg <- df_wallet[df_wallet$asset %in% c("PAXG", "LDPAXG"), ]
+              if (nrow(row_paxg) > 0) saldo_disp <- sum(row_paxg$free, na.rm = TRUE)
+            } else {
+              row_asset <- df_wallet[df_wallet$asset == origem_asset, ]
+              if (nrow(row_asset) > 0) saldo_disp <- sum(row_asset$free, na.rm = TRUE)
+            }
+            
+            preco_unit <- 1.0
+            if (origem_asset != "BRL") {
+              sym_check <- paste0(origem_asset, "BRL")
+              p_tmp <- tryCatch(as.numeric(content(GET(paste0("https://api.binance.com/api/v3/ticker/price?symbol=", sym_check)), "parsed")$price), error = function(e) NULL)
+              if (!is.null(p_tmp) && p_tmp > 0) preco_unit <- p_tmp
+            }
+            
+            qtd_necessaria <- as.numeric(pedido$valor_brl) / preco_unit
+            
+            if (saldo_disp < (qtd_necessaria * 0.95)) {
+              aprovado <- FALSE
+              motivo_veto <- sprintf("Saldo insuficiente de %s em carteira (Disponível: %.6f %s | Necessário: %.6f %s / R$ %.2f)",
+                                     origem_asset, saldo_disp, origem_asset, qtd_necessaria, origem_asset, pedido$valor_brl)
+            }
+          }
+        }
+        
         # Trava 1: Validação da Estratégia
-        if (!(estrategia_nome %in% estrategias_validas)) {
+        if (aprovado && !(estrategia_nome %in% estrategias_validas)) {
           aprovado <- FALSE
           motivo_veto <- sprintf("Estratégia '%s' não autorizada pelo protocolo", estrategia_nome)
         }
@@ -282,7 +315,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           }
         }
         
-        # Trava 4: Cooldown Adaptativo (1.5h para intradiários; 4.0h para macro)
+        # Trava 4: Cooldown Adaptativo (0.5h para intradiários; 2.0h para macro)
         hist_exec_file <- "ordens_executadas.rds"
         if (aprovado && file.exists(hist_exec_file)) {
           hist_exec <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
@@ -298,6 +331,24 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                 motivo_veto <- sprintf("Cooldown ativo para %s (%.1fh desde último trade < %.1fh / %d min)",
                                        estrategia_nome, horas_dif, cooldown_req, round(cooldown_req * 60))
               }
+            }
+          }
+        }
+        
+        # Trava 4.1: Limite Diário de Transações (Exclusivo Gravidade Zero: máx 2 trades/dia)
+        if (aprovado && estrategia_nome == "PLANO_GRAVIDADE_ZERO" && file.exists(hist_exec_file)) {
+          hist_exec <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
+          if (!is.null(hist_exec) && nrow(hist_exec) > 0 && "Estrategia" %in% names(hist_exec)) {
+            hoje_str <- format(Sys.time(), "%Y-%m-%d")
+            trades_hoje <- hist_exec[
+              hist_exec$Estrategia == "PLANO_GRAVIDADE_ZERO" & 
+              grepl(hoje_str, hist_exec$Data_Hora) &
+              grepl("EXECUTADO_REAL|ENVIO_BINANCE_OK", hist_exec$Status), 
+            ]
+            if (nrow(trades_hoje) >= 2) {
+              aprovado <- FALSE
+              motivo_veto <- sprintf("Limite diário atingido para %s (2 de 2 trades executados hoje em %s)",
+                                     estrategia_nome, hoje_str)
             }
           }
         }
