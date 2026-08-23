@@ -324,8 +324,15 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
             if (nrow(hist_est) > 0) {
               ultimo_ts <- as.POSIXct(tail(hist_est$Data_Hora, 1))
               horas_dif <- as.numeric(difftime(Sys.time(), ultimo_ts, units = "hours"))
-              # Cooldown Calibrado: 30 minutos (0.5h) para Médio Risco; 2.0h para Baixo Risco / Macro
-              cooldown_req <- ifelse(grepl("SOLANA|TITAS|SAGARANA|ORACULOS|GRAVIDADE", estrategia_nome), 0.5, 2.0)
+              # Cooldown Calibrado: 10 min para Corisco (0 se alternar compra/venda); 30 min para Médio Risco; 2.0h para Macro
+              cooldown_req <- ifelse(estrategia_nome == "PLANO_CORISCO_DA_SOLANA", 0.16, ifelse(grepl("TITAS|SAGARANA|ORACULOS|GRAVIDADE", estrategia_nome), 0.5, 2.0))
+              
+              # Se Corisco acabou de comprar e agora quer realizar lucro (origem oposta), zera o cooldown!
+              ultimo_reg <- tail(hist_est, 1)
+              if (estrategia_nome == "PLANO_CORISCO_DA_SOLANA" && !is.null(ultimo_reg$Origem) && ultimo_reg$Origem != as.character(pedido$origem)) {
+                cooldown_req <- 0.0
+              }
+              
               if (horas_dif < cooldown_req) {
                 aprovado <- FALSE
                 motivo_veto <- sprintf("Cooldown ativo para %s (%.1fh desde último trade < %.1fh / %d min)",
