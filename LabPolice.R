@@ -342,24 +342,6 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           }
         }
         
-        # Trava 4.1: Limite Diário de Transações (Exclusivo Gravidade Zero: máx 2 trades/dia)
-        if (aprovado && estrategia_nome == "PLANO_GRAVIDADE_ZERO" && file.exists(hist_exec_file)) {
-          hist_exec <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
-          if (!is.null(hist_exec) && nrow(hist_exec) > 0 && "Estrategia" %in% names(hist_exec)) {
-            hoje_str <- format(Sys.time(), "%Y-%m-%d")
-            trades_hoje <- hist_exec[
-              hist_exec$Estrategia == "PLANO_GRAVIDADE_ZERO" & 
-              grepl(hoje_str, hist_exec$Data_Hora) &
-              grepl("EXECUTADO_REAL|ENVIO_BINANCE_OK", hist_exec$Status), 
-            ]
-            if (nrow(trades_hoje) >= 2) {
-              aprovado <- FALSE
-              motivo_veto <- sprintf("Limite diário atingido para %s (2 de 2 trades executados hoje em %s)",
-                                     estrategia_nome, hoje_str)
-            }
-          }
-        }
-        
         # --- VEREDITO DO LABPOLICE & EXECUÇÃO ---
         if (aprovado) {
           cat(sprintf("✅ [AUTORIZADO] Ordem validada com sucesso! Lucro Projetado: +%.2f%%\n", pedido$lucro_esperado_pct))
