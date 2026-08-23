@@ -320,18 +320,37 @@ executar_radar_labtrader <- function() {
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 6: PLANO CORISCO DA SOLANA (BRL -> SOL 15m | R$ 50)
+  # MOTOR 6: PLANO CORISCO DA SOLANA (BRL <-> SOL 15m | R$ 50)
   # ----------------------------------------------------------------------------
   if (is.null(pedido) && !is.null(p_sol_brl) && ste_atual >= 0.0 && pc1_atual < 0.70 && w_energy < 50.0) {
     z_sol_15m <- (p_sol_brl - stats_sol_15m$media) / stats_sol_15m$sd
+    
+    # Ponta 1: COMPRA NO FUNDO DA BANDA (100% da Meta / Z <= -2.00σ)
     if (z_sol_15m <= -2.00) {
-      lucro_proj <- max(0.40, ((stats_sol_15m$media / p_sol_brl) - 1) * 100)
-      if (lucro_proj >= 0.35) {
-        pedido <- list(
-          estrategia = "PLANO_CORISCO_DA_SOLANA",
-          origem = "BRL", destino = "SOL",
-          valor_brl = VALOR_CORISCO_BRL * fator_lote, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-        )
+      lucro_proj <- max(0.80, ((stats_sol_15m$media / p_sol_brl) - 1) * 100)
+      pedido <- list(
+        estrategia = "PLANO_CORISCO_DA_SOLANA",
+        origem = "BRL", destino = "SOL",
+        valor_brl = VALOR_CORISCO_BRL * fator_lote, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+      )
+    } else if (z_sol_15m >= 0.0) {
+      # Ponta 2: REALIZAÇÃO DE LUCRO NO REPIQUE À MÉDIA (Z >= 0.0σ)
+      # Só atua se houver saldo positivo de SOL na carteira para realizar
+      df_w <- tryCatch(carteira(silent = TRUE), error = function(e) NULL)
+      saldo_sol <- 0
+      if (!is.null(df_w) && is.data.frame(df_w) && "SOL" %in% df_w$asset) {
+        saldo_sol <- sum(df_w$free[df_w$asset == "SOL"], na.rm = TRUE)
+      }
+      if (saldo_sol > 0.001) {
+        lucro_proj <- max(0.80, ((p_sol_brl / stats_sol_15m$media) - 1) * 100)
+        valor_venda_brl <- min(VALOR_CORISCO_BRL, saldo_sol * p_sol_brl)
+        if (valor_venda_brl >= 15.0) {
+          pedido <- list(
+            estrategia = "PLANO_CORISCO_DA_SOLANA",
+            origem = "SOL", destino = "BRL",
+            valor_brl = valor_venda_brl, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+          )
+        }
       }
     }
   }
