@@ -435,10 +435,10 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           cat(sprintf("[%s] VETO: %s (Motivo: %s)\n", ts_str, ifelse(!is.null(pedido$estrategia), pedido$estrategia, "ORDEM_INVALIDA"), motivo_veto),
               file = "ordens_vetadas.log", append = TRUE)
           
-          # Throttling de Notificação de Veto no Telegram (Máximo 1 alerta a cada 30 min por plano/motivo)
+          # Throttling de Notificação de Veto no Telegram (Máximo 1 alerta a cada 30 min por estratégia)
           veto_throttle_file <- "veto_tg_throttle.rds"
           deve_notificar_tg <- TRUE
-          chave_veto <- paste0(estrategia_nome, "_", motivo_veto)
+          chave_veto <- as.character(estrategia_nome)
           
           if (file.exists(veto_throttle_file)) {
             throttle_db <- tryCatch(readRDS(veto_throttle_file), error = function(e) list())
