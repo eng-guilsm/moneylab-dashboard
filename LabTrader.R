@@ -22,6 +22,7 @@ VALOR_SPILL_BRL    <- 120.00 # Gravidade Zero: 2 slots de R$ 120 (Teto R$ 240)
 VALOR_CORISCO_BRL  <- 100.00 # Corisco da Solana: 2 slots de R$ 100 (Teto R$ 200)
 VALOR_TITAS_BRL    <- 150.00 # Duelo de Titãs: 2 slots de R$ 150 (Teto R$ 300)
 VALOR_SAGARANA_BRL <- 120.00 # Flecha de Sagarana: 2 slots de R$ 120
+VALOR_MIDAS_BRL    <- 50.00  # Cofre de Midas: DCA R$ 50 a cada 48h (Simple Earn)
 
 obter_preco_binance <- function(symbol) {
   url <- paste0("https://api.binance.com/api/v3/ticker/price?symbol=", symbol)
@@ -425,6 +426,35 @@ executar_radar_labtrader <- function() {
         origem = "BTC", destino = "BRL",
         valor_brl = min(VALOR_SAGARANA_BRL * fator_lote, saldo_btc_brl * 0.30),
         lucro_esperado_pct = 0.85, timestamp = agora_ts
+      )
+    }
+  }
+  
+  # ----------------------------------------------------------------------------
+  # MOTOR 9: PLANO COFRE DE MIDAS (BRL -> PAXG | DCA Sistemático R$ 50 a cada 48h)
+  # ----------------------------------------------------------------------------
+  if (is.null(pedido)) {
+    hist_exec_file <- "ordens_executadas.rds"
+    horas_desde_midas <- 999.0
+    if (file.exists(hist_exec_file)) {
+      hist_exec_tmp <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
+      if (!is.null(hist_exec_tmp) && nrow(hist_exec_tmp) > 0 && "Estrategia" %in% names(hist_exec_tmp)) {
+        hist_midas <- hist_exec_tmp[hist_exec_tmp$Estrategia == "PLANO_COFRE_DE_MIDAS", ]
+        if (nrow(hist_midas) > 0) {
+          ultimo_midas_ts <- as.POSIXct(tail(hist_midas$Data_Hora, 1))
+          horas_desde_midas <- as.numeric(difftime(Sys.time(), ultimo_midas_ts, units = "hours"))
+        }
+      }
+    }
+    
+    # Condição DCA: 48h completas + Caixa livre >= R$ 150 + Sem tempestade de volatilidade
+    if (horas_desde_midas >= 48.0 && saldo_caixa_brl >= 150.0 && w_energy < 55.0) {
+      pedido <- list(
+        estrategia = "PLANO_COFRE_DE_MIDAS",
+        origem = "BRL", destino = "PAXG",
+        valor_brl = VALOR_MIDAS_BRL,
+        lucro_esperado_pct = 3.50, # Rendimento anualizado Simple Earn Flexible
+        timestamp = agora_ts
       )
     }
   }
