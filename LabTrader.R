@@ -13,15 +13,15 @@ if (file.exists("config_auth.R")) {
   tryCatch(source("config_auth.R", encoding = "UTF-8"), error = function(e) NULL)
 }
 
-# --- PARÂMETROS DE VOLUME (8 MOTORES OFICIAIS) ---
-VALOR_GUIANA_BRL   <- 100.00
-VALOR_VIX_BRL      <- 200.00
-VALOR_PEG_BRL      <- 200.00
-VALOR_LINK_BRL     <- 100.00
-VALOR_SPILL_BRL    <- 50.00
-VALOR_CORISCO_BRL  <- 50.00
-VALOR_TITAS_BRL    <- 60.00
-VALOR_SAGARANA_BRL <- 75.00
+# --- PARÂMETROS DE VOLUME HARMONICUS ULTRA-DEEP ---
+VALOR_GUIANA_BRL   <- 150.00 # Guiana: 2 slots de R$ 150 (Teto R$ 300)
+VALOR_VIX_BRL      <- 300.00 # Escudo de Aquiles: 1 slot de R$ 300
+VALOR_PEG_BRL      <- 250.00 # Pátria Volátil: 2 slots de R$ 250
+VALOR_LINK_BRL     <- 120.00 # Caboclo dos Oráculos: 2 slots de R$ 120 (Teto R$ 240)
+VALOR_SPILL_BRL    <- 120.00 # Gravidade Zero: 2 slots de R$ 120 (Teto R$ 240)
+VALOR_CORISCO_BRL  <- 100.00 # Corisco da Solana: 2 slots de R$ 100 (Teto R$ 200)
+VALOR_TITAS_BRL    <- 150.00 # Duelo de Titãs: 2 slots de R$ 150 (Teto R$ 300)
+VALOR_SAGARANA_BRL <- 120.00 # Flecha de Sagarana: 2 slots de R$ 120
 
 obter_preco_binance <- function(symbol) {
   url <- paste0("https://api.binance.com/api/v3/ticker/price?symbol=", symbol)
@@ -56,40 +56,40 @@ obter_ultimo_usd_comercial <- function() {
   return(5.0115)
 }
 
-obter_stats_guiana_168h <- function() {
+obter_stats_guiana_72h <- function(p_gold = 4639.0) {
   db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
   tryCatch({
     con <- dbConnect(SQLite(), db_path)
     on.exit(dbDisconnect(con))
-    df <- dbGetQuery(con, "SELECT BTCBRL, USDTBRL FROM Historico_binance WHERE BTCBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 10080;")
+    df <- dbGetQuery(con, "SELECT BTCBRL, USDTBRL FROM Historico_binance WHERE BTCBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 4320;")
     if (nrow(df) >= 60) {
-      ratios <- (df$USDTBRL * 4587.0) / df$BTCBRL
+      ratios <- (df$USDTBRL * p_gold) / df$BTCBRL
       return(list(media = mean(ratios, na.rm = TRUE), sd = max(0.0001, sd(ratios, na.rm = TRUE))))
     }
   }, error = function(e) NULL)
   return(list(media = 0.05920, sd = 0.00350))
 }
 
-obter_media_link_51h <- function() {
+obter_stats_link_1h <- function() {
   db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
   tryCatch({
     con <- dbConnect(SQLite(), db_path)
     on.exit(dbDisconnect(con))
-    df <- dbGetQuery(con, "SELECT LINKBRL FROM Historico_binance WHERE LINKBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 3060;")
-    if (nrow(df) >= 30) {
+    df <- dbGetQuery(con, "SELECT LINKBRL FROM Historico_binance WHERE LINKBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 60;")
+    if (nrow(df) >= 15) {
       return(list(media = mean(df$LINKBRL, na.rm = TRUE), sd = max(0.05, sd(df$LINKBRL, na.rm = TRUE))))
     }
   }, error = function(e) NULL)
-  return(list(media = 61.20, sd = 1.80))
+  return(list(media = 59.50, sd = 0.30))
 }
 
-obter_stats_sol_btc_720h <- function() {
+obter_stats_sol_btc_72h <- function() {
   db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
   tryCatch({
     con <- dbConnect(SQLite(), db_path)
     on.exit(dbDisconnect(con))
-    df <- dbGetQuery(con, "SELECT SOLBRL, BTCBRL FROM Historico_binance WHERE SOLBRL IS NOT NULL AND BTCBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 43200;")
-    if (nrow(df) >= 120) {
+    df <- dbGetQuery(con, "SELECT SOLBRL, BTCBRL FROM Historico_binance WHERE SOLBRL IS NOT NULL AND BTCBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 4320;")
+    if (nrow(df) >= 60) {
       ratios <- df$SOLBRL / df$BTCBRL
       return(list(media = mean(ratios, na.rm = TRUE), sd = max(0.00002, sd(ratios, na.rm = TRUE))))
     }
@@ -184,232 +184,249 @@ executar_radar_labtrader <- function() {
   ste_atual    <- ifelse(!is.null(harm_atual$Fluxo_Informacao_STE) && !is.na(harm_atual$Fluxo_Informacao_STE), as.numeric(harm_atual$Fluxo_Informacao_STE), 0.0)
   w_energy     <- ifelse(!is.null(harm_atual$Energia_Wavelet_Morlet) && !is.na(harm_atual$Energia_Wavelet_Morlet), as.numeric(harm_atual$Energia_Wavelet_Morlet), 5.0)
   
-  stats_guiana  <- obter_stats_guiana_168h()
-  stats_link    <- obter_media_link_51h()
-  stats_sol_btc <- obter_stats_sol_btc_720h()
+  stats_guiana  <- obter_stats_guiana_72h(p_paxg_usdt)
+  stats_link    <- obter_stats_link_1h()
+  stats_sol_btc <- obter_stats_sol_btc_72h()
   stats_sol_15m <- obter_stats_sol_15m()
   stats_eth_btc <- obter_stats_eth_btc_24h()
   ret_btc_5m    <- obter_retorno_btc_5m()
   
-  # Modulação de Lote
-  fator_lote   <- ifelse(ste_atual >= -0.05 && w_energy < 50.0, 1.0, 0.5)
+  # Modulação Dinâmica de Lote Harmonicus Ultra-Deep
+  fator_lote   <- ifelse(ste_atual >= 0.02 && pc1_atual <= 0.38 && w_energy < 50.0, 1.35, 
+                        ifelse(w_energy >= 55.0, 0.50, 1.0))
+  
+  # Cálculo de Custódia e Peso de Bitcoin em Tempo Real
+  df_w <- tryCatch(carteira(silent = TRUE), error = function(e) NULL)
+  saldo_btc_brl   <- 0
+  saldo_caixa_brl <- 0
+  saldo_paxg_brl  <- 0
+  saldo_sol_brl   <- 0
+  saldo_eth_brl   <- 0
+  saldo_link_brl  <- 0
+  saldo_usdt_brl  <- 0
+  
+  if (!is.null(df_w) && is.data.frame(df_w) && nrow(df_w) > 0) {
+    if ("BTC" %in% df_w$asset)  saldo_btc_brl   <- sum(df_w$free[df_w$asset == "BTC"], na.rm = TRUE) * p_btc_brl
+    if ("BRL" %in% df_w$asset)  saldo_caixa_brl <- sum(df_w$free[df_w$asset == "BRL"], na.rm = TRUE)
+    if (any(df_w$asset %in% c("PAXG", "LDPAXG"))) saldo_paxg_brl <- sum(df_w$free[df_w$asset %in% c("PAXG", "LDPAXG")], na.rm = TRUE) * p_paxg_brl
+    if ("SOL" %in% df_w$asset)  saldo_sol_brl   <- sum(df_w$free[df_w$asset == "SOL"], na.rm = TRUE) * p_sol_brl
+    if ("ETH" %in% df_w$asset)  saldo_eth_brl   <- sum(df_w$free[df_w$asset == "ETH"], na.rm = TRUE) * p_eth_brl
+    if ("LINK" %in% df_w$asset) saldo_link_brl  <- sum(df_w$free[df_w$asset == "LINK"], na.rm = TRUE) * p_link_brl
+    if ("USDT" %in% df_w$asset) saldo_usdt_brl  <- sum(df_w$free[df_w$asset == "USDT"], na.rm = TRUE) * p_usdt_brl
+  }
+  
+  total_patrimonio_est <- saldo_caixa_brl + saldo_btc_brl + saldo_paxg_brl + saldo_sol_brl + saldo_eth_brl + saldo_link_brl + saldo_usdt_brl
+  peso_btc <- ifelse(total_patrimonio_est > 0, saldo_btc_brl / total_patrimonio_est, 0.35)
   
   pedido <- NULL
   
   # ----------------------------------------------------------------------------
-  # MOTOR 1: PLANO GUIANA BRASILEIRA (PAXG <-> BTC | R$ 100)
+  # MOTOR 1: PLANO GUIANA BRASILEIRA (PAXG <-> BTC | R$ 150 - Janela 72h)
   # ----------------------------------------------------------------------------
   ratio_guiana <- p_paxg_brl / p_btc_brl
   z_guiana     <- (ratio_guiana - stats_guiana$media) / stats_guiana$sd
   
-  if (z_guiana <= -1.65) {
-    # Bitcoin eufórico / Ouro barato -> Vende BTC e compra PAXG
-    lucro_proj <- ((stats_guiana$media / ratio_guiana) - 1) * 100 - 0.20
-    if (lucro_proj >= 1.50) {
+  if (z_guiana <= -0.75 && w_energy < 55.0 && saldo_btc_brl >= 45.0 && saldo_paxg_brl < 450.0) {
+    # Bitcoin eufórico / Ouro barato -> Drenagem lucrativa: Vende BTC e compra PAXG
+    lucro_proj <- max(1.40, ((stats_guiana$media / ratio_guiana) - 1) * 100 - 0.15)
+    lote_g <- min(VALOR_GUIANA_BRL * fator_lote, saldo_btc_brl * 0.40)
+    if (lote_g >= 42.0) {
       pedido <- list(
         estrategia = "PLANO_GUIANA_BRASILEIRA",
         origem = "BTC", destino = "PAXG",
-        valor_brl = VALOR_GUIANA_BRL * fator_lote, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+        valor_brl = lote_g, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
       )
     }
-  } else if (z_guiana >= 1.65) {
-    # Ouro caro / Bitcoin em desconto -> Vende PAXG e compra BTC
-    lucro_proj <- ((ratio_guiana / stats_guiana$media) - 1) * 100 - 0.20
-    if (lucro_proj >= 1.50) {
-      pedido <- list(
-        estrategia = "PLANO_GUIANA_BRASILEIRA",
-        origem = "PAXG", destino = "BTC",
-        valor_brl = VALOR_GUIANA_BRL * fator_lote, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-      )
-    }
-  }
-  
-  # ----------------------------------------------------------------------------
-  # MOTOR 2: PLANO ESCUDO DE AQUILES (BRL -> BTC | R$ 200)
-  # ----------------------------------------------------------------------------
-  if (is.null(pedido) && vix_atual >= 22.50 && (pc1_atual >= 0.40 || ent_atual <= 1.75) && w_energy < 50.0) {
+  } else if (z_guiana >= 1.00 && w_energy < 55.0 && peso_btc < 0.55 && saldo_paxg_brl >= 40.0) {
+    # Ouro caro / Bitcoin com grande desconto -> Vende PAXG e compra BTC
+    lucro_proj <- max(1.40, ((ratio_guiana / stats_guiana$media) - 1) * 100 - 0.15)
     pedido <- list(
-      estrategia = "PLANO_ESCUDO_DE_AQUILES",
-      origem = "BRL", destino = "BTC",
-      valor_brl = VALOR_VIX_BRL * fator_lote, lucro_esperado_pct = 2.00, timestamp = agora_ts
+      estrategia = "PLANO_GUIANA_BRASILEIRA",
+      origem = "PAXG", destino = "BTC",
+      valor_brl = min(VALOR_GUIANA_BRL * fator_lote, saldo_paxg_brl * 0.50),
+      lucro_esperado_pct = lucro_proj, timestamp = agora_ts
     )
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 3: PLANO PÁTRIA VOLÁTIL (BRL <-> USDT | R$ 200)
+  # MOTOR 2: PLANO ESCUDO DE AQUILES (BRL -> BTC no Pânico / BTC -> BRL no Repique | R$ 300)
+  # ----------------------------------------------------------------------------
+  if (is.null(pedido)) {
+    # Ponta A: Compra BTC somente em estresse real (VIX >= 21.0 e saldo livre)
+    if (vix_atual >= 21.00 && (pc1_atual >= 0.38 || ent_atual <= 1.80) && w_energy < 55.0 && peso_btc < 0.55 && saldo_caixa_brl >= 100.0) {
+      pedido <- list(
+        estrategia = "PLANO_ESCUDO_DE_AQUILES",
+        origem = "BRL", destino = "BTC",
+        valor_brl = min(VALOR_VIX_BRL * fator_lote, saldo_caixa_brl * 0.40), 
+        lucro_esperado_pct = 2.00, timestamp = agora_ts
+      )
+    } else if (vix_atual < 18.50 && ret_btc_5m >= 0.0050 && saldo_btc_brl >= 50.0 && peso_btc > 0.18) {
+      # Ponta B: Normalização do VIX com BTC em repique -> Realização de volta para Caixa BRL
+      pedido <- list(
+        estrategia = "PLANO_ESCUDO_DE_AQUILES",
+        origem = "BTC", destino = "BRL",
+        valor_brl = min(VALOR_VIX_BRL * 0.60 * fator_lote, saldo_btc_brl * 0.35),
+        lucro_esperado_pct = 1.80, timestamp = agora_ts
+      )
+    }
+  }
+  
+  # ----------------------------------------------------------------------------
+  # MOTOR 3: PLANO PÁTRIA VOLÁTIL (BRL <-> USDT | R$ 250 - 2 Slots)
   # ----------------------------------------------------------------------------
   if (is.null(pedido) && !is.null(usd_oficial) && usd_oficial > 0) {
     spread_peg <- p_usdt_brl - usd_oficial
     
-    # Ponta 1: Desconto do USDT frente ao Dólar Comercial (Spread <= -0.0400) -> Compra USDT
-    if (spread_peg <= -0.0400) {
-      lucro_proj <- (abs(spread_peg) / usd_oficial) * 100
-      if (lucro_proj >= 0.80) {
-        pedido <- list(
-          estrategia = "PLANO_PATRIA_VOLATIL",
-          origem = "BRL", destino = "USDT",
-          valor_brl = VALOR_PEG_BRL * fator_lote, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-        )
-      }
-    } else if (spread_peg >= 0.0400) {
-      # Ponta 2: Ágio expressivo do USDT frente ao Dólar Comercial (Spread >= +0.0400) -> Venda USDT
-      lucro_proj <- (spread_peg / usd_oficial) * 100
-      if (lucro_proj >= 0.80) {
-        pedido <- list(
-          estrategia = "PLANO_PATRIA_VOLATIL",
-          origem = "USDT", destino = "BRL",
-          valor_brl = VALOR_PEG_BRL * fator_lote, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-        )
-      }
+    if (spread_peg <= -0.0200 && saldo_caixa_brl >= 100.0 && saldo_usdt_brl < 500.0) {
+      lucro_proj <- max(0.40, (abs(spread_peg) / usd_oficial) * 100)
+      pedido <- list(
+        estrategia = "PLANO_PATRIA_VOLATIL",
+        origem = "BRL", destino = "USDT",
+        valor_brl = min(VALOR_PEG_BRL * fator_lote, saldo_caixa_brl * 0.35),
+        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+      )
+    } else if (spread_peg >= 0.0200 && saldo_usdt_brl >= 30.0) {
+      lucro_proj <- max(0.40, (spread_peg / usd_oficial) * 100)
+      pedido <- list(
+        estrategia = "PLANO_PATRIA_VOLATIL",
+        origem = "USDT", destino = "BRL",
+        valor_brl = min(VALOR_PEG_BRL * fator_lote, saldo_usdt_brl),
+        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+      )
     }
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 4: PLANO CABOCLO DOS ORÁCULOS (BRL <-> LINK | R$ 100)
+  # MOTOR 4: PLANO CABOCLO DOS ORÁCULOS (BRL <-> LINK 1h | R$ 120 - 2 Slots)
   # ----------------------------------------------------------------------------
-  if (is.null(pedido) && !is.null(p_link_brl) && ste_atual >= 0.0 && w_energy < 50.0) {
+  if (is.null(pedido) && !is.null(p_link_brl) && ste_atual >= -0.02 && pc1_atual < 0.75 && w_energy < 55.0) {
     z_link <- (p_link_brl - stats_link$media) / stats_link$sd
-    if (z_link <= -2.00) {
-      lucro_proj <- ((stats_link$media / p_link_brl) - 1) * 100
-      if (lucro_proj >= 2.00) {
-        pedido <- list(
-          estrategia = "PLANO_CABOCLO_DOS_ORACULOS",
-          origem = "BRL", destino = "LINK",
-          valor_brl = VALOR_LINK_BRL * fator_lote, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-        )
-      }
+    
+    # Compra seletiva: Permite até 2 slots (saldo_link_brl < R$ 240)
+    if (z_link <= -1.35 && saldo_caixa_brl >= 100.0 && saldo_link_brl < 240.0) {
+      lucro_proj <- max(1.40, ((stats_link$media / p_link_brl) - 1) * 100)
+      pedido <- list(
+        estrategia = "PLANO_CABOCLO_DOS_ORACULOS",
+        origem = "BRL", destino = "LINK",
+        valor_brl = min(VALOR_LINK_BRL * fator_lote, max(50.0, saldo_caixa_brl * 0.20)),
+        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+      )
+    } else if (z_link >= 0.55 && saldo_link_brl >= 30.0) {
+      lucro_proj <- max(1.40, ((p_link_brl / stats_link$media) - 1) * 100)
+      pedido <- list(
+        estrategia = "PLANO_CABOCLO_DOS_ORACULOS",
+        origem = "LINK", destino = "BRL",
+        valor_brl = saldo_link_brl,
+        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+      )
     }
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 5: PLANO GRAVIDADE ZERO (BTC <-> SOL | R$ 50)
+  # MOTOR 5: PLANO GRAVIDADE ZERO (BTC -> SOL e SOL -> BRL | R$ 120 - Janela 72h)
   # ----------------------------------------------------------------------------
-  if (is.null(pedido) && !is.null(p_sol_brl) && !is.null(p_btc_brl) && pc1_atual >= 0.40 && pc1_atual < 0.70 && ste_atual >= 0.0) {
+  if (is.null(pedido) && !is.null(p_sol_brl) && !is.null(p_btc_brl) && pc1_atual < 0.75 && ste_atual >= -0.02) {
     ratio_sol_btc <- p_sol_brl / p_btc_brl
     z_sol_btc     <- (ratio_sol_btc - stats_sol_btc$media) / stats_sol_btc$sd
     
-    # Ponta 1: Solana Sobrevendida em relação ao BTC (Z <= -1.75) -> Rotação BTC para SOL
-    if (z_sol_btc <= -1.75) {
-      lucro_proj <- ((stats_sol_btc$media / ratio_sol_btc) - 1) * 100
-      if (lucro_proj >= 3.00) {
-        pedido <- list(
-          estrategia = "PLANO_GRAVIDADE_ZERO",
-          origem = "BTC", destino = "SOL",
-          valor_brl = VALOR_SPILL_BRL * fator_lote, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-        )
-      }
-    } else if (z_sol_btc >= 1.75) {
-      # Ponta 2: Solana Sobrecomprada em relação ao BTC (Z >= +1.75) -> Rotação SOL para BTC
-      # Só gera solicitação se houver saldo positivo de SOL na carteira
-      df_w <- tryCatch(carteira(silent = TRUE), error = function(e) NULL)
-      saldo_sol <- 0
-      if (!is.null(df_w) && is.data.frame(df_w) && "SOL" %in% df_w$asset) {
-        saldo_sol <- sum(df_w$free[df_w$asset == "SOL"], na.rm = TRUE)
-      }
-      if (saldo_sol > 0.001) {
-        lucro_proj <- ((ratio_sol_btc / stats_sol_btc$media) - 1) * 100
-        if (lucro_proj >= 3.00) {
-          pedido <- list(
-            estrategia = "PLANO_GRAVIDADE_ZERO",
-            origem = "SOL", destino = "BTC",
-            valor_brl = VALOR_SPILL_BRL * fator_lote, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-          )
-        }
-      }
+    if (z_sol_btc <= -1.00 && saldo_btc_brl >= 45.0 && saldo_sol_brl < 220.0) {
+      lucro_proj <- max(2.00, ((stats_sol_btc$media / ratio_sol_btc) - 1) * 100)
+      pedido <- list(
+        estrategia = "PLANO_GRAVIDADE_ZERO",
+        origem = "BTC", destino = "SOL",
+        valor_brl = min(VALOR_SPILL_BRL * fator_lote, saldo_btc_brl * 0.30),
+        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+      )
+    } else if (z_sol_btc >= 1.00 && saldo_sol_brl >= 25.0) {
+      # Ponta B: Realização de topo de Solana para BRL
+      lucro_proj <- max(2.00, ((ratio_sol_btc / stats_sol_btc$media) - 1) * 100)
+      pedido <- list(
+        estrategia = "PLANO_GRAVIDADE_ZERO",
+        origem = "SOL", destino = "BRL",
+        valor_brl = saldo_sol_brl,
+        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+      )
     }
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 6: PLANO CORISCO DA SOLANA (BRL <-> SOL 15m | Harmonicus SC | R$ 50)
+  # MOTOR 6: PLANO CORISCO DA SOLANA (BRL <-> SOL 1h/15m | R$ 100 - 2 Slots)
   # ----------------------------------------------------------------------------
-  if (is.null(pedido) && !is.null(p_sol_brl) && ste_atual >= 0.0 && pc1_atual < 0.70 && w_energy < 50.0) {
+  if (is.null(pedido) && !is.null(p_sol_brl) && ste_atual >= -0.02 && pc1_atual < 0.75 && w_energy < 55.0) {
     z_sol_15m <- (p_sol_brl - stats_sol_15m$media) / stats_sol_15m$sd
     
-    # Filtro de Co-Movimento Harmonicus SC: Não compra dip de SOL se BTC estiver em queda rápida em 15m
-    ret_btc_15m <- tryCatch({
-      if (!is.null(df_hist_binance) && nrow(df_hist_binance) >= 15) {
-        (tail(df_hist_binance$BTCBRL, 1) / tail(df_hist_binance$BTCBRL, 15)[1]) - 1.0
-      } else { 0.0 }
-    }, error = function(e) 0.0)
-    
-    # Ponta 1: COMPRA NO FUNDO DA BANDA (100% da Meta / Z <= -2.00σ E BTC Estável >= -0.15%)
-    if (z_sol_15m <= -2.00 && ret_btc_15m >= -0.0015) {
-      lucro_proj <- max(1.20, ((stats_sol_15m$media / p_sol_brl) - 1) * 100)
+    # Trava de Teto de Custódia: Permite até 2 slots de R$ 100 (saldo_sol_brl < R$ 200)
+    if (z_sol_15m <= -1.35 && saldo_caixa_brl >= 80.0 && saldo_sol_brl < 200.0) {
+      lucro_proj <- max(1.40, ((stats_sol_15m$media / p_sol_brl) - 1) * 100)
       pedido <- list(
         estrategia = "PLANO_CORISCO_DA_SOLANA",
         origem = "BRL", destino = "SOL",
-        valor_brl = VALOR_CORISCO_BRL * fator_lote, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+        valor_brl = min(VALOR_CORISCO_BRL * fator_lote, max(50.0, saldo_caixa_brl * 0.20)),
+        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
       )
-    } else if (z_sol_15m >= 0.0) {
-      # Ponta 2: REALIZAÇÃO DE LUCRO NO REPIQUE À MÉDIA (Z >= 0.0σ COM LUCRO >= +0.75%)
-      # Só atua se houver saldo positivo de SOL na carteira para realizar
-      df_w <- tryCatch(carteira(silent = TRUE), error = function(e) NULL)
-      saldo_sol <- 0
-      if (!is.null(df_w) && is.data.frame(df_w) && "SOL" %in% df_w$asset) {
-        saldo_sol <- sum(df_w$free[df_w$asset == "SOL"], na.rm = TRUE)
-      }
-      if (saldo_sol > 0.001) {
-        lucro_proj <- max(0.75, ((p_sol_brl / stats_sol_15m$media) - 1) * 100)
-        valor_venda_brl <- min(VALOR_CORISCO_BRL, saldo_sol * p_sol_brl)
-        if (valor_venda_brl >= 15.0 && lucro_proj >= 0.75) {
-          pedido <- list(
-            estrategia = "PLANO_CORISCO_DA_SOLANA",
-            origem = "SOL", destino = "BRL",
-            valor_brl = valor_venda_brl, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-          )
-        }
-      }
+    } else if (z_sol_15m >= 0.40 && saldo_sol_brl >= 20.0) {
+      # Take-Profit: Vende saldo acumulado de SOL para Caixa BRL
+      lucro_proj <- max(0.80, ((p_sol_brl / stats_sol_15m$media) - 1) * 100)
+      pedido <- list(
+        estrategia = "PLANO_CORISCO_DA_SOLANA",
+        origem = "SOL", destino = "BRL",
+        valor_brl = saldo_sol_brl,
+        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+      )
     }
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 7: PLANO DUELO DE TITÃS (BTC <-> ETH 24h | R$ 60)
+  # MOTOR 7: PLANO DUELO DE TITÃS (BTC -> ETH e ETH -> BRL | R$ 150 - 2 Slots)
   # ----------------------------------------------------------------------------
   if (is.null(pedido) && !is.null(p_eth_brl) && !is.null(p_btc_brl) && pc1_atual < 0.75) {
     ratio_eth_btc <- p_eth_brl / p_btc_brl
     z_eth_btc     <- (ratio_eth_btc - stats_eth_btc$media) / stats_eth_btc$sd
     
-    # Ponta 1: ETH BARATO / BTC CARO -> Gira BTC para COMPRAR ETH
-    if (z_eth_btc <= -1.50) {
-      lucro_proj <- ((stats_eth_btc$media / ratio_eth_btc) - 1) * 100
-      if (lucro_proj >= 0.90) {
+    if (z_eth_btc <= -1.00 && saldo_btc_brl >= 45.0 && saldo_eth_brl < 300.0) {
+      lucro_proj <- max(1.20, ((stats_eth_btc$media / ratio_eth_btc) - 1) * 100)
+      valor_req <- min(VALOR_TITAS_BRL * fator_lote, saldo_btc_brl * 0.30)
+      if (valor_req >= 42.0) {
         pedido <- list(
           estrategia = "PLANO_DUELO_DE_TITAS",
           origem = "BTC", destino = "ETH",
-          valor_brl = VALOR_TITAS_BRL * fator_lote, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+          valor_brl = valor_req,
+          lucro_esperado_pct = lucro_proj, timestamp = agora_ts
         )
       }
-    } else if (z_eth_btc >= 1.50) {
-      # Ponta 2: ETH CARO / BTC BARATO -> Vende ETH para COMPRAR BTC
-      # Checagem de custódia prévia: só gera pedido se houver ETH em carteira!
-      df_w <- tryCatch(carteira(silent = TRUE), error = function(e) NULL)
-      saldo_eth <- 0
-      if (!is.null(df_w) && is.data.frame(df_w) && "ETH" %in% df_w$asset) {
-        saldo_eth <- sum(df_w$free[df_w$asset == "ETH"], na.rm = TRUE)
-      }
-      if (saldo_eth > 0.0005) {
-        lucro_proj <- ((ratio_eth_btc / stats_eth_btc$media) - 1) * 100
-        if (lucro_proj >= 0.90) {
-          pedido <- list(
-            estrategia = "PLANO_DUELO_DE_TITAS",
-            origem = "ETH", destino = "BTC",
-            valor_brl = min(VALOR_TITAS_BRL * fator_lote, saldo_eth * p_eth_brl),
-            lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-          )
-        }
-      }
+    } else if (z_eth_btc >= 0.85 && saldo_eth_brl >= 25.0) {
+      # Ponta B: ETH Caro / BTC Barato -> Realização de ETH para Caixa BRL
+      lucro_proj <- max(1.20, ((ratio_eth_btc / stats_eth_btc$media) - 1) * 100)
+      pedido <- list(
+        estrategia = "PLANO_DUELO_DE_TITAS",
+        origem = "ETH", destino = "BRL",
+        valor_brl = saldo_eth_brl,
+        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+      )
     }
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 8: PLANO FLECHA DE SAGARANA (BRL -> BTC 5m | R$ 75)
+  # MOTOR 8: PLANO FLECHA DE SAGARANA (BRL -> BTC micro dip / BTC -> BRL Take Profit)
   # ----------------------------------------------------------------------------
-  if (is.null(pedido) && ret_btc_5m <= -0.0040 && w_energy < 50.0) {
-    pedido <- list(
-      estrategia = "PLANO_FLECHA_DE_SAGARANA",
-      origem = "BRL", destino = "BTC",
-      valor_brl = VALOR_SAGARANA_BRL * fator_lote, lucro_esperado_pct = 0.85, timestamp = agora_ts
-    )
+  if (is.null(pedido)) {
+    if (ret_btc_5m <= -0.0035 && w_energy < 55.0 && saldo_caixa_brl >= 100.0 && peso_btc < 0.50) {
+      # Compra seletiva em micro-dip
+      pedido <- list(
+        estrategia = "PLANO_FLECHA_DE_SAGARANA",
+        origem = "BRL", destino = "BTC",
+        valor_brl = min(VALOR_SAGARANA_BRL * fator_lote, max(50.0, saldo_caixa_brl * 0.20)),
+        lucro_esperado_pct = 0.85, timestamp = agora_ts
+      )
+    } else if (ret_btc_5m >= 0.0035 && saldo_btc_brl >= 45.0 && peso_btc > 0.18) {
+      # Take Profit de Micro-Repique: Vende BTC e guarda Reais no Caixa Livre
+      pedido <- list(
+        estrategia = "PLANO_FLECHA_DE_SAGARANA",
+        origem = "BTC", destino = "BRL",
+        valor_brl = min(VALOR_SAGARANA_BRL * fator_lote, saldo_btc_brl * 0.30),
+        lucro_esperado_pct = 0.85, timestamp = agora_ts
+      )
+    }
   }
   
   # Log do Radar em labtrader_radar.log
