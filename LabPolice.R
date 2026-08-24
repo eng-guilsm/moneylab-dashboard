@@ -379,6 +379,12 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
   
   executar_ciclo_gatekeeper <- function() {
     if (file.exists("solicitacao.rds")) {
+      on.exit({
+        if (file.exists("solicitacao.rds")) {
+          unlink("solicitacao.rds")
+        }
+      }, add = TRUE)
+      
       pedido <- tryCatch(readRDS("solicitacao.rds"), error = function(e) NULL)
       
       if (!is.null(pedido)) {
@@ -445,9 +451,15 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
             
             preco_unit <- 1.0
             if (origem_asset != "BRL") {
-              sym_check <- paste0(origem_asset, "BRL")
-              p_tmp <- tryCatch(as.numeric(content(GET(paste0("https://api.binance.com/api/v3/ticker/price?symbol=", sym_check)), "parsed")$price), error = function(e) NULL)
-              if (!is.null(p_tmp) && p_tmp > 0) preco_unit <- p_tmp
+              if (origem_asset == "PAXG") {
+                p_paxg_u <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT"), "parsed")$price), error = function(e) 2650.0)
+                p_usdt_b <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) 5.18)
+                preco_unit <- ifelse(!is.null(p_paxg_u) && !is.null(p_usdt_b), p_paxg_u * p_usdt_b, 24000.0)
+              } else {
+                sym_check <- paste0(origem_asset, "BRL")
+                p_tmp <- tryCatch(as.numeric(content(GET(paste0("https://api.binance.com/api/v3/ticker/price?symbol=", sym_check)), "parsed")$price), error = function(e) NULL)
+                if (!is.null(p_tmp) && length(p_tmp) > 0 && !is.na(p_tmp) && p_tmp > 0) preco_unit <- p_tmp
+              }
             }
             
             qtd_necessaria <- as.numeric(pedido$valor_brl) / preco_unit
@@ -495,9 +507,15 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
               if (nrow(row_d) > 0) {
                 p_dest_unit <- 1.0
                 if (dest_asset != "BRL") {
-                  sym_d <- paste0(dest_asset, "BRL")
-                  p_tmp_d <- tryCatch(as.numeric(content(GET(paste0("https://api.binance.com/api/v3/ticker/price?symbol=", sym_d)), "parsed")$price), error = function(e) NULL)
-                  if (!is.null(p_tmp_d) && p_tmp_d > 0) p_dest_unit <- p_tmp_d
+                  if (dest_asset == "PAXG") {
+                    p_paxg_u <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT"), "parsed")$price), error = function(e) 2650.0)
+                    p_usdt_b <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) 5.18)
+                    p_dest_unit <- ifelse(!is.null(p_paxg_u) && !is.null(p_usdt_b), p_paxg_u * p_usdt_b, 24000.0)
+                  } else {
+                    sym_d <- paste0(dest_asset, "BRL")
+                    p_tmp_d <- tryCatch(as.numeric(content(GET(paste0("https://api.binance.com/api/v3/ticker/price?symbol=", sym_d)), "parsed")$price), error = function(e) NULL)
+                    if (!is.null(p_tmp_d) && length(p_tmp_d) > 0 && !is.na(p_tmp_d) && p_tmp_d > 0) p_dest_unit <- p_tmp_d
+                  }
                 }
                 saldo_ativo_brl <- sum(row_d$free, na.rm = TRUE) * p_dest_unit
               }
