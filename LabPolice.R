@@ -304,6 +304,23 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
     symbol <- "PAXGBTC"
     side <- "BUY"
     quantity <- floor((valor_brl / p_paxg_brl_tmp) * 10000) / 10000
+  } else if (origem == "BRL" && destino == "PAXG") {
+    # Midas DCA: Compra USDT com BRL e em seguida compra PAXG com USDT (par PAXGUSDT)
+    cat(sprintf("🌉 [SMART ROUTING] Comprando PAXG via ponte BRL -> USDT -> PAXG (R$ %.2f)...\n", valor_brl))
+    r_usdt <- enviar_ordem_binance_market("BRL", "USDT", valor_brl)
+    if (r_usdt$sucesso) {
+      qtd_usdt <- as.numeric(r_usdt$executedQty)
+      if (is.na(qtd_usdt) || length(qtd_usdt) == 0 || qtd_usdt <= 0) qtd_usdt <- valor_brl / 5.18
+      return(enviar_ordem_binance_market("USDT", "PAXG", valor_brl, quoteOrderQty = qtd_usdt))
+    } else {
+      return(r_usdt)
+    }
+  } else if (origem == "USDT" && destino == "PAXG") {
+    symbol <- "PAXGUSDT"
+    side <- "BUY"
+    if (!is.null(quoteOrderQty)) {
+      quoteOrderQty <- sprintf("%.2f", as.numeric(quoteOrderQty))
+    }
   } else if (origem == "PAXG" && destino == "BTC") {
     # Guiana Ponta B: Vende PAXG por BTC usando par direto PAXGBTC
     p_paxg_brl_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT"), "parsed")$price) * as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) NULL)
@@ -633,21 +650,33 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
             "SINAL_APROVADO_SIMULADO"
           }
           
-          p_calc_exec <- if (!is.null(resultado_binance$cummulativeQuoteQty) && !is.null(resultado_binance$executedQty) && as.numeric(resultado_binance$executedQty) > 0) {
-            as.numeric(resultado_binance$cummulativeQuoteQty) / as.numeric(resultado_binance$executedQty)
-          } else {
-            tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%sBRL", ifelse(pedido$origem == "BRL", pedido$destino, pedido$origem))), "parsed")$price), error = function(e) NA)
+          p_calc_exec <- 0.0
+          if (!is.null(resultado_binance$cummulativeQuoteQty) && !is.null(resultado_binance$executedQty)) {
+            q_qty <- as.numeric(resultado_binance$cummulativeQuoteQty)
+            e_qty <- as.numeric(resultado_binance$executedQty)
+            if (!is.na(q_qty) && !is.na(e_qty) && e_qty > 0) {
+              p_calc_exec <- q_qty / e_qty
+            }
+          }
+          if (p_calc_exec <= 0) {
+            ativo_check <- ifelse(pedido$origem == "BRL", pedido$destino, pedido$origem)
+            if (ativo_check == "PAXG") {
+              p_calc_exec <- 24000.0
+            } else {
+              p_calc_exec <- tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%sBRL", ativo_check)), "parsed")$price), error = function(e) 0.0)
+              if (is.null(p_calc_exec) || length(p_calc_exec) == 0 || is.na(p_calc_exec)) p_calc_exec <- 0.0
+            }
           }
           
           registro_exec <- data.frame(
-            Data_Hora = ts_str,
+            Data_Hora = as.character(ts_str),
             Estrategia = as.character(pedido$estrategia),
             Origem = as.character(pedido$origem),
             Destino = as.character(pedido$destino),
             Valor_BRL = as.numeric(pedido$valor_brl),
-            Preco_Exec = as.numeric(p_calc_exec),
+            Preco_Exec = as.numeric(p_calc_exec[1]),
             Lucro_Proj = as.numeric(pedido$lucro_esperado_pct),
-            Status = status_final,
+            Status = as.character(status_final),
             stringsAsFactors = FALSE
           )
           
