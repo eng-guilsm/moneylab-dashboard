@@ -242,12 +242,21 @@ repeat {
       if (file.exists("LabTrader.R")) source("LabTrader.R")
       if (file.exists("LabPolice.R")) source("LabPolice.R")
       
-      # 1. Executa radar dos 8 motores quânticos e gera solicitacao.rds se houver disparo
+      # Limpeza de segurança se solicitacao.rds ficar órfã por mais de 90 segundos
+      if (file.exists("solicitacao.rds")) {
+        info_sol <- file.info("solicitacao.rds")
+        if (!is.na(info_sol$mtime) && as.numeric(difftime(Sys.time(), info_sol$mtime, units = "secs")) > 90) {
+          unlink("solicitacao.rds")
+        }
+      }
+      
+      # 1. Executa radar dos 9 motores quânticos e gera solicitacao.rds se houver disparo
       executar_radar_labtrader()
       
-      # 2. Gatekeeper valida as 7 travas (com Breakeven Lock VWAP), executa na Binance se aprovado e notifica o Telegram
+      # 2. Gatekeeper valida as travas, executa na Binance se aprovado e notifica o Telegram
       processar_solicitacoes_gatekeeper(modo_continuo = FALSE, executar_real = TRUE)
     }, error = function(e) {
+      if (file.exists("solicitacao.rds")) unlink("solicitacao.rds")
       cat("❌ [MÓDULO 3 | RADAR/GATEKEEPER ERROR]:", conditionMessage(e), "\n")
     })
     last_run_radar <- Sys.time()
