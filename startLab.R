@@ -169,21 +169,28 @@ repeat {
   }
   
   if(difftime(agora, last_run_macro, units = "secs") >= TIMER_MACRO) {
-    cat("\n🌍 [MACRO] Variáveis de Estado...\n")
+    cat("\n🌍 [MACRO] Variáveis de Estado (Yahoo Finance Live Sync)...\n")
     tryCatch({
-      q_macro <- get_safe_quote(c("BZ=F", "GC=F", "^VIX", "^TNX", "DX-Y.NYB", "HG=F"))
-      
-      df_macro <- data.frame(
-        Data = format(agora,"%Y-%m-%d %H:%M:%S"),
-        Petroleo_Brent = if(!is.null(q_macro)) q_macro["BZ=F", "Last"] else 0,
-        Ouro_USD = if(!is.null(q_macro)) q_macro["GC=F", "Last"] else 0,
-        VIX_Index = if(!is.null(q_macro)) q_macro["^VIX", "Last"] else 0,
-        Treasury_10Y = if(!is.null(q_macro)) q_macro["^TNX", "Last"] else 0,
-        DXY_Index = if(!is.null(q_macro)) q_macro["DX-Y.NYB", "Last"] else 0,
-        Copper_Index = if(!is.null(q_macro)) q_macro["HG=F", "Last"] else 0
-      )
-      
-      if(db_safe_append("Historico_macro", df_macro)) cat("    ✅ DB: Macro OK.\n")
+      # 1. Executa sincronizador robusto Python para Yahoo Finance API
+      cmd_py <- if (.Platform$OS.type == "windows") "python" else "python3"
+      sync_script <- file.path("scratch", "sync_macro_vix_data.py")
+      if (file.exists(sync_script)) {
+        system(sprintf('%s "%s"', cmd_py, sync_script), intern = FALSE, ignore.stdout = TRUE)
+        cat("    ✅ DB: Macro sincronizado via Yahoo Finance API.\n")
+      } else {
+        # Fallback R nativo
+        q_macro <- get_safe_quote(c("BZ=F", "GC=F", "^VIX", "^TNX", "DX-Y.NYB", "HG=F"))
+        df_macro <- data.frame(
+          Data = format(agora,"%Y-%m-%d %H:%M:%S"),
+          Petroleo_Brent = if(!is.null(q_macro)) q_macro["BZ=F", "Last"] else 0,
+          Ouro_USD = if(!is.null(q_macro)) q_macro["GC=F", "Last"] else 0,
+          VIX_Index = if(!is.null(q_macro)) q_macro["^VIX", "Last"] else 0,
+          Treasury_10Y = if(!is.null(q_macro)) q_macro["^TNX", "Last"] else 0,
+          DXY_Index = if(!is.null(q_macro)) q_macro["DX-Y.NYB", "Last"] else 0,
+          Copper_Index = if(!is.null(q_macro)) q_macro["HG=F", "Last"] else 0
+        )
+        if(db_safe_append("Historico_macro", df_macro)) cat("    ✅ DB: Macro OK (Fallback).\n")
+      }
     }, error = function(e) cat("    ❌ Erro no Bloco Macro:", conditionMessage(e), "\n"))
     last_run_macro <- Sys.time()
   }
@@ -231,10 +238,14 @@ repeat {
   # ----------------------------------------------------------------------------
   if(difftime(agora, last_run_radar, units = "secs") >= TIMER_RADAR) {
     tryCatch({
+      # Hot-reload de regras operacionais
+      if (file.exists("LabTrader.R")) source("LabTrader.R")
+      if (file.exists("LabPolice.R")) source("LabPolice.R")
+      
       # 1. Executa radar dos 8 motores quânticos e gera solicitacao.rds se houver disparo
       executar_radar_labtrader()
       
-      # 2. Gatekeeper valida as 4 travas, executa na Binance se aprovado e notifica o Telegram
+      # 2. Gatekeeper valida as 7 travas (com Breakeven Lock VWAP), executa na Binance se aprovado e notifica o Telegram
       processar_solicitacoes_gatekeeper(modo_continuo = FALSE, executar_real = TRUE)
     }, error = function(e) {
       cat("❌ [MÓDULO 3 | RADAR/GATEKEEPER ERROR]:", conditionMessage(e), "\n")
