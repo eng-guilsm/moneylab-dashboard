@@ -400,7 +400,8 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_GRAVIDADE_ZERO",
           "PLANO_CORISCO_DA_SOLANA",
           "PLANO_DUELO_DE_TITAS",
-          "PLANO_FLECHA_DE_SAGARANA"
+          "PLANO_FLECHA_DE_SAGARANA",
+          "PLANO_COFRE_DE_MIDAS"
         )
         
         tetos_volume <- list(
@@ -411,7 +412,8 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_GRAVIDADE_ZERO" = 180.00,
           "PLANO_CORISCO_DA_SOLANA" = 150.00,
           "PLANO_DUELO_DE_TITAS" = 200.00,
-          "PLANO_FLECHA_DE_SAGARANA" = 200.00
+          "PLANO_FLECHA_DE_SAGARANA" = 200.00,
+          "PLANO_COFRE_DE_MIDAS" = 55.00
         )
         
         lucros_minimos <- list(
@@ -422,7 +424,8 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_GRAVIDADE_ZERO" = 2.00,
           "PLANO_CORISCO_DA_SOLANA" = 0.75,
           "PLANO_DUELO_DE_TITAS" = 1.10,
-          "PLANO_FLECHA_DE_SAGARANA" = 0.75
+          "PLANO_FLECHA_DE_SAGARANA" = 0.75,
+          "PLANO_COFRE_DE_MIDAS" = 0.00
         )
         
         # Trava 0: Validação de Saldo em Custódia Real (Anti-Venda a Descoberto)
@@ -529,9 +532,10 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
               horas_dif <- as.numeric(difftime(Sys.time(), ultimo_ts, units = "hours"))
               
               # Cooldown Otimizado Harmonicus Ultra-Deep
-              cooldown_req <- ifelse(estrategia_nome == "PLANO_CORISCO_DA_SOLANA", 0.16, 
+              cooldown_req <- ifelse(estrategia_nome == "PLANO_COFRE_DE_MIDAS", 48.0,
+                              ifelse(estrategia_nome == "PLANO_CORISCO_DA_SOLANA", 0.16, 
                               ifelse(estrategia_nome == "PLANO_FLECHA_DE_SAGARANA", 0.25,
-                              ifelse(grepl("TITAS|ORACULOS|GRAVIDADE", estrategia_nome), 0.33, 1.0)))
+                              ifelse(grepl("TITAS|ORACULOS|GRAVIDADE", estrategia_nome), 0.33, 1.0))))
               
               # Se for realização de lucro / rotação oposta, zera o cooldown
               ultimo_reg <- tail(hist_est, 1)
