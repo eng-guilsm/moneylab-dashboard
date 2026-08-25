@@ -185,17 +185,16 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
   quantity <- NULL
   
   # 1. Compras com BRL (quoteOrderQty = valor_brl)
-  # 1. Compras com BRL (quoteOrderQty = valor_brl)
-  if (origem == "BRL" && destino %in% c("BTC", "SOL", "ETH", "LINK", "USDT", "PAXG")) {
+  if (origem == "BRL" && destino %in% c("BTC", "SOL", "ETH", "LINK", "USDT", "PAXG", "BNB", "ADA")) {
     symbol <- paste0(destino, "BRL")
     side <- "BUY"
     quoteOrderQty <- valor_brl
-  } else if (destino == "BRL" && origem %in% c("BTC", "SOL", "ETH", "LINK", "USDT", "PAXG")) {
+  } else if (destino == "BRL" && origem %in% c("BTC", "SOL", "ETH", "LINK", "USDT", "PAXG", "BNB", "ADA")) {
     symbol <- paste0(origem, "BRL")
     side <- "SELL"
     p_atual <- tryCatch(as.numeric(content(GET(paste0("https://api.binance.com/api/v3/ticker/price?symbol=", symbol)), "parsed")$price), error = function(e) NULL)
     if (!is.null(p_atual) && p_atual > 0) {
-      precisao <- ifelse(origem == "BTC", 5, ifelse(origem %in% c("ETH", "SOL", "PAXG"), 3, 2))
+      precisao <- ifelse(origem == "BTC", 5, ifelse(origem %in% c("ETH", "SOL", "PAXG", "BNB"), 3, ifelse(origem == "ADA", 1, 2)))
       mult_p <- 10^precisao
       calc_qty <- floor((valor_brl / p_atual) * mult_p) / mult_p
       
@@ -218,14 +217,14 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
       }
     }
   } else if (origem == "BTC" && destino == "SOL") {
-    # Rotação BTC -> SOL: Se volume >= 42, usa par direto SOLBTC; se menor, usa ponte inteligente BRL
-    if (valor_brl >= 42.0) {
+    # Rotação BTC -> SOL: Se volume >= 85 (>= 0.0002 BTC), usa par direto SOLBTC; se menor, usa ponte inteligente BRL
+    if (valor_brl >= 85.0) {
       symbol <- "SOLBTC"
       side <- "BUY"
       p_sol <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=SOLBRL"), "parsed")$price), error = function(e) NULL)
       if (!is.null(p_sol) && p_sol > 0) quantity <- floor((valor_brl / p_sol) * 100) / 100
     } else {
-      cat(sprintf("🌉 [SMART ROUTING] Volume de R$ %.2f abaixo do notional de SOLBTC. Executando ponte BRL...\n", valor_brl))
+      cat(sprintf("🌉 [SMART ROUTING] Volume de R$ %.2f abaixo do notional de SOLBTC (mín R$ 85). Executando ponte BRL...\n", valor_brl))
       r1 <- enviar_ordem_binance_market("BTC", "BRL", valor_brl)
       if (r1$sucesso) {
         return(enviar_ordem_binance_market("BRL", "SOL", valor_brl))
@@ -234,7 +233,6 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
       }
     }
   } else if (origem == "SOL" && destino == "BTC") {
-    # Rotação SOL -> BTC: Se volume >= 42, usa par direto SOLBTC; se menor, usa ponte inteligente via SOLBRL -> BTCBRL
     df_w <- tryCatch(carteira(silent = TRUE), error = function(e) NULL)
     saldo_sol_real <- 0
     if (!is.null(df_w) && is.data.frame(df_w) && "SOL" %in% df_w$asset) {
@@ -247,11 +245,11 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
       quantity <- min(calc_qty, floor(saldo_sol_real * 100) / 100)
     }
     
-    if (valor_brl >= 42.0 && (!is.null(quantity) && quantity * p_sol >= 42.0)) {
+    if (valor_brl >= 85.0 && (!is.null(quantity) && quantity * p_sol >= 85.0)) {
       symbol <- "SOLBTC"
       side <- "SELL"
     } else {
-      cat(sprintf("🌉 [SMART ROUTING] Volume de R$ %.2f abaixo do notional de SOLBTC. Executando ponte SOLBRL -> BTCBRL...\n", valor_brl))
+      cat(sprintf("🌉 [SMART ROUTING] Volume de R$ %.2f abaixo do notional de SOLBTC (mín R$ 85). Executando ponte SOLBRL -> BTCBRL...\n", valor_brl))
       r1 <- enviar_ordem_binance_market("SOL", "BRL", valor_brl)
       if (r1$sucesso) {
         return(enviar_ordem_binance_market("BRL", "BTC", valor_brl))
@@ -260,13 +258,13 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
       }
     }
   } else if (origem == "BTC" && destino == "ETH") {
-    if (valor_brl >= 42.0) {
+    if (valor_brl >= 85.0) {
       symbol <- "ETHBTC"
       side <- "BUY"
       p_eth <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=ETHBRL"), "parsed")$price), error = function(e) NULL)
       if (!is.null(p_eth) && p_eth > 0) quantity <- floor((valor_brl / p_eth) * 1000) / 1000
     } else {
-      cat(sprintf("🌉 [SMART ROUTING] Volume de R$ %.2f abaixo do notional de ETHBTC. Executando ponte BRL...\n", valor_brl))
+      cat(sprintf("🌉 [SMART ROUTING] Volume de R$ %.2f abaixo do notional de ETHBTC (mín R$ 85). Executando ponte BRL...\n", valor_brl))
       r1 <- enviar_ordem_binance_market("BTC", "BRL", valor_brl)
       if (r1$sucesso) {
         return(enviar_ordem_binance_market("BRL", "ETH", valor_brl))
@@ -424,7 +422,9 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_CORISCO_DA_SOLANA",
           "PLANO_DUELO_DE_TITAS",
           "PLANO_FLECHA_DE_SAGARANA",
-          "PLANO_COFRE_DE_MIDAS"
+          "PLANO_COFRE_DE_MIDAS",
+          "PLANO_SENTINELA_DE_MINAS",
+          "PLANO_SERTAO_VALENTE"
         )
         
         tetos_volume <- list(
@@ -436,7 +436,9 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_CORISCO_DA_SOLANA" = 220.00,
           "PLANO_DUELO_DE_TITAS" = 200.00,
           "PLANO_FLECHA_DE_SAGARANA" = 200.00,
-          "PLANO_COFRE_DE_MIDAS" = 55.00
+          "PLANO_COFRE_DE_MIDAS" = 55.00,
+          "PLANO_SENTINELA_DE_MINAS" = 180.00,
+          "PLANO_SERTAO_VALENTE" = 160.00
         )
         
         lucros_minimos <- list(
@@ -448,7 +450,9 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_CORISCO_DA_SOLANA" = 0.50,
           "PLANO_DUELO_DE_TITAS" = 0.80,
           "PLANO_FLECHA_DE_SAGARANA" = 0.40,
-          "PLANO_COFRE_DE_MIDAS" = 0.00
+          "PLANO_COFRE_DE_MIDAS" = 0.00,
+          "PLANO_SENTINELA_DE_MINAS" = 0.50,
+          "PLANO_SERTAO_VALENTE" = 0.55
         )
         
         # Trava 0: Validação de Saldo em Custódia Real (Anti-Venda a Descoberto)
@@ -513,8 +517,8 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           }
           
           # Subtrava 2.1: Teto de Posição Cumulativa em Aberto (Anti-Empilhamento de Compras Multi-Tranche)
-          if (aprovado && pedido$origem == "BRL" && pedido$destino %in% c("SOL", "LINK", "ETH", "USDT", "BTC", "PAXG")) {
-            teto_custodia_map <- list(SOL = 220.0, LINK = 250.0, ETH = 300.0, USDT = 500.0, BTC = 600.0, PAXG = 800.0)
+          if (aprovado && pedido$origem == "BRL" && pedido$destino %in% c("SOL", "LINK", "ETH", "USDT", "BTC", "PAXG", "BNB", "ADA")) {
+            teto_custodia_map <- list(SOL = 220.0, LINK = 250.0, ETH = 300.0, USDT = 500.0, BTC = 600.0, PAXG = 800.0, BNB = 180.0, ADA = 160.0)
             teto_custodia <- ifelse(!is.null(teto_custodia_map[[pedido$destino]]), teto_custodia_map[[pedido$destino]], 250.0)
             
             saldo_ativo_brl <- 0.0
@@ -568,8 +572,8 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
               
               # Cooldown Otimizado Harmonicus Ultra-Deep
               cooldown_req <- ifelse(estrategia_nome == "PLANO_COFRE_DE_MIDAS", 48.0,
-                              ifelse(estrategia_nome == "PLANO_CORISCO_DA_SOLANA", 0.16, 
-                              ifelse(estrategia_nome == "PLANO_FLECHA_DE_SAGARANA", 0.25,
+                              ifelse(estrategia_nome %in% c("PLANO_CORISCO_DA_SOLANA", "PLANO_SENTINELA_DE_MINAS"), 0.16, 
+                              ifelse(estrategia_nome %in% c("PLANO_FLECHA_DE_SAGARANA", "PLANO_SERTAO_VALENTE"), 0.25,
                               ifelse(grepl("TITAS|ORACULOS|GRAVIDADE", estrategia_nome), 0.33, 1.0))))
               
               # Se for realização de lucro / rotação oposta, zera o cooldown
@@ -592,7 +596,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
         # Se a compra foi feita há menos de 5 minutos, exige que seja com lucro confirmado para evitar micro-slippage.
         
         # Trava 6: Trava Anti-Prejuízo / Breakeven Lock Universal (Proíbe Venda Abaixo do Custo Real do Lote em Aberto)
-        if (aprovado && pedido$destino == "BRL" && pedido$origem %in% c("SOL", "LINK", "ETH", "USDT", "BTC", "PAXG")) {
+        if (aprovado && pedido$destino == "BRL" && pedido$origem %in% c("SOL", "LINK", "ETH", "USDT", "BTC", "PAXG", "BNB", "ADA")) {
           sym_check <- sprintf("%sBRL", pedido$origem)
           p_atual_mercado <- tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%s", sym_check)), "parsed")$price), error = function(e) NULL)
           
