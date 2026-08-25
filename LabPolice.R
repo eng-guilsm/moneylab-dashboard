@@ -591,7 +591,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
         # Qualquer plano pode liquidar qualquer ativo em carteira, contanto que gere lucro real (validado pela Trava 6).
         # Se a compra foi feita há menos de 5 minutos, exige que seja com lucro confirmado para evitar micro-slippage.
         
-        # Trava 6: Trava Anti-Prejuízo / Breakeven Lock Universal (Proíbe Venda Abaixo do Custo Médio de Entrada)
+        # Trava 6: Trava Anti-Prejuízo / Breakeven Lock Universal (Proíbe Venda Abaixo do Custo Real do Lote em Aberto)
         if (aprovado && pedido$destino == "BRL" && pedido$origem %in% c("SOL", "LINK", "ETH", "USDT", "BTC", "PAXG")) {
           sym_check <- sprintf("%sBRL", pedido$origem)
           p_atual_mercado <- tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%s", sym_check)), "parsed")$price), error = function(e) NULL)
@@ -599,26 +599,35 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           if (!is.null(p_atual_mercado) && p_atual_mercado > 0 && file.exists(hist_exec_file)) {
             hist_all <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
             if (!is.null(hist_all) && nrow(hist_all) > 0 && "Destino" %in% names(hist_all)) {
-              compras_ativo <- hist_all[hist_all$Destino == as.character(pedido$origem) & grepl("EXECUTADO_REAL", hist_all$Status), ]
-              if (nrow(compras_ativo) > 0) {
-                # Calcula Preço Médio Ponderado (VWAP) das compras recentes do ativo
-                compras_recentes <- tail(compras_ativo, 5)
-                validos <- compras_recentes[!is.na(compras_recentes$Preco_Exec) & compras_recentes$Preco_Exec > 0 & !is.na(compras_recentes$Valor_BRL), ]
-                
-                p_entrada <- if (nrow(validos) > 0) {
-                  sum(validos$Valor_BRL) / sum(validos$Valor_BRL / validos$Preco_Exec)
-                } else {
-                  NA
-                }
-                
-                if (!is.na(p_entrada) && p_entrada > 0) {
-                  ret_nominal <- ((p_atual_mercado - p_entrada) / p_entrada) * 100
-                  # Proíbe venda se retorno for menor que +0.40% (cobre 0.20% taxas Binance + 0.20% lucro real)
-                  if (ret_nominal < 0.40) {
-                    aprovado <- FALSE
-                    motivo_veto <- sprintf("Breakeven Lock VWAP: Preço atual de %s (R$ %.2f) está abaixo ou sem margem do preço médio de entrada ponderado (R$ %.2f | Variação: %+.2f%% [abaixo do piso de +0.40%%]). Venda vetada.",
-                                           pedido$origem, p_atual_mercado, p_entrada, ret_nominal)
-                  }
+              exec_reais <- hist_all[grepl("EXECUTADO_REAL", hist_all$Status), ]
+              
+              # Identifica o índice da última VENDA deste ativo
+              idx_vendas <- which(exec_reais$Origem == as.character(pedido$origem))
+              ultimo_idx_venda <- if (length(idx_vendas) > 0) max(idx_vendas) else 0
+              
+              # Compras em aberto: apenas compras que ocorreram APÓS a última venda
+              compras_abertas <- exec_reais[seq_len(nrow(exec_reais)) > ultimo_idx_venda & exec_reais$Destino == as.character(pedido$origem), ]
+              
+              # Se não encontrou compras pós-venda, busca a compra mais recente
+              if (nrow(compras_abertas) == 0) {
+                compras_abertas <- tail(exec_reais[exec_reais$Destino == as.character(pedido$origem), ], 1)
+              }
+              
+              validos <- compras_abertas[!is.na(compras_abertas$Preco_Exec) & compras_abertas$Preco_Exec > 0 & !is.na(compras_abertas$Valor_BRL), ]
+              
+              p_entrada <- if (nrow(validos) > 0) {
+                sum(validos$Valor_BRL) / sum(validos$Valor_BRL / validos$Preco_Exec)
+              } else {
+                NA
+              }
+              
+              if (!is.na(p_entrada) && p_entrada > 0) {
+                ret_nominal <- ((p_atual_mercado - p_entrada) / p_entrada) * 100
+                # Proíbe terminantemente venda se retorno for menor que +0.40% sobre o custo real do lote em aberto
+                if (ret_nominal < 0.40) {
+                  aprovado <- FALSE
+                  motivo_veto <- sprintf("Breakeven Lock FIFO: Preço atual de %s (R$ %.2f) está abaixo ou sem margem do preço de compra do lote em aberto (R$ %.2f | Retorno: %+.2f%% [exige >= +0.40%%]). Venda vetada para garantir lucro real.",
+                                         pedido$origem, p_atual_mercado, p_entrada, ret_nominal)
                 }
               }
             }
