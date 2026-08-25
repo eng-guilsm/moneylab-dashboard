@@ -78,10 +78,10 @@ obter_stats_link_1h <- function() {
     on.exit(dbDisconnect(con))
     df <- dbGetQuery(con, "SELECT LINKBRL FROM Historico_binance WHERE LINKBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 60;")
     if (nrow(df) >= 15) {
-      return(list(media = mean(df$LINKBRL, na.rm = TRUE), sd = max(0.05, sd(df$LINKBRL, na.rm = TRUE))))
+      return(list(media = mean(df$LINKBRL, na.rm = TRUE), sd = max(0.05, sd(df$LINKBRL, na.rm = TRUE)), serie = rev(df$LINKBRL)))
     }
   }, error = function(e) NULL)
-  return(list(media = 59.50, sd = 0.30))
+  return(list(media = 59.50, sd = 0.30, serie = rep(59.50, 16)))
 }
 
 obter_stats_sol_btc_72h <- function() {
@@ -103,12 +103,37 @@ obter_stats_sol_15m <- function() {
   tryCatch({
     con <- dbConnect(SQLite(), db_path)
     on.exit(dbDisconnect(con))
-    df <- dbGetQuery(con, "SELECT SOLBRL FROM Historico_binance WHERE SOLBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 15;")
+    df <- dbGetQuery(con, "SELECT SOLBRL FROM Historico_binance WHERE SOLBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 30;")
     if (nrow(df) >= 5) {
-      return(list(media = mean(df$SOLBRL, na.rm = TRUE), sd = max(0.05, sd(df$SOLBRL, na.rm = TRUE))))
+      return(list(media = mean(df$SOLBRL[1:min(15, nrow(df))], na.rm = TRUE), sd = max(0.05, sd(df$SOLBRL[1:min(15, nrow(df))], na.rm = TRUE)), serie = rev(df$SOLBRL)))
     }
   }, error = function(e) NULL)
-  return(list(media = 487.50, sd = 2.50))
+  return(list(media = 487.50, sd = 2.50, serie = rep(487.50, 16)))
+}
+
+obter_dsp_ativo <- function(vetor_precos) {
+  if (is.null(vetor_precos) || length(vetor_precos) < 6) {
+    return(list(theta = 0.0, T0 = 24.0, dZ = 0.0, d2Z = 0.0))
+  }
+  p <- as.numeric(tail(vetor_precos, 16))
+  n <- length(p)
+  smooth <- mean(p[max(1, n-3):n])
+  detrend <- p - smooth
+  I <- detrend[n]
+  Q <- (detrend[n] - detrend[max(1, n-4)]) * 0.707
+  theta <- atan2(Q, I + 1e-9)
+  
+  dZ <- (p[n] - p[n-1]) / (p[n-1] + 1e-9)
+  d2Z <- if (n >= 3) ((p[n] - p[n-1]) - (p[n-1] - p[n-2])) / (p[n-1] + 1e-9) else 0.0
+  
+  prev_detrend <- detrend[n-1]
+  prev_Q <- (detrend[n-1] - detrend[max(1, n-5)]) * 0.707
+  ang_prev <- atan2(prev_Q, prev_detrend + 1e-9)
+  ang_diff <- abs(theta - ang_prev)
+  if (is.na(ang_diff) || ang_diff < 0.05) ang_diff <- 0.2618
+  T0 <- max(6.0, min(60.0, (2 * pi) / ang_diff))
+  
+  return(list(theta = theta, T0 = T0, dZ = dZ, d2Z = d2Z))
 }
 
 obter_stats_eth_btc_24h <- function() {
@@ -302,24 +327,37 @@ executar_radar_labtrader <- function() {
   # ----------------------------------------------------------------------------
   if (is.null(pedido) && !is.null(p_link_brl) && ste_atual >= -0.02 && pc1_atual < 0.75 && w_energy < 55.0) {
     z_link <- (p_link_brl - stats_link$media) / stats_link$sd
+    dsp_link <- obter_dsp_ativo(stats_link$serie)
     
-    # Compra seletiva: Permite até 2 slots (saldo_link_brl < R$ 240)
-    if (z_link <= -1.35 && saldo_caixa_brl >= 100.0 && saldo_link_brl < 240.0) {
-      lucro_proj <- max(1.40, ((stats_link$media / p_link_brl) - 1) * 100)
+    # Compra seletiva com Phase Bet Sizing: amplifica lote no vale de fase de Hilbert
+    if (z_link <= -1.35 && saldo_caixa_brl >= 100.0 && saldo_link_brl < 260.0) {
+      lote_base <- VALOR_LINK_BRL
+      if (dsp_link$theta < -0.2 && dsp_link$theta > -2.8) lote_base <- 145.0
+      if (z_link <= -1.75) lote_base <- 175.0
+      
+      lote_l <- min(lote_base * fator_lote, max(50.0, saldo_caixa_brl * 0.25))
+      lucro_proj <- max(1.20, ((stats_link$media / p_link_brl) - 1) * 100)
+      
       pedido <- list(
         estrategia = "PLANO_CABOCLO_DOS_ORACULOS",
         origem = "BRL", destino = "LINK",
-        valor_brl = min(VALOR_LINK_BRL * fator_lote, max(50.0, saldo_caixa_brl * 0.20)),
+        valor_brl = lote_l,
         lucro_esperado_pct = lucro_proj, timestamp = agora_ts
       )
-    } else if (z_link >= 0.55 && saldo_link_brl >= 30.0) {
-      lucro_proj <- max(1.40, ((p_link_brl / stats_link$media) - 1) * 100)
-      pedido <- list(
-        estrategia = "PLANO_CABOCLO_DOS_ORACULOS",
-        origem = "LINK", destino = "BRL",
-        valor_brl = saldo_link_brl,
-        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-      )
+    } else if (saldo_link_brl >= 30.0) {
+      # Saída Dinâmica Harmonicus: Trailing por Desaceleração (d2Z < 0), Topo de Fase (theta > 0.85) ou Reversão
+      cond_trailing <- (dsp_link$d2Z < 0 || dsp_link$theta > 0.85)
+      cond_reversao <- (z_link >= 0.45)
+      
+      if (cond_trailing || cond_reversao) {
+        lucro_proj <- max(0.65, ((p_link_brl / stats_link$media) - 1) * 100)
+        pedido <- list(
+          estrategia = "PLANO_CABOCLO_DOS_ORACULOS",
+          origem = "LINK", destino = "BRL",
+          valor_brl = saldo_link_brl,
+          lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+        )
+      }
     }
   }
   
@@ -340,7 +378,7 @@ executar_radar_labtrader <- function() {
       )
     } else if (z_sol_btc >= 1.00 && saldo_sol_brl >= 25.0) {
       # Ponta B: Realização de topo de Solana para BRL
-      lucro_proj <- max(2.00, ((ratio_sol_btc / stats_sol_btc$media) - 1) * 100)
+      lucro_proj <- max(1.40, ((ratio_sol_btc / stats_sol_btc$media) - 1) * 100)
       pedido <- list(
         estrategia = "PLANO_GRAVIDADE_ZERO",
         origem = "SOL", destino = "BRL",
@@ -355,25 +393,37 @@ executar_radar_labtrader <- function() {
   # ----------------------------------------------------------------------------
   if (is.null(pedido) && !is.null(p_sol_brl) && ste_atual >= -0.02 && pc1_atual < 0.75 && w_energy < 55.0) {
     z_sol_15m <- (p_sol_brl - stats_sol_15m$media) / stats_sol_15m$sd
+    dsp_sol   <- obter_dsp_ativo(stats_sol_15m$serie)
     
-    # Trava de Teto de Custódia: Permite até 2 slots de R$ 100 (saldo_sol_brl < R$ 200)
-    if (z_sol_15m <= -1.35 && saldo_caixa_brl >= 80.0 && saldo_sol_brl < 200.0) {
-      lucro_proj <- max(1.40, ((stats_sol_15m$media / p_sol_brl) - 1) * 100)
+    # Trava de Teto de Custódia com Phase Bet Sizing: Permite até R$ 240 acumulados
+    if (z_sol_15m <= -1.35 && saldo_caixa_brl >= 80.0 && saldo_sol_brl < 240.0) {
+      lote_base_s <- VALOR_CORISCO_BRL
+      if (dsp_sol$theta < -0.2 && dsp_sol$theta > -2.8) lote_base_s <- 130.0
+      if (z_sol_15m <= -1.75) lote_base_s <- 160.0
+      
+      lote_s <- min(lote_base_s * fator_lote, max(50.0, saldo_caixa_brl * 0.25))
+      lucro_proj <- max(1.20, ((stats_sol_15m$media / p_sol_brl) - 1) * 100)
+      
       pedido <- list(
         estrategia = "PLANO_CORISCO_DA_SOLANA",
         origem = "BRL", destino = "SOL",
-        valor_brl = min(VALOR_CORISCO_BRL * fator_lote, max(50.0, saldo_caixa_brl * 0.20)),
+        valor_brl = lote_s,
         lucro_esperado_pct = lucro_proj, timestamp = agora_ts
       )
-    } else if (z_sol_15m >= 0.40 && saldo_sol_brl >= 20.0) {
-      # Take-Profit: Vende saldo acumulado de SOL para Caixa BRL
-      lucro_proj <- max(0.80, ((p_sol_brl / stats_sol_15m$media) - 1) * 100)
-      pedido <- list(
-        estrategia = "PLANO_CORISCO_DA_SOLANA",
-        origem = "SOL", destino = "BRL",
-        valor_brl = saldo_sol_brl,
-        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-      )
+    } else if (saldo_sol_brl >= 20.0) {
+      # Saída Dinâmica Harmonicus: Trailing por Desaceleração, Topo de Fase ou Reversão
+      cond_trailing_s <- (dsp_sol$d2Z < 0 || dsp_sol$theta > 0.85)
+      cond_reversao_s <- (z_sol_15m >= 0.35)
+      
+      if (cond_trailing_s || cond_reversao_s) {
+        lucro_proj <- max(0.60, ((p_sol_brl / stats_sol_15m$media) - 1) * 100)
+        pedido <- list(
+          estrategia = "PLANO_CORISCO_DA_SOLANA",
+          origem = "SOL", destino = "BRL",
+          valor_brl = saldo_sol_brl,
+          lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+        )
+      }
     }
   }
   

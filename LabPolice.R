@@ -431,23 +431,23 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_GUIANA_BRASILEIRA" = 250.00,
           "PLANO_ESCUDO_DE_AQUILES" = 350.00,
           "PLANO_PATRIA_VOLATIL" = 350.00,
-          "PLANO_CABOCLO_DOS_ORACULOS" = 220.00,
-          "PLANO_GRAVIDADE_ZERO" = 180.00,
-          "PLANO_CORISCO_DA_SOLANA" = 150.00,
+          "PLANO_CABOCLO_DOS_ORACULOS" = 260.00,
+          "PLANO_GRAVIDADE_ZERO" = 220.00,
+          "PLANO_CORISCO_DA_SOLANA" = 220.00,
           "PLANO_DUELO_DE_TITAS" = 200.00,
           "PLANO_FLECHA_DE_SAGARANA" = 200.00,
           "PLANO_COFRE_DE_MIDAS" = 55.00
         )
         
         lucros_minimos <- list(
-          "PLANO_GUIANA_BRASILEIRA" = 1.40,
-          "PLANO_ESCUDO_DE_AQUILES" = 1.80,
-          "PLANO_PATRIA_VOLATIL" = 0.40,
-          "PLANO_CABOCLO_DOS_ORACULOS" = 1.30,
-          "PLANO_GRAVIDADE_ZERO" = 2.00,
-          "PLANO_CORISCO_DA_SOLANA" = 0.75,
-          "PLANO_DUELO_DE_TITAS" = 1.10,
-          "PLANO_FLECHA_DE_SAGARANA" = 0.75,
+          "PLANO_GUIANA_BRASILEIRA" = 1.00,
+          "PLANO_ESCUDO_DE_AQUILES" = 1.20,
+          "PLANO_PATRIA_VOLATIL" = 0.35,
+          "PLANO_CABOCLO_DOS_ORACULOS" = 0.55,
+          "PLANO_GRAVIDADE_ZERO" = 1.20,
+          "PLANO_CORISCO_DA_SOLANA" = 0.50,
+          "PLANO_DUELO_DE_TITAS" = 0.80,
+          "PLANO_FLECHA_DE_SAGARANA" = 0.40,
           "PLANO_COFRE_DE_MIDAS" = 0.00
         )
         
