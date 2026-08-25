@@ -136,11 +136,28 @@ resgatar_simple_earn_paxg <- function(qtd = NULL) {
 
 subscrever_simple_earn_paxg <- function(qtd = NULL) {
   tryCatch({
-    if (is.null(qtd) || qtd <= 0.0001) return(FALSE)
-    query <- list(productId = "PAXG001", amount = sprintf("%.6f", qtd))
+    # Se qtd for nula, busca o saldo livre de PAXG na Spot
+    if (is.null(qtd) || qtd <= 0.0001) {
+      acc <- call_binance("/api/v3/account")
+      if (!is.null(acc) && !is.null(acc$balances)) {
+        for (b in acc$balances) {
+          if (b$asset == "PAXG") {
+            qtd <- as.numeric(b$free)
+            break
+          }
+        }
+      }
+    }
+    if (is.null(qtd) || is.na(qtd) || qtd < 0.0001) return(FALSE)
+    
+    # Floor truncation para 4 casas decimais (exige <= saldo livre sem arredondar para cima)
+    floor_qtd <- floor(as.numeric(qtd) * 10000) / 10000
+    if (floor_qtd < 0.0001) return(FALSE)
+    
+    query <- list(productId = "PAXG001", amount = sprintf("%.4f", floor_qtd))
     r <- call_binance_post("/sapi/v1/simple-earn/flexible/subscribe", query)
     if (!is.null(r) && !is.null(r$success) && r$success == TRUE) {
-      cat(sprintf("🔒 [SIMPLE EARN] Subscrição de %.6f PAXG executada com sucesso (Purchase ID: %s)\n", qtd, r$purchaseId))
+      cat(sprintf("🔒 [SIMPLE EARN] Subscrição de %.4f PAXG executada com sucesso (Purchase ID: %s)\n", floor_qtd, r$purchaseId))
       return(TRUE)
     }
   }, error = function(e) {
