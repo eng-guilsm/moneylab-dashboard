@@ -14,15 +14,17 @@ if (file.exists("config_auth.R")) {
 }
 
 # --- PARÂMETROS DE VOLUME HARMONICUS ULTRA-DEEP ---
-VALOR_GUIANA_BRL   <- 150.00 # Guiana: 2 slots de R$ 150 (Teto R$ 300)
-VALOR_VIX_BRL      <- 300.00 # Escudo de Aquiles: 1 slot de R$ 300
-VALOR_PEG_BRL      <- 250.00 # Pátria Volátil: 2 slots de R$ 250
-VALOR_LINK_BRL     <- 120.00 # Caboclo dos Oráculos: 2 slots de R$ 120 (Teto R$ 240)
-VALOR_SPILL_BRL    <- 120.00 # Gravidade Zero: 2 slots de R$ 120 (Teto R$ 240)
-VALOR_CORISCO_BRL  <- 100.00 # Corisco da Solana: 2 slots de R$ 100 (Teto R$ 200)
-VALOR_TITAS_BRL    <- 150.00 # Duelo de Titãs: 2 slots de R$ 150 (Teto R$ 300)
-VALOR_SAGARANA_BRL <- 120.00 # Flecha de Sagarana: 2 slots de R$ 120
-VALOR_MIDAS_BRL    <- 50.00  # Cofre de Midas: DCA R$ 50 a cada 48h (Simple Earn)
+VALOR_GUIANA_BRL   <- 150.0  # R$ 150 - Janela 72h (Acúmulo de Ouro PAXG)
+VALOR_ESCUDO_BRL   <- 200.0  # R$ 200 - Pânico VIX (Anti-Queda BRL -> BTC)
+VALOR_PEG_BRL      <- 250.0  # R$ 250 - Arbitragem USDT/BRL (Peg Dólar)
+VALOR_LINK_BRL     <- 120.0  # R$ 120 - Chainlink 1h Scalp (2 Slots)
+VALOR_SPILL_BRL    <- 120.0  # R$ 120 - Gravidade Zero (BTC -> SOL 72h)
+VALOR_CORISCO_BRL  <- 100.0  # R$ 100 - Solana 15m Scalp (2 Slots)
+VALOR_TITAS_BRL    <- 150.0  # R$ 150 - Duelo de Titãs (BTC -> ETH 24h)
+VALOR_SAGARANA_BRL <- 120.0  # R$ 120 - Flecha de Sagarana (Micro-Dips 5m)
+VALOR_MIDAS_BRL    <- 50.0   # R$ 50  - Cofre de Midas (DCA Ouro 48h Simple Earn)
+VALOR_BNB_BRL      <- 90.0   # R$ 90  - Sentinela de Minas (BNB Scalp 15m + Fee Discount)
+VALOR_ADA_BRL      <- 80.0   # R$ 80  - Sertão Valente (ADA Scalp 30m)
 
 obter_preco_binance <- function(symbol) {
   url <- paste0("https://api.binance.com/api/v3/ticker/price?symbol=", symbol)
@@ -111,6 +113,32 @@ obter_stats_sol_15m <- function() {
   return(list(media = 487.50, sd = 2.50, serie = rep(487.50, 16)))
 }
 
+obter_stats_bnb_15m <- function() {
+  db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
+  tryCatch({
+    con <- dbConnect(SQLite(), db_path)
+    on.exit(dbDisconnect(con))
+    df <- dbGetQuery(con, "SELECT BNBBRL FROM Historico_binance WHERE BNBBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 30;")
+    if (nrow(df) >= 5) {
+      return(list(media = mean(df$BNBBRL[1:min(15, nrow(df))], na.rm = TRUE), sd = max(0.20, sd(df$BNBBRL[1:min(15, nrow(df))], na.rm = TRUE)), serie = rev(df$BNBBRL)))
+    }
+  }, error = function(e) NULL)
+  return(list(media = 3450.0, sd = 15.0, serie = rep(3450.0, 16)))
+}
+
+obter_stats_ada_30m <- function() {
+  db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
+  tryCatch({
+    con <- dbConnect(SQLite(), db_path)
+    on.exit(dbDisconnect(con))
+    df <- dbGetQuery(con, "SELECT ADABRL FROM Historico_binance WHERE ADABRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 60;")
+    if (nrow(df) >= 10) {
+      return(list(media = mean(df$ADABRL[1:min(30, nrow(df))], na.rm = TRUE), sd = max(0.005, sd(df$ADABRL[1:min(30, nrow(df))], na.rm = TRUE)), serie = rev(df$ADABRL)))
+    }
+  }, error = function(e) NULL)
+  return(list(media = 4.80, sd = 0.04, serie = rep(4.80, 16)))
+}
+
 obter_dsp_ativo <- function(vetor_precos) {
   if (is.null(vetor_precos) || length(vetor_precos) < 6) {
     return(list(theta = 0.0, T0 = 24.0, dZ = 0.0, d2Z = 0.0))
@@ -195,6 +223,8 @@ executar_radar_labtrader <- function() {
   p_sol_brl   <- obter_preco_binance("SOLBRL")
   p_eth_brl   <- obter_preco_binance("ETHBRL")
   p_link_brl  <- obter_preco_binance("LINKBRL")
+  p_bnb_brl   <- obter_preco_binance("BNBBRL")
+  p_ada_brl   <- obter_preco_binance("ADABRL")
   
   if (is.null(p_btc_brl) || is.null(p_paxg_usdt) || is.null(p_usdt_brl)) {
     cat(sprintf("[%s] ⚠️ [LABTRADER] Cotações temporariamente indisponíveis na API.\n", agora_str))
@@ -215,6 +245,8 @@ executar_radar_labtrader <- function() {
   stats_sol_btc <- obter_stats_sol_btc_72h()
   stats_sol_15m <- obter_stats_sol_15m()
   stats_eth_btc <- obter_stats_eth_btc_24h()
+  stats_bnb     <- obter_stats_bnb_15m()
+  stats_ada     <- obter_stats_ada_30m()
   ret_btc_5m    <- obter_retorno_btc_5m()
   
   # Modulação Dinâmica de Lote Harmonicus Ultra-Deep
@@ -229,6 +261,8 @@ executar_radar_labtrader <- function() {
   saldo_sol_brl   <- 0
   saldo_eth_brl   <- 0
   saldo_link_brl  <- 0
+  saldo_bnb_brl   <- 0
+  saldo_ada_brl   <- 0
   saldo_usdt_brl  <- 0
   
   if (!is.null(df_w) && is.data.frame(df_w) && nrow(df_w) > 0) {
@@ -238,10 +272,12 @@ executar_radar_labtrader <- function() {
     if ("SOL" %in% df_w$asset)  saldo_sol_brl   <- sum(df_w$free[df_w$asset == "SOL"], na.rm = TRUE) * p_sol_brl
     if ("ETH" %in% df_w$asset)  saldo_eth_brl   <- sum(df_w$free[df_w$asset == "ETH"], na.rm = TRUE) * p_eth_brl
     if ("LINK" %in% df_w$asset) saldo_link_brl  <- sum(df_w$free[df_w$asset == "LINK"], na.rm = TRUE) * p_link_brl
+    if ("BNB" %in% df_w$asset && !is.null(p_bnb_brl))  saldo_bnb_brl  <- sum(df_w$free[df_w$asset == "BNB"], na.rm = TRUE) * p_bnb_brl
+    if ("ADA" %in% df_w$asset && !is.null(p_ada_brl))  saldo_ada_brl  <- sum(df_w$free[df_w$asset == "ADA"], na.rm = TRUE) * p_ada_brl
     if ("USDT" %in% df_w$asset) saldo_usdt_brl  <- sum(df_w$free[df_w$asset == "USDT"], na.rm = TRUE) * p_usdt_brl
   }
   
-  total_patrimonio_est <- saldo_caixa_brl + saldo_btc_brl + saldo_paxg_brl + saldo_sol_brl + saldo_eth_brl + saldo_link_brl + saldo_usdt_brl
+  total_patrimonio_est <- saldo_caixa_brl + saldo_btc_brl + saldo_paxg_brl + saldo_sol_brl + saldo_eth_brl + saldo_link_brl + saldo_bnb_brl + saldo_ada_brl + saldo_usdt_brl
   peso_btc <- ifelse(total_patrimonio_est > 0, saldo_btc_brl / total_patrimonio_est, 0.35)
   
   pedido <- NULL
@@ -434,10 +470,10 @@ executar_radar_labtrader <- function() {
     ratio_eth_btc <- p_eth_brl / p_btc_brl
     z_eth_btc     <- (ratio_eth_btc - stats_eth_btc$media) / stats_eth_btc$sd
     
-    if (z_eth_btc <= -1.00 && saldo_btc_brl >= 45.0 && saldo_eth_brl < 300.0) {
+    if (z_eth_btc <= -1.00 && saldo_btc_brl >= 85.0 && saldo_eth_brl < 300.0) {
       lucro_proj <- max(1.20, ((stats_eth_btc$media / ratio_eth_btc) - 1) * 100)
-      valor_req <- min(VALOR_TITAS_BRL * fator_lote, saldo_btc_brl * 0.30)
-      if (valor_req >= 42.0) {
+      valor_req <- max(85.0, min(VALOR_TITAS_BRL * fator_lote, saldo_btc_brl * 0.40))
+      if (valor_req >= 85.0) {
         pedido <- list(
           estrategia = "PLANO_DUELO_DE_TITAS",
           origem = "BTC", destino = "ETH",
@@ -509,13 +545,93 @@ executar_radar_labtrader <- function() {
     }
   }
   
+  # ----------------------------------------------------------------------------
+  # MOTOR 10: PLANO SENTINELA DE MINAS (BRL <-> BNB 15m Scalp + Desconto Taxas BNB)
+  # ----------------------------------------------------------------------------
+  if (is.null(pedido) && !is.null(p_bnb_brl) && ste_atual >= -0.02 && pc1_atual < 0.75 && w_energy < 55.0) {
+    z_bnb_15m <- (p_bnb_brl - stats_bnb$media) / stats_bnb$sd
+    dsp_bnb   <- obter_dsp_ativo(stats_bnb$serie)
+    
+    # Trava de Caixa Mínimo Global: exige Caixa Livre >= R$ 250
+    if (z_bnb_15m <= -1.35 && saldo_caixa_brl >= 250.0 && saldo_bnb_brl < 180.0) {
+      lote_base_b <- VALOR_BNB_BRL
+      if (dsp_bnb$theta < -0.2 && dsp_bnb$theta > -2.8) lote_base_b <- 120.0
+      if (z_bnb_15m <= -1.60) lote_base_b <- 140.0
+      
+      lote_b <- min(lote_base_b * fator_lote, max(50.0, saldo_caixa_brl * 0.20))
+      lucro_proj <- max(0.80, ((stats_bnb$media / p_bnb_brl) - 1) * 100)
+      
+      pedido <- list(
+        estrategia = "PLANO_SENTINELA_DE_MINAS",
+        origem = "BRL", destino = "BNB",
+        valor_brl = lote_b,
+        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+      )
+    } else if (saldo_bnb_brl >= 20.0) {
+      cond_trailing_b <- (dsp_bnb$d2Z < 0 || dsp_bnb$theta > 0.85)
+      cond_reversao_b <- (z_bnb_15m >= 0.35)
+      
+      if (cond_trailing_b || cond_reversao_b) {
+        lucro_proj <- max(0.60, ((p_bnb_brl / stats_bnb$media) - 1) * 100)
+        pedido <- list(
+          estrategia = "PLANO_SENTINELA_DE_MINAS",
+          origem = "BNB", destino = "BRL",
+          valor_brl = saldo_bnb_brl,
+          lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+        )
+      }
+    }
+  }
+
+  # ----------------------------------------------------------------------------
+  # MOTOR 11: PLANO SERTÃO VALENTE (BRL <-> ADA 30m Scalp / Reversão Harmonicus)
+  # ----------------------------------------------------------------------------
+  if (is.null(pedido) && !is.null(p_ada_brl) && ste_atual >= -0.02 && pc1_atual < 0.75 && w_energy < 55.0) {
+    z_ada_30m <- (p_ada_brl - stats_ada$media) / stats_ada$sd
+    dsp_ada   <- obter_dsp_ativo(stats_ada$serie)
+    
+    # Trava de Caixa Mínimo Global: exige Caixa Livre >= R$ 250
+    if (z_ada_30m <= -1.35 && saldo_caixa_brl >= 250.0 && saldo_ada_brl < 160.0) {
+      lote_base_a <- VALOR_ADA_BRL
+      if (dsp_ada$theta < -0.2 && dsp_ada$theta > -2.8) lote_base_a <- 110.0
+      if (z_ada_30m <= -1.60) lote_base_a <- 130.0
+      
+      lote_a <- min(lote_base_a * fator_lote, max(50.0, saldo_caixa_brl * 0.20))
+      lucro_proj <- max(0.90, ((stats_ada$media / p_ada_brl) - 1) * 100)
+      
+      pedido <- list(
+        estrategia = "PLANO_SERTAO_VALENTE",
+        origem = "BRL", destino = "ADA",
+        valor_brl = lote_a,
+        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+      )
+    } else if (saldo_ada_brl >= 20.0) {
+      cond_trailing_a <- (dsp_ada$d2Z < 0 || dsp_ada$theta > 0.85)
+      cond_reversao_a <- (z_ada_30m >= 0.40)
+      
+      if (cond_trailing_a || cond_reversao_a) {
+        lucro_proj <- max(0.60, ((p_ada_brl / stats_ada$media) - 1) * 100)
+        pedido <- list(
+          estrategia = "PLANO_SERTAO_VALENTE",
+          origem = "ADA", destino = "BRL",
+          valor_brl = saldo_ada_brl,
+          lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+        )
+      }
+    }
+  }
+  
   # Log do Radar em labtrader_radar.log
-  log_line <- sprintf("[%s] RADAR: Z_Guiana=%.2f | VIX=%.2f | SpreadPeg=%.4f | Z_Link=%.2f | Z_SOL=%.2f | Z_SOL15m=%.2f | Z_ETH=%.2f | RetBTC5m=%.2f%% | Disparo=%s\n",
+  z_bnb_val <- if (!is.null(p_bnb_brl)) (p_bnb_brl - stats_bnb$media) / stats_bnb$sd else 0.0
+  z_ada_val <- if (!is.null(p_ada_brl)) (p_ada_brl - stats_ada$media) / stats_ada$sd else 0.0
+  
+  log_line <- sprintf("[%s] RADAR: Z_Guiana=%.2f | VIX=%.2f | SpreadPeg=%.4f | Z_Link=%.2f | Z_SOL=%.2f | Z_SOL15m=%.2f | Z_ETH=%.2f | Z_BNB=%.2f | Z_ADA=%.2f | RetBTC5m=%.2f%% | Disparo=%s\n",
                       agora_str, z_guiana, vix_atual, ifelse(!is.null(usd_oficial), p_usdt_brl - usd_oficial, 0),
                       (p_link_brl - stats_link$media) / stats_link$sd,
                       (p_sol_brl / p_btc_brl - stats_sol_btc$media) / stats_sol_btc$sd,
                       (p_sol_brl - stats_sol_15m$media) / stats_sol_15m$sd,
                       (p_eth_brl / p_btc_brl - stats_eth_btc$media) / stats_eth_btc$sd,
+                      z_bnb_val, z_ada_val,
                       ret_btc_5m * 100,
                       ifelse(!is.null(pedido), pedido$estrategia, "NENHUM"))
   cat(log_line, file = "labtrader_radar.log", append = TRUE)
