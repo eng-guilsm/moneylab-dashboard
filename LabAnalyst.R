@@ -847,6 +847,14 @@ executar_pipeline_harmonicus <- function(db_path = "MoneyBot_Local.db") {
       PRIMARY KEY (Data_Hora, Par_Ativos)
     );")
     
+    cols_existentes <- tryCatch(dbListFields(con, "Harmonicus_Metricas_Globais"), error = function(e) character(0))
+    if (!("Periodo_Dominante_T0" %in% cols_existentes)) {
+      tryCatch(dbExecute(con, "ALTER TABLE Harmonicus_Metricas_Globais ADD COLUMN Periodo_Dominante_T0 REAL;"), error = function(e) NULL)
+    }
+    if (!("SNR_dB" %in% cols_existentes)) {
+      tryCatch(dbExecute(con, "ALTER TABLE Harmonicus_Metricas_Globais ADD COLUMN SNR_dB REAL;"), error = function(e) NULL)
+    }
+    
     dbWriteTable(con, "Harmonicus_Metricas_Globais", df_global, append = TRUE, row.names = FALSE)
     dbWriteTable(con, "Harmonicus_Espectro_Ativos", df_ativos, append = TRUE, row.names = FALSE)
     dbWriteTable(con, "Harmonicus_Pares_Coerencia", df_pares, append = TRUE, row.names = FALSE)
