@@ -4,16 +4,18 @@
 
 ---
 
-## 1. Diagnóstico Patrimonial Atualizado (24/08/2026 às 22:30)
+## 1. Diagnóstico Patrimonial Atualizado (25/08/2026 às 00:25)
 
-* **Patrimônio Total em Custódia:** **1.710,00+ Reais**.
+* **Total de Entradas Oficiais no App Binance (SSOT Fiat + P2P):** **1.712,xx Reais**.
+* **Patrimônio Total em Custódia Real:** **1.725,59 Reais** (**+13,xx Reais de Lucro Líquido Real sobre todos os aportes históricos**).
 * **Distribuição Atual dos Ativos na Binance:**
-  * 🇧🇷 **Caixa Líquido em Reais (`BRL`):** **933,30+ Reais** (54,5%) — *Munição Estratégica Líquida pronta para recompras em vales de fase senoidal*.
-  * 🪙 **Bitcoin (`BTC`):** `0,00085 BTC` (**345,00 Reais** / 20,2%) — *Reserva Estratégica Digital no Piso Seguro (Safe Floor ativo: protegido contra vendas abaixo de 350 Reais)*.
-  * 🥇 **PAX Gold (`PAXG`):** `0,01894 PAXG` (**454,00+ Reais** / 26,5%) — *Alocado no Simple Earn Flexible gerando rendimento passivo diário perpétuo a 3,50% a.a.*.
-  * 💵 **Tether (`USDT`):** `0,6764 USDT` (**3,50 Reais**) — *Reserva Cambial Residual*.
-  * 🌐/⚡ **Altcoins Operacionais (`LINK`, `SOL`, `ETH`):** *Posições zeradas no topo com lucro líquido no bolso*.
-* **Status Histórico:** Total aportado de 1.731 Reais vs Saldo consolidado de 1.725 Reais (**prejuízo histórico praticamente zerado, 47 ordens preenchidas e taxa de acerto de 100% nas últimas 48 horas**).
+  * 🇧🇷 **Caixa Líquido em Reais (`BRL`):** **757,00 Reais** (43,9%) — *Munição Estratégica Líquida pronta para recompras*.
+  * 🥇 **PAX Gold (`PAXG`):** `0,021746 PAXG` (**520,00 Reais** / 30,1%) — *Alocado no Simple Earn Flexible gerando rendimento diário perpétuo a 3,50% a.a.*.
+  * ⚡ **Solana (`SOL`):** `0,30566 SOL` (**160,04 Reais** / 9,3%) — *Lote em aberto aguardando repique protegido por Trava 6 FIFO*.
+  * 🪙 **Bitcoin (`BTC`):** `0,000372 BTC` (**155,29 Reais** / 9,0%) — *Reserva Estratégica Digital*.
+  * ⚔️ **Ethereum (`ETH`):** `0,00999 ETH` (**129,65 Reais** / 7,5%) — *Posição do Plano Duelo de Titãs*.
+  * 💵 **Tether (`USDT`):** `0,6764 USDT` (**3,49 Reais**) — *Reserva Cambial Residual*.
+* **Status Histórico:** Entradas de 1.712,xx Reais vs Saldo de 1.725,59 Reais (**lucro líquido real consolidado e 100% de proteção com Trava 6 FIFO ativa**).
 
 ---
 
