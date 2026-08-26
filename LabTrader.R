@@ -17,10 +17,10 @@ if (file.exists("config_auth.R")) {
 VALOR_GUIANA_BRL   <- 150.0  # R$ 150 - Janela 72h (Acúmulo de Ouro PAXG)
 VALOR_ESCUDO_BRL   <- 200.0  # R$ 200 - Pânico VIX (Anti-Queda BRL -> BTC)
 VALOR_PEG_BRL      <- 250.0  # R$ 250 - Arbitragem USDT/BRL (Peg Dólar)
-VALOR_LINK_BRL     <- 120.0  # R$ 120 - Chainlink 1h Scalp (2 Slots)
+VALOR_LINK_BRL     <- 200.0  # R$ 200 - Chainlink SuperSmoother 10h Power-Grid (4 Slots | Meta +0.70%)
 VALOR_SPILL_BRL    <- 120.0  # R$ 120 - Gravidade Zero (BTC -> SOL 72h)
 VALOR_CORISCO_BRL  <- 100.0  # R$ 100 - Solana 15m Scalp (2 Slots)
-VALOR_TITAS_BRL    <- 200.0  # R$ 200 - Duelo de Titãs (Harmonicus SuperSmoother 10h Maximizer 10x)
+VALOR_TITAS_BRL    <- 200.0  # R$ 200 - Duelo de Titãs (Harmonicus 12h Maximizer)
 VALOR_SAGARANA_BRL <- 120.0  # R$ 120 - Flecha de Sagarana (Micro-Dips 5m)
 VALOR_MIDAS_BRL    <- 50.0   # R$ 50  - Cofre de Midas (DCA Ouro 48h Simple Earn)
 VALOR_BNB_BRL      <- 90.0   # R$ 90  - Sentinela de Minas (BNB Scalp 15m + Fee Discount)
@@ -79,9 +79,14 @@ obter_stats_link_1h <- function() {
   tryCatch({
     con <- dbConnect(SQLite(), db_path)
     on.exit(dbDisconnect(con))
-    df <- dbGetQuery(con, "SELECT LINKBRL FROM Historico_binance WHERE LINKBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 60;")
+    df <- dbGetQuery(con, "SELECT LINKBRL FROM Historico_binance WHERE LINKBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 600;")
     if (nrow(df) >= 15) {
-      return(list(media = mean(df$LINKBRL, na.rm = TRUE), sd = max(0.05, sd(df$LINKBRL, na.rm = TRUE)), serie = rev(df$LINKBRL)))
+      p_rec <- rev(df$LINKBRL)
+      n_r <- length(p_rec)
+      smooth_val <- mean(tail(p_rec, min(10, n_r)))
+      detrend <- p_rec - smooth_val
+      sd_val <- max(0.05, sd(tail(detrend, min(20, n_r))))
+      return(list(media = smooth_val, sd = sd_val, serie = p_rec))
     }
   }, error = function(e) NULL)
   return(list(media = 59.50, sd = 0.30, serie = rep(59.50, 16)))
@@ -381,20 +386,22 @@ executar_radar_labtrader <- function() {
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 4: PLANO CABOCLO DOS ORÁCULOS (BRL <-> LINK 1h | R$ 120 - 2 Slots)
+  # MOTOR 4: PLANO CABOCLO DOS ORÁCULOS (SuperSmoother 10h Power-Grid | R$ 200 - 4 Slots | Meta +0,70%)
   # ----------------------------------------------------------------------------
   if (is.null(pedido) && !is.null(p_link_brl) && ste_atual >= -0.02 && pc1_atual < 0.75 && w_energy < 55.0) {
     z_link <- (p_link_brl - stats_link$media) / stats_link$sd
     dsp_link <- obter_dsp_ativo(stats_link$serie)
     
     # Compra seletiva com Phase Bet Sizing: amplifica lote no vale de fase de Hilbert
-    if (z_link <= -1.35 && saldo_caixa_brl >= 100.0 && saldo_link_brl < 260.0) {
+    cond_entrada_link <- (z_link <= -0.95) && (dsp_link$theta < -0.10 || z_link <= -1.20)
+    
+    if (cond_entrada_link && saldo_caixa_brl >= 100.0 && saldo_link_brl < 450.0) {
       lote_base <- VALOR_LINK_BRL
-      if (dsp_link$theta < -0.2 && dsp_link$theta > -2.8) lote_base <- 145.0
-      if (z_link <= -1.75) lote_base <- 175.0
+      if (dsp_link$theta < -1.10) lote_base <- 240.0
+      if (z_link <= -1.50) lote_base <- 250.0
       
-      lote_l <- min(lote_base * fator_lote, max(50.0, saldo_caixa_brl * 0.25))
-      lucro_proj <- max(1.20, ((stats_link$media / p_link_brl) - 1) * 100)
+      lote_l <- min(lote_base * fator_lote, max(50.0, saldo_caixa_brl * 0.30))
+      lucro_proj <- max(0.70, ((stats_link$media / p_link_brl) - 1) * 100)
       
       pedido <- list(
         estrategia = "PLANO_CABOCLO_DOS_ORACULOS",
@@ -403,12 +410,12 @@ executar_radar_labtrader <- function() {
         lucro_esperado_pct = lucro_proj, timestamp = agora_ts
       )
     } else if (saldo_link_brl >= 30.0) {
-      # Saída Dinâmica Harmonicus: Trailing por Desaceleração (d2Z < 0), Topo de Fase (theta > 0.85) ou Reversão
-      cond_trailing <- (dsp_link$d2Z < 0 || dsp_link$theta > 0.85)
-      cond_reversao <- (z_link >= 0.45)
+      # Saída Dinâmica Harmonicus: Trailing por Desaceleração (d2Z < 0), Topo de Fase (theta > 0.75) ou Reversão
+      cond_trailing <- (dsp_link$d2Z < 0 || dsp_link$theta > 0.75)
+      cond_reversao <- (z_link >= 0.25)
       
       if (cond_trailing || cond_reversao) {
-        lucro_proj <- max(0.65, ((p_link_brl / stats_link$media) - 1) * 100)
+        lucro_proj <- max(0.70, ((p_link_brl / stats_link$media) - 1) * 100)
         pedido <- list(
           estrategia = "PLANO_CABOCLO_DOS_ORACULOS",
           origem = "LINK", destino = "BRL",

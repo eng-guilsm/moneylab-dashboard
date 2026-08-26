@@ -54,7 +54,7 @@ graph TD
 | **1** | **Plano Guiana Brasileira** | `PAXG <-> BTC` | **150 Reais (Teto 450)** | \(Z_{72h} \le -0,60\sigma\) | Reversão à média (**+1,00%**) | Retém 50% em Ouro no Simple Earn |
 | **2** | **Plano Escudo de Aquiles** | `BRL -> BTC` | **200 Reais (Teto 350)** | \(VIX \ge 21,00\) pts (Pânico Macro) | Normalização VIX (**+1,20%**) | 50% do lucro vai para Ouro PAXG |
 | **3** | **Plano Pátria Volátil** | `BRL <-> USDT` | **250 Reais (Teto 500)** | Spread \(\le -0,0200\) / \(\ge +0,0200\) | Reversão Paridade (**+0,35%**) | Caixa Livre BRL |
-| **4** | **Plano Caboclo dos Oráculos** | `BRL <-> LINK` | **120 Reais (145 a 175 no vale \(\theta_t\))** | \(Z_{1h} \le -1,35\sigma\) | Desaceleração \(d^2Z/dt^2 < 0\) (**+0,55% a +2,20%**) | Caixa Livre BRL |
+| **4** | **Plano Caboclo dos Oráculos** | `BRL <-> LINK` | **200 Reais (Teto 450)** | \(Z_{\text{detrend}} \le -0,95\sigma\) | SuperSmoother 10h (**+0,70%**) | **SuperSmoother Power-Grid (+2.476,63 Reais em 10m / +1.699,79 Reais em 2026)** |
 | **5** | **Plano Gravidade Zero** | `BTC -> SOL ➔ BRL` | **120 Reais (Teto 220)** | Ratio \(Z_{72h} \le -1,00\sigma\) / \(\ge +1,00\sigma\) | Topo de Ratio (**+1,20%**) | 35% do alfa vai para Ouro PAXG |
 | **6** | **Plano Corisco da Solana** | `BRL <-> SOL` | **100 Reais (130 a 160 no vale \(\theta_t\))** | \(Z_{15m} \le -1,35\sigma\) | Desaceleração \(d^2Z/dt^2 < 0\) (**+0,50% a +2,50%**) | Caixa Livre BRL |
 | **7** | **Plano Duelo de Titãs** | `BTC -> ETH ➔ BRL / Dual` | **200 Reais (Teto 500)** | \(Z_{12h} \le -1,00\sigma\) | Reversão \(\ge +0,30\sigma\) (**+0,70%**) | **Harmonicus Maximizer (+1.271,82 Reais em 10m / +887,48 Reais em 2026)** |
