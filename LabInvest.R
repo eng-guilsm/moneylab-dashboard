@@ -63,7 +63,7 @@ cotacao_rapida <- function() {
   
   # Cálculo de latência em segundos
   ts_captura <- as.POSIXct(df_b$Data_Hora[1])
-  latencia <- round(as.numeric(difftime(Sys.time(), ts_captura, units = "secs")), 0)
+  latencia <- abs(round(as.numeric(difftime(Sys.time(), ts_captura, units = "secs")), 0))
   
   fmt <- function(x) {
     if (is.null(x) || is.na(x)) return("N/D")
