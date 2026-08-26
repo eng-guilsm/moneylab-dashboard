@@ -94,7 +94,8 @@ repeat {
         dplyr::select(Data_Hora, Symbol = symbol, Price) %>%
         tidyr::pivot_wider(names_from = Symbol, values_from = Price)
       
-      if(db_safe_append("Historico_binance", meus_dados)) cat("    ✅ DB: Binance OK.\n")
+      meus_dados$Origem_Dado <- "TICK_REAL_FARIALIMER"
+      if(db_safe_append("Historico_binance", meus_dados)) cat("    ✅ DB: Binance OK (Tag: TICK_REAL_FARIALIMER).\n")
     }
     last_run_binance <- Sys.time()
   }
