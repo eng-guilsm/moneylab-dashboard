@@ -53,39 +53,30 @@ cotacao_rapida <- function() {
   
   con <- tryCatch(dbConnect(RSQLite::SQLite(), DB_FILE), error = function(e) NULL)
   if(is.null(con)) return("⚠️ Erro: Singularidade no Banco de Dados (Offline).")
+  on.exit(tryCatch(dbDisconnect(con), error = function(e) NULL))
   
-  # Puxamos os dados mais recentes de Binance e TradFi
-  df_b <- tryCatch(dbGetQuery(con, "SELECT Data_Hora, BTCBRL, ETHBRL, SOLBRL, LINKBRL, BNBBRL, NEARBRL, ADABRL, USDTBRL FROM Historico_binance ORDER BY Data_Hora DESC LIMIT 1"), error = function(e) NULL)
-  df_r <- tryCatch(dbGetQuery(con, "SELECT Data_Hora, USD_BRL, IBOV_Pts, SP500_Pts FROM Historico_rapido ORDER BY Data_Hora DESC LIMIT 1"), error = function(e) NULL)
-  dbDisconnect(con)
+  # Puxa exclusivamente BTCBRL e USD_BRL de forma 100% isolada e imune a alterações em outras colunas
+  df_b <- tryCatch(dbGetQuery(con, "SELECT Data_Hora, BTCBRL FROM Historico_binance WHERE BTCBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 1"), error = function(e) NULL)
+  df_r <- tryCatch(dbGetQuery(con, "SELECT Data_Hora, USD_BRL FROM Historico_rapido WHERE USD_BRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 1"), error = function(e) NULL)
   
-  if(is.null(df_b) || is.null(df_r) || nrow(df_b) == 0) return("⚠️ Horizonte de eventos vazio (Sem dados no DB).")
+  if(is.null(df_b) || nrow(df_b) == 0 || is.null(df_r) || nrow(df_r) == 0) return("⚠️ Horizonte de eventos vazio (Sem dados no DB).")
   
-  # Cálculo de latência em segundos
+  # Cálculo de latência temporal em relação à captura do banco
   ts_captura <- as.POSIXct(df_b$Data_Hora[1])
   latencia <- abs(round(as.numeric(difftime(Sys.time(), ts_captura, units = "secs")), 0))
   
   fmt <- function(x) {
     if (is.null(x) || is.na(x)) return("N/D")
-    formatC(as.numeric(x), format="f", big.mark=".", decimal.mark=",", digits=ifelse(x < 10, 3, 2))
+    formatC(as.numeric(x), format="f", big.mark=".", decimal.mark=",", digits=2)
   }
   
-  status_latencia <- if (latencia <= 120) "🟢 <b>Status:</b> Tempo Real" else sprintf("⚠️ <b>Aviso:</b> Latência de %d seg", latencia)
-  
-  # Construção da Mensagem com Auditoria Temporal
-  msg <- paste0("<b>💰 MERCADO CRIPTO & TRADFI (DB)</b>\n\n",
-                "🪙 <b>Bitcoin (BTC):</b> R$ ", fmt(df_b$BTCBRL), "\n",
-                "🔹 <b>Ethereum (ETH):</b> R$ ", fmt(df_b$ETHBRL), "\n",
-                "⚡ <b>Solana (SOL):</b> R$ ", fmt(df_b$SOLBRL), "\n",
-                "🔗 <b>Chainlink (LINK):</b> R$ ", fmt(df_b$LINKBRL), "\n",
-                "🌐 <b>NEAR Protocol:</b> R$ ", fmt(df_b$NEARBRL), "\n",
-                "🔶 <b>Binance Coin (BNB):</b> R$ ", fmt(df_b$BNBBRL), "\n",
-                "🌵 <b>Cardano (ADA):</b> R$ ", fmt(df_b$ADABRL), "\n",
-                "💵 <b>Dólar Comercial:</b> R$ ", fmt(df_r$USD_BRL), "\n",
-                "💎 <b>Tether (USDT):</b> R$ ", fmt(df_b$USDTBRL), "\n\n",
-                "🕒 <b>Captura DB:</b> ", format(ts_captura, "%H:%M:%S (%d/%m)"), "\n",
-                "⏱️ <b>Latência:</b> ", latencia, "s atrás | ", status_latencia, "\n",
-                "📱 <b>Hora Local:</b> ", format(Sys.time(), "%H:%M:%S"))
+  # Construção da Mensagem Canônica (Exclusiva Bitcoin e Dólar)
+  msg <- paste0("<b>💰 MERCADO LOCAL (DB)</b>\n\n",
+                "🪙 <b>BTC:</b> R$ ", fmt(df_b$BTCBRL), "\n",
+                "💵 <b>USD:</b> R$ ", fmt(df_r$USD_BRL), "\n\n",
+                "🕒 <b>Captura DB:</b> ", format(ts_captura, "%H:%M:%S"), "\n",
+                "⏱️ <b>Latência:</b> ", latencia, "s atrás\n",
+                "📱 <b>Agora:</b> ", format(Sys.time(), "%H:%M:%S"))
   
   return(msg)
 }
