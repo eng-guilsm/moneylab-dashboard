@@ -24,13 +24,33 @@ bot <- Bot(token = TG_INVEST_TOKEN)
 db_file <- "MoneyBot_Local.db"
 
 # ------------------------------------------------------------------------------
-# FUNÇÃO TÉCNICA: db_safe_append
+# FUNÇÃO TÉCNICA: db_safe_append (Auto-Schema Migration & Fail-Safe)
 # ------------------------------------------------------------------------------
 db_safe_append <- function(table_name, data) {
   tryCatch({
     temp_con <- dbConnect(RSQLite::SQLite(), db_file)
-    dbWriteTable(temp_con, table_name, data, append = TRUE)
-    dbDisconnect(temp_con)
+    on.exit(dbDisconnect(temp_con))
+    
+    if (dbExistsTable(temp_con, table_name)) {
+      cols_db <- dbListFields(temp_con, table_name)
+      cols_df <- names(data)
+      
+      # 1. Adiciona dinamicamente colunas faltantes no SQLite
+      cols_missing_db <- setdiff(cols_df, cols_db)
+      if (length(cols_missing_db) > 0) {
+        for (col_m in cols_missing_db) {
+          tryCatch(dbExecute(temp_con, sprintf("ALTER TABLE %s ADD COLUMN %s REAL;", table_name, col_m)), error = function(e) NULL)
+        }
+        cols_db <- dbListFields(temp_con, table_name)
+      }
+      
+      # 2. Garante que apenas colunas válidas sejam enviadas para o append
+      cols_common <- intersect(cols_df, cols_db)
+      data_filtered <- data[, cols_common, drop = FALSE]
+      dbWriteTable(temp_con, table_name, data_filtered, append = TRUE)
+    } else {
+      dbWriteTable(temp_con, table_name, data, append = TRUE)
+    }
     return(TRUE)
   }, error = function(e) {
     cat(paste0("    ⚠️ [FALHA SQL] ", conditionMessage(e), "\n"))
