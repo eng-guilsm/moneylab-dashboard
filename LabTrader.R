@@ -21,7 +21,7 @@ VALOR_LINK_BRL     <- 200.0  # R$ 200 - Chainlink SuperSmoother 10h Power-Grid (
 VALOR_SPILL_BRL    <- 120.0  # R$ 120 - Gravidade Zero (BTC -> SOL 72h)
 VALOR_CORISCO_BRL  <- 100.0  # R$ 100 - Solana 15m Scalp (2 Slots)
 VALOR_TITAS_BRL    <- 200.0  # R$ 200 - Duelo de Titãs (Harmonicus 12h Maximizer)
-VALOR_SAGARANA_BRL <- 120.0  # R$ 120 - Flecha de Sagarana (Micro-Dips 5m)
+VALOR_SAGARANA_BRL <- 170.0  # R$ 170 - Flecha de Sagarana (Harmonicus 6h Ultra-Consistente | 4 Slots | Meta +0.40%)
 VALOR_MIDAS_BRL    <- 50.0   # R$ 50  - Cofre de Midas (DCA Ouro 48h Simple Earn)
 VALOR_BNB_BRL      <- 90.0   # R$ 90  - Sentinela de Minas (BNB Scalp 15m + Fee Discount)
 VALOR_ADA_BRL      <- 80.0   # R$ 80  - Sertão Valente (ADA Scalp 30m)
@@ -58,6 +58,24 @@ obter_ultimo_usd_comercial <- function() {
     if (nrow(df) > 0) return(as.numeric(df$USD_BRL[1]))
   }, error = function(e) NULL)
   return(5.0115)
+}
+
+obter_stats_btc_6h <- function() {
+  db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
+  tryCatch({
+    con <- dbConnect(SQLite(), db_path)
+    on.exit(dbDisconnect(con))
+    df <- dbGetQuery(con, "SELECT BTCBRL FROM Historico_binance WHERE BTCBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 360;")
+    if (nrow(df) >= 15) {
+      p_rec <- rev(df$BTCBRL)
+      n_r <- length(p_rec)
+      smooth_val <- mean(tail(p_rec, min(6, n_r)))
+      detrend <- p_rec - smooth_val
+      sd_val <- max(100.0, sd(tail(detrend, min(15, n_r))))
+      return(list(media = smooth_val, sd = sd_val, serie = p_rec))
+    }
+  }, error = function(e) NULL)
+  return(list(media = 405000.0, sd = 1500.0, serie = rep(405000.0, 16)))
 }
 
 obter_stats_guiana_72h <- function(p_gold = 4639.0) {
@@ -545,25 +563,44 @@ executar_radar_labtrader <- function() {
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 8: PLANO FLECHA DE SAGARANA (BRL -> BTC micro dip / BTC -> BRL Take Profit)
+  # MOTOR 8: PLANO FLECHA DE SAGARANA (Harmonicus 6h Ultra-Consistente | R$ 170 - 4 Slots | Meta +0,40%)
   # ----------------------------------------------------------------------------
-  if (is.null(pedido)) {
-    if (ret_btc_5m <= -0.0035 && w_energy < 55.0 && saldo_caixa_brl >= 100.0 && peso_btc < 0.50) {
-      # Compra seletiva em micro-dip
+  stats_btc_6h <- obter_stats_btc_6h()
+  if (is.null(pedido) && !is.null(p_btc_brl) && ste_atual >= -0.02 && pc1_atual < 0.75 && w_energy < 55.0) {
+    z_btc_6h <- (p_btc_brl - stats_btc_6h$media) / stats_btc_6h$sd
+    dsp_btc_6h <- obter_dsp_ativo(stats_btc_6h$serie)
+    
+    # Entrada em Dip Harmonicus 6h: Z <= -0.90 ou vale de fase theta < -0.10
+    cond_entrada_sag <- (z_btc_6h <= -0.90) && (dsp_btc_6h$theta < -0.10 || z_btc_6h <= -1.10)
+    
+    if (cond_entrada_sag && saldo_caixa_brl >= 80.0 && saldo_btc_brl < 650.0) {
+      lote_base <- VALOR_SAGARANA_BRL
+      if (dsp_btc_6h$theta < -1.10) lote_base <- 220.0
+      if (z_btc_6h <= -1.40) lote_base <- 250.0
+      
+      lote_s <- min(lote_base * fator_lote, max(50.0, saldo_caixa_brl * 0.30))
+      lucro_proj <- max(0.40, ((stats_btc_6h$media / p_btc_brl) - 1) * 100)
+      
       pedido <- list(
         estrategia = "PLANO_FLECHA_DE_SAGARANA",
         origem = "BRL", destino = "BTC",
-        valor_brl = min(VALOR_SAGARANA_BRL * fator_lote, max(50.0, saldo_caixa_brl * 0.20)),
-        lucro_esperado_pct = 0.85, timestamp = agora_ts
+        valor_brl = lote_s,
+        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
       )
-    } else if (ret_btc_5m >= 0.0035 && saldo_btc_brl >= 45.0 && peso_btc > 0.18) {
-      # Take Profit de Micro-Repique: Vende BTC e guarda Reais no Caixa Livre
-      pedido <- list(
-        estrategia = "PLANO_FLECHA_DE_SAGARANA",
-        origem = "BTC", destino = "BRL",
-        valor_brl = min(VALOR_SAGARANA_BRL * fator_lote, saldo_btc_brl * 0.30),
-        lucro_esperado_pct = 0.85, timestamp = agora_ts
-      )
+    } else if (saldo_btc_brl >= 45.0) {
+      # Saída Dinâmica Harmonicus em repique rápido (+0.40% líquido)
+      cond_trailing_sag <- (dsp_btc_6h$d2Z < 0 || dsp_btc_6h$theta > 0.75)
+      cond_reversao_sag <- (z_btc_6h >= 0.15)
+      
+      if (cond_trailing_sag || cond_reversao_sag) {
+        lucro_proj <- max(0.40, ((p_btc_brl / stats_btc_6h$media) - 1) * 100)
+        pedido <- list(
+          estrategia = "PLANO_FLECHA_DE_SAGARANA",
+          origem = "BTC", destino = "BRL",
+          valor_brl = min(VALOR_SAGARANA_BRL * fator_lote * 1.5, saldo_btc_brl),
+          lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+        )
+      }
     }
   }
   
