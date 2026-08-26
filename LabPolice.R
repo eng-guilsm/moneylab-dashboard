@@ -453,7 +453,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_GRAVIDADE_ZERO" = 220.00,
           "PLANO_CORISCO_DA_SOLANA" = 220.00,
           "PLANO_DUELO_DE_TITAS" = 300.00,
-          "PLANO_FLECHA_DE_SAGARANA" = 200.00,
+          "PLANO_FLECHA_DE_SAGARANA" = 250.00,
           "PLANO_COFRE_DE_MIDAS" = 55.00,
           "PLANO_SENTINELA_DE_MINAS" = 180.00,
           "PLANO_SERTAO_VALENTE" = 160.00,
@@ -525,20 +525,21 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           motivo_veto <- sprintf("Estratégia '%s' não autorizada pelo protocolo", estrategia_nome)
         }
         
-        # Trava 2: Teto de Volume por Estratégia e Teto de Exposição em Aberto
+        # Trava 2: Teto de Volume por Estratégia (Apenas para Compras / Aportes de Caixa)
         if (aprovado) {
-          # Se for venda/liquidação para Caixa BRL, permite liquidar até R$ 500.00 acumulados da custódia
-          teto_permitido <- ifelse(pedido$destino == "BRL", 500.00, 
-                            ifelse(!is.null(tetos_volume[[estrategia_nome]]), tetos_volume[[estrategia_nome]], 200.00))
-          if (is.null(pedido$valor_brl) || pedido$valor_brl > teto_permitido) {
-            aprovado <- FALSE
-            motivo_veto <- sprintf("Volume excede o teto de R$ %.2f para %s (Solicitado: R$ %.2f)", 
-                                   teto_permitido, estrategia_nome, pedido$valor_brl)
+          if (pedido$origem == "BRL") {
+            teto_permitido <- ifelse(!is.null(tetos_volume[[estrategia_nome]]), tetos_volume[[estrategia_nome]], 200.00)
+            if (is.null(pedido$valor_brl) || pedido$valor_brl > teto_permitido) {
+              aprovado <- FALSE
+              motivo_veto <- sprintf("Volume excede o teto de compra de R$ %.2f para %s (Solicitado: R$ %.2f)", 
+                                     teto_permitido, estrategia_nome, pedido$valor_brl)
+            }
           }
+          # Vendas / Realização de Lucro (Origem != BRL): Autorização de 100% da custódia do ativo
           
           # Subtrava 2.1: Teto de Posição Cumulativa em Aberto (Anti-Empilhamento de Compras Multi-Tranche)
           if (aprovado && pedido$origem == "BRL" && pedido$destino %in% c("SOL", "LINK", "ETH", "USDT", "BTC", "PAXG", "BNB", "ADA", "NEAR")) {
-            teto_custodia_map <- list(SOL = 220.0, LINK = 450.0, ETH = 500.0, USDT = 500.0, BTC = 600.0, PAXG = 800.0, BNB = 180.0, ADA = 160.0, NEAR = 180.0)
+            teto_custodia_map <- list(SOL = 220.0, LINK = 450.0, ETH = 500.0, USDT = 500.0, BTC = 650.0, PAXG = 800.0, BNB = 180.0, ADA = 160.0, NEAR = 180.0)
             teto_custodia <- ifelse(!is.null(teto_custodia_map[[pedido$destino]]), teto_custodia_map[[pedido$destino]], 250.0)
             
             saldo_ativo_brl <- 0.0

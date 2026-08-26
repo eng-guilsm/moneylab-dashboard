@@ -58,7 +58,7 @@ graph TD
 | **5** | **Plano Gravidade Zero** | `BTC -> SOL ➔ BRL` | **120 Reais (Teto 220)** | Ratio \(Z_{72h} \le -1,00\sigma\) / \(\ge +1,00\sigma\) | Topo de Ratio (**+1,20%**) | 35% do alfa vai para Ouro PAXG |
 | **6** | **Plano Corisco da Solana** | `BRL <-> SOL` | **100 Reais (130 a 160 no vale \(\theta_t\))** | \(Z_{15m} \le -1,35\sigma\) | Desaceleração \(d^2Z/dt^2 < 0\) (**+0,50% a +2,50%**) | Caixa Livre BRL |
 | **7** | **Plano Duelo de Titãs** | `BTC -> ETH ➔ BRL / Dual` | **200 Reais (Teto 500)** | \(Z_{12h} \le -1,00\sigma\) | Reversão \(\ge +0,30\sigma\) (**+0,70%**) | **Harmonicus Maximizer (+1.271,82 Reais em 10m / +887,48 Reais em 2026)** |
-| **8** | **Plano Flecha de Sagarana** | `BRL <-> BTC` | **120 Reais (Teto 200)** | Micro-Dip 5m \(\le -0,35\%\) | Repique 5m (**+0,40%**) | 40% do lucro vai para Ouro PAXG |
+| **8** | **Plano Flecha de Sagarana** | `BRL <-> BTC` | **170 Reais (Teto 250)** | \(Z_{\text{detrend 6h}} \le -0,90\sigma\) | Repique Harmonicus 6h (**+0,40%**) | **Harmonicus Ultra-Consistente (+1.429,97 Reais em 10m / +1.054,98 Reais em 2026)** |
 | **9** | **Plano Cofre de Midas** | `BRL -> USDT -> PAXG` | **50 Reais (Sem Venda)** | DCA a cada 48h (Exige Caixa Livre \(\ge 150\) Reais) | Smart Routing (**+3,50% a.a.**) | **100% no Simple Earn Flexible** |
 | **10** | **Plano Sentinela de Minas** | `BRL <-> BNB` | **90 Reais (120 a 140 no vale \(\theta_t\))** | \(Z_{15m} \le -1,35\sigma\) | Desaceleração \(d^2Z/dt^2 < 0\) (**+0,80%**) | **25% de Desconto de Corretagem BNB** |
 | **11** | **Plano Sertão Valente** | `BRL <-> ADA` | **80 Reais (110 a 130 no vale \(\theta_t\))** | \(Z_{30m} \le -1,35\sigma\) | Desaceleração \(d^2Z/dt^2 < 0\) (**+0,90%**) | Caixa Livre BRL |
