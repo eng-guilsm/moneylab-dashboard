@@ -25,7 +25,25 @@ VALOR_SAGARANA_BRL <- 170.0  # R$ 170 - Flecha de Sagarana (Harmonicus 6h Ultra-
 VALOR_MIDAS_BRL    <- 50.0   # R$ 50  - Cofre de Midas (DCA Ouro 48h Simple Earn)
 VALOR_BNB_BRL      <- 90.0   # R$ 90  - Sentinela de Minas (BNB Scalp 15m + Fee Discount)
 VALOR_ADA_BRL      <- 80.0   # R$ 80  - Sertão Valente (ADA Scalp 30m)
-VALOR_NEAR_BRL     <- 90.0   # R$ 90  - Farol de NEAR (NEAR Scalp 24m Descorrelacionado / Anti-BTC)
+VALOR_NEAR_BRL     <- 200.0  # R$ 200 - Farol de NEAR (Harmonicus 10h Maximizer 10x | 4 Slots | Meta +0.70%)
+
+obter_stats_near_10h <- function() {
+  db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
+  tryCatch({
+    con <- dbConnect(SQLite(), db_path)
+    on.exit(dbDisconnect(con))
+    df <- dbGetQuery(con, "SELECT NEARBRL FROM Historico_binance WHERE NEARBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 600;")
+    if (nrow(df) >= 15) {
+      p_rec <- rev(df$NEARBRL)
+      n_r <- length(p_rec)
+      smooth_val <- mean(tail(p_rec, min(10, n_r)))
+      detrend <- p_rec - smooth_val
+      sd_val <- max(0.01, sd(tail(detrend, min(20, n_r))))
+      return(list(media = smooth_val, sd = sd_val, serie = p_rec))
+    }
+  }, error = function(e) NULL)
+  return(list(media = 9.65, sd = 0.15, serie = rep(9.65, 16)))
+}
 
 obter_preco_binance <- function(symbol) {
   url <- paste0("https://api.binance.com/api/v3/ticker/price?symbol=", symbol)
@@ -710,20 +728,22 @@ executar_radar_labtrader <- function() {
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 12: PLANO FAROL DE NEAR (BRL <-> NEAR 24m Scalp Descorrelacionado / Anti-BTC)
+  # MOTOR 12: PLANO FAROL DE NEAR (Harmonicus 10h Maximizer | R$ 200 - 4 Slots | Meta +0,70%)
   # ----------------------------------------------------------------------------
   if (is.null(pedido) && !is.null(p_near_brl) && ste_atual >= -0.02 && pc1_atual < 0.75 && w_energy < 55.0) {
-    z_near_24m <- (p_near_brl - stats_near$media) / stats_near$sd
-    dsp_near   <- obter_dsp_ativo(stats_near$serie)
+    z_near <- (p_near_brl - stats_near_10h$media) / stats_near_10h$sd
+    dsp_near <- obter_dsp_ativo(stats_near_10h$serie)
     
-    # Trava de Caixa Mínimo Global: exige Caixa Livre >= R$ 250
-    if (z_near_24m <= -1.35 && saldo_caixa_brl >= 250.0 && saldo_near_brl < 180.0) {
+    # Entrada seletiva com Phase Bet Sizing: amplifica lote no vale de fase de Hilbert
+    cond_entrada_near <- (z_near <= -0.95) && (dsp_near$theta < -0.10 || z_near <= -1.15)
+    
+    if (cond_entrada_near && saldo_caixa_brl >= 100.0 && saldo_near_brl < 450.0) {
       lote_base_n <- VALOR_NEAR_BRL
-      if (dsp_near$theta < -0.2 && dsp_near$theta > -2.8) lote_base_n <- 100.0
-      if (z_near_24m <= -1.60) lote_base_n <- 120.0
+      if (dsp_near$theta < -1.10) lote_base_n <- 240.0
+      if (z_near <= -1.40) lote_base_n <- 250.0
       
-      lote_n <- min(lote_base_n * fator_lote, max(50.0, saldo_caixa_brl * 0.20))
-      lucro_proj <- max(0.80, ((stats_near$media / p_near_brl) - 1) * 100)
+      lote_n <- min(lote_base_n * fator_lote, max(50.0, saldo_caixa_brl * 0.30))
+      lucro_proj <- max(0.70, ((stats_near_10h$media / p_near_brl) - 1) * 100)
       
       pedido <- list(
         estrategia = "PLANO_FAROL_DE_NEAR",
@@ -732,11 +752,12 @@ executar_radar_labtrader <- function() {
         lucro_esperado_pct = lucro_proj, timestamp = agora_ts
       )
     } else if (saldo_near_brl >= 20.0) {
-      cond_trailing_n <- (dsp_near$d2Z < 0 || dsp_near$theta > 0.85)
-      cond_reversao_n <- (z_near_24m >= 0.35)
+      # Saída Dinâmica Harmonicus: Trailing por Desaceleração (d2Z < 0), Topo de Fase (theta > 0.75) ou Reversão
+      cond_trailing_n <- (dsp_near$d2Z < 0 || dsp_near$theta > 0.75)
+      cond_reversao_n <- (z_near >= 0.25)
       
       if (cond_trailing_n || cond_reversao_n) {
-        lucro_proj <- max(0.60, ((p_near_brl / stats_near$media) - 1) * 100)
+        lucro_proj <- max(0.70, ((p_near_brl / stats_near_10h$media) - 1) * 100)
         pedido <- list(
           estrategia = "PLANO_FAROL_DE_NEAR",
           origem = "NEAR", destino = "BRL",

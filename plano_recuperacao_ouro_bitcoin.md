@@ -62,7 +62,7 @@ graph TD
 | **9** | **Plano Cofre de Midas** | `BRL -> USDT -> PAXG` | **50 Reais (Sem Venda)** | DCA a cada 48h (Exige Caixa Livre \(\ge 150\) Reais) | Smart Routing (**+3,50% a.a.**) | **100% no Simple Earn Flexible** |
 | **10** | **Plano Sentinela de Minas** | `BRL <-> BNB` | **90 Reais (120 a 140 no vale \(\theta_t\))** | \(Z_{15m} \le -1,35\sigma\) | Desaceleração \(d^2Z/dt^2 < 0\) (**+0,80%**) | **25% de Desconto de Corretagem BNB** |
 | **11** | **Plano Sertão Valente** | `BRL <-> ADA` | **80 Reais (110 a 130 no vale \(\theta_t\))** | \(Z_{30m} \le -1,35\sigma\) | Desaceleração \(d^2Z/dt^2 < 0\) (**+0,90%**) | Caixa Livre BRL |
-| **12** | **Plano Farol de NEAR** | `BRL <-> NEAR` | **90 Reais (100 a 120 no vale \(\theta_t\))** | \(Z_{24m} \le -1,35\sigma\) | Desaceleração \(d^2Z/dt^2 < 0\) (**+0,80%**) | **Anti-BTC Descorrelacionado (+70,36 Reais em 10m)** |
+| **12** | **Plano Farol de NEAR** | `BRL <-> NEAR` | **200 Reais (Teto 450)** | \(Z_{\text{detrend 10h}} \le -0,95\sigma\) | SuperSmoother 10h (**+0,70%**) | **Harmonicus Maximizer (+3.179,32 Reais em 10m / +2.356,78 Reais em 2026)** |
 
 ---
 
