@@ -449,7 +449,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_GUIANA_BRASILEIRA" = 250.00,
           "PLANO_ESCUDO_DE_AQUILES" = 350.00,
           "PLANO_PATRIA_VOLATIL" = 350.00,
-          "PLANO_CABOCLO_DOS_ORACULOS" = 260.00,
+          "PLANO_CABOCLO_DOS_ORACULOS" = 300.00,
           "PLANO_GRAVIDADE_ZERO" = 220.00,
           "PLANO_CORISCO_DA_SOLANA" = 220.00,
           "PLANO_DUELO_DE_TITAS" = 300.00,
@@ -464,7 +464,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_GUIANA_BRASILEIRA" = 1.00,
           "PLANO_ESCUDO_DE_AQUILES" = 1.20,
           "PLANO_PATRIA_VOLATIL" = 0.35,
-          "PLANO_CABOCLO_DOS_ORACULOS" = 0.55,
+          "PLANO_CABOCLO_DOS_ORACULOS" = 0.70,
           "PLANO_GRAVIDADE_ZERO" = 1.20,
           "PLANO_CORISCO_DA_SOLANA" = 0.50,
           "PLANO_DUELO_DE_TITAS" = 0.70,
@@ -538,7 +538,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           
           # Subtrava 2.1: Teto de Posição Cumulativa em Aberto (Anti-Empilhamento de Compras Multi-Tranche)
           if (aprovado && pedido$origem == "BRL" && pedido$destino %in% c("SOL", "LINK", "ETH", "USDT", "BTC", "PAXG", "BNB", "ADA", "NEAR")) {
-            teto_custodia_map <- list(SOL = 220.0, LINK = 250.0, ETH = 500.0, USDT = 500.0, BTC = 600.0, PAXG = 800.0, BNB = 180.0, ADA = 160.0, NEAR = 180.0)
+            teto_custodia_map <- list(SOL = 220.0, LINK = 450.0, ETH = 500.0, USDT = 500.0, BTC = 600.0, PAXG = 800.0, BNB = 180.0, ADA = 160.0, NEAR = 180.0)
             teto_custodia <- ifelse(!is.null(teto_custodia_map[[pedido$destino]]), teto_custodia_map[[pedido$destino]], 250.0)
             
             saldo_ativo_brl <- 0.0
@@ -594,8 +594,9 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
               cooldown_req <- ifelse(estrategia_nome == "PLANO_COFRE_DE_MIDAS", 48.0,
                               ifelse(estrategia_nome %in% c("PLANO_CORISCO_DA_SOLANA", "PLANO_SENTINELA_DE_MINAS"), 0.16, 
                               ifelse(estrategia_nome %in% c("PLANO_FLECHA_DE_SAGARANA", "PLANO_SERTAO_VALENTE", "PLANO_FAROL_DE_NEAR"), 0.25,
+                              ifelse(estrategia_nome == "PLANO_CABOCLO_DOS_ORACULOS", 1.0,
                               ifelse(estrategia_nome == "PLANO_DUELO_DE_TITAS", 1.5,
-                              ifelse(grepl("ORACULOS|GRAVIDADE", estrategia_nome), 0.33, 1.0)))))
+                              ifelse(grepl("GRAVIDADE", estrategia_nome), 0.33, 1.0))))))
               
               # Se for realização de lucro / rotação oposta, zera o cooldown
               ultimo_reg <- tail(hist_est, 1)
