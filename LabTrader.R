@@ -20,7 +20,7 @@ VALOR_PEG_BRL      <- 250.0  # R$ 250 - Arbitragem USDT/BRL (Peg Dólar)
 VALOR_LINK_BRL     <- 120.0  # R$ 120 - Chainlink 1h Scalp (2 Slots)
 VALOR_SPILL_BRL    <- 120.0  # R$ 120 - Gravidade Zero (BTC -> SOL 72h)
 VALOR_CORISCO_BRL  <- 100.0  # R$ 100 - Solana 15m Scalp (2 Slots)
-VALOR_TITAS_BRL    <- 150.0  # R$ 150 - Duelo de Titãs (BTC -> ETH 24h)
+VALOR_TITAS_BRL    <- 200.0  # R$ 200 - Duelo de Titãs (Harmonicus SuperSmoother 10h Maximizer 10x)
 VALOR_SAGARANA_BRL <- 120.0  # R$ 120 - Flecha de Sagarana (Micro-Dips 5m)
 VALOR_MIDAS_BRL    <- 50.0   # R$ 50  - Cofre de Midas (DCA Ouro 48h Simple Earn)
 VALOR_BNB_BRL      <- 90.0   # R$ 90  - Sentinela de Minas (BNB Scalp 15m + Fee Discount)
@@ -183,13 +183,18 @@ obter_stats_eth_btc_24h <- function() {
   tryCatch({
     con <- dbConnect(SQLite(), db_path)
     on.exit(dbDisconnect(con))
-    df <- dbGetQuery(con, "SELECT ETHBRL, BTCBRL FROM Historico_binance WHERE ETHBRL IS NOT NULL AND BTCBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 1440;")
-    if (nrow(df) >= 30) {
+    df <- dbGetQuery(con, "SELECT ETHBRL, BTCBRL FROM Historico_binance WHERE ETHBRL IS NOT NULL AND BTCBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 600;")
+    if (nrow(df) >= 20) {
       ratios <- df$ETHBRL / df$BTCBRL
-      return(list(media = mean(ratios, na.rm = TRUE), sd = max(0.0001, sd(ratios, na.rm = TRUE))))
+      n_r <- length(ratios)
+      p_rec <- rev(ratios)
+      smooth_val <- mean(tail(p_rec, min(10, n_r)))
+      detrend <- p_rec - smooth_val
+      sd_val <- max(0.0001, sd(tail(detrend, min(20, n_r))))
+      return(list(media = smooth_val, sd = sd_val, serie = p_rec))
     }
   }, error = function(e) NULL)
-  return(list(media = 0.03140, sd = 0.00050))
+  return(list(media = 0.03140, sd = 0.00030, serie = rep(0.03140, 16)))
 }
 
 obter_retorno_btc_5m <- function() {
@@ -482,32 +487,54 @@ executar_radar_labtrader <- function() {
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 7: PLANO DUELO DE TITÃS (BTC -> ETH e ETH -> BRL | R$ 150 - 2 Slots)
+  # MOTOR 7: PLANO DUELO DE TITÃS (Harmonicus SuperSmoother 10h Maximizer 10x | R$ 200 - 5 Slots)
   # ----------------------------------------------------------------------------
   if (is.null(pedido) && !is.null(p_eth_brl) && !is.null(p_btc_brl) && pc1_atual < 0.75) {
     ratio_eth_btc <- p_eth_brl / p_btc_brl
     z_eth_btc     <- (ratio_eth_btc - stats_eth_btc$media) / stats_eth_btc$sd
+    dsp_eth_btc   <- obter_dsp_ativo(stats_eth_btc$serie)
     
-    if (z_eth_btc <= -1.00 && saldo_btc_brl >= 85.0 && saldo_eth_brl < 300.0) {
-      lucro_proj <- max(1.20, ((stats_eth_btc$media / ratio_eth_btc) - 1) * 100)
-      valor_req <- max(85.0, min(VALOR_TITAS_BRL * fator_lote, saldo_btc_brl * 0.40))
-      if (valor_req >= 85.0) {
+    # Ponta A: Compra de ETH (Dual-Route: via BTC ou via BRL) quando Z <= -0.95 ou vale de fase
+    cond_entrada_titas <- (z_eth_btc <= -0.95) && (dsp_eth_btc$theta < -0.15 || z_eth_btc <= -1.20)
+    
+    if (cond_entrada_titas && saldo_eth_brl < 450.0) {
+      lucro_proj <- max(0.58, ((stats_eth_btc$media / ratio_eth_btc) - 1) * 100)
+      
+      # Rota 1: Se tiver BTC livre >= R$ 85, usa rotação direta BTC -> ETH
+      if (saldo_btc_brl >= 85.0) {
+        lote_t <- min(VALOR_TITAS_BRL * fator_lote, saldo_btc_brl * 0.50)
+        if (lote_t >= 85.0) {
+          pedido <- list(
+            estrategia = "PLANO_DUELO_DE_TITAS",
+            origem = "BTC", destino = "ETH",
+            valor_brl = lote_t,
+            lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+          )
+        }
+      } else if (saldo_caixa_brl >= 250.0) {
+        # Rota 2: Se tiver Caixa BRL livre >= R$ 250, compra ETH direto com BRL
+        lote_t <- min(VALOR_TITAS_BRL * fator_lote, max(50.0, saldo_caixa_brl * 0.20))
         pedido <- list(
           estrategia = "PLANO_DUELO_DE_TITAS",
-          origem = "BTC", destino = "ETH",
-          valor_brl = valor_req,
+          origem = "BRL", destino = "ETH",
+          valor_brl = lote_t,
           lucro_esperado_pct = lucro_proj, timestamp = agora_ts
         )
       }
-    } else if (z_eth_btc >= 0.85 && saldo_eth_brl >= 25.0) {
-      # Ponta B: ETH Caro / BTC Barato -> Realização de ETH para Caixa BRL
-      lucro_proj <- max(1.20, ((ratio_eth_btc / stats_eth_btc$media) - 1) * 100)
-      pedido <- list(
-        estrategia = "PLANO_DUELO_DE_TITAS",
-        origem = "ETH", destino = "BRL",
-        valor_brl = saldo_eth_brl,
-        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-      )
+    } else if (saldo_eth_brl >= 25.0) {
+      # Ponta B: Realização Dinâmica Harmonicus: Z >= +0.20 ou Topo de Fase ou Desaceleração
+      cond_trailing_t <- (dsp_eth_btc$d2Z < 0 || dsp_eth_btc$theta > 0.75)
+      cond_reversao_t <- (z_eth_btc >= 0.20)
+      
+      if (cond_trailing_t || cond_reversao_t) {
+        lucro_proj <- max(0.58, ((ratio_eth_btc / stats_eth_btc$media) - 1) * 100)
+        pedido <- list(
+          estrategia = "PLANO_DUELO_DE_TITAS",
+          origem = "ETH", destino = "BRL",
+          valor_brl = saldo_eth_brl,
+          lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+        )
+      }
     }
   }
   
