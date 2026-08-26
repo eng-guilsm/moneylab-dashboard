@@ -183,15 +183,14 @@ obter_stats_eth_btc_24h <- function() {
   tryCatch({
     con <- dbConnect(SQLite(), db_path)
     on.exit(dbDisconnect(con))
-    df <- dbGetQuery(con, "SELECT ETHBRL, BTCBRL FROM Historico_binance WHERE ETHBRL IS NOT NULL AND BTCBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 600;")
+    df <- dbGetQuery(con, "SELECT ETHBRL, BTCBRL FROM Historico_binance WHERE ETHBRL IS NOT NULL AND BTCBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 720;")
     if (nrow(df) >= 20) {
       ratios <- df$ETHBRL / df$BTCBRL
       n_r <- length(ratios)
       p_rec <- rev(ratios)
-      smooth_val <- mean(tail(p_rec, min(10, n_r)))
-      detrend <- p_rec - smooth_val
-      sd_val <- max(0.0001, sd(tail(detrend, min(20, n_r))))
-      return(list(media = smooth_val, sd = sd_val, serie = p_rec))
+      m_val <- mean(tail(p_rec, min(720, n_r)))
+      sd_val <- max(0.0001, sd(tail(p_rec, min(720, n_r))))
+      return(list(media = m_val, sd = sd_val, serie = p_rec))
     }
   }, error = function(e) NULL)
   return(list(media = 0.03140, sd = 0.00030, serie = rep(0.03140, 16)))
@@ -487,18 +486,18 @@ executar_radar_labtrader <- function() {
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 7: PLANO DUELO DE TITÃS (Harmonicus SuperSmoother 10h Maximizer 10x | R$ 200 - 5 Slots)
+  # MOTOR 7: PLANO DUELO DE TITÃS (Harmonicus 12h Maximizer | R$ 200 - Reciclagem 60h | Meta +0,70%)
   # ----------------------------------------------------------------------------
   if (is.null(pedido) && !is.null(p_eth_brl) && !is.null(p_btc_brl) && pc1_atual < 0.75) {
     ratio_eth_btc <- p_eth_brl / p_btc_brl
     z_eth_btc     <- (ratio_eth_btc - stats_eth_btc$media) / stats_eth_btc$sd
     dsp_eth_btc   <- obter_dsp_ativo(stats_eth_btc$serie)
     
-    # Ponta A: Compra de ETH (Dual-Route: via BTC ou via BRL) quando Z <= -0.95 ou vale de fase
-    cond_entrada_titas <- (z_eth_btc <= -0.95) && (dsp_eth_btc$theta < -0.15 || z_eth_btc <= -1.20)
+    # Ponta A: Compra de ETH (Dual-Route: via BTC ou via BRL) quando Z <= -1.00 ou vale de fase
+    cond_entrada_titas <- (z_eth_btc <= -1.00) && (dsp_eth_btc$theta < -0.10 || z_eth_btc <= -1.20)
     
-    if (cond_entrada_titas && saldo_eth_brl < 450.0) {
-      lucro_proj <- max(0.58, ((stats_eth_btc$media / ratio_eth_btc) - 1) * 100)
+    if (cond_entrada_titas && saldo_eth_brl < 500.0) {
+      lucro_proj <- max(0.70, ((stats_eth_btc$media / ratio_eth_btc) - 1) * 100)
       
       # Rota 1: Se tiver BTC livre >= R$ 85, usa rotação direta BTC -> ETH
       if (saldo_btc_brl >= 85.0) {
@@ -522,12 +521,12 @@ executar_radar_labtrader <- function() {
         )
       }
     } else if (saldo_eth_brl >= 25.0) {
-      # Ponta B: Realização Dinâmica Harmonicus: Z >= +0.20 ou Topo de Fase ou Desaceleração
+      # Ponta B: Realização Dinâmica Harmonicus: Z >= +0.30 ou Topo de Fase ou Desaceleração
       cond_trailing_t <- (dsp_eth_btc$d2Z < 0 || dsp_eth_btc$theta > 0.75)
-      cond_reversao_t <- (z_eth_btc >= 0.20)
+      cond_reversao_t <- (z_eth_btc >= 0.30)
       
       if (cond_trailing_t || cond_reversao_t) {
-        lucro_proj <- max(0.58, ((ratio_eth_btc / stats_eth_btc$media) - 1) * 100)
+        lucro_proj <- max(0.70, ((ratio_eth_btc / stats_eth_btc$media) - 1) * 100)
         pedido <- list(
           estrategia = "PLANO_DUELO_DE_TITAS",
           origem = "ETH", destino = "BRL",
