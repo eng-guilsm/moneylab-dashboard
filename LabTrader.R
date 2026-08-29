@@ -17,15 +17,35 @@ if (file.exists("config_auth.R")) {
 VALOR_GUIANA_BRL   <- 150.0  # R$ 150 - Janela 72h (Acúmulo de Ouro PAXG)
 VALOR_ESCUDO_BRL   <- 200.0  # R$ 200 - Pânico VIX (Anti-Queda BRL -> BTC)
 VALOR_PEG_BRL      <- 250.0  # R$ 250 - Arbitragem USDT/BRL (Peg Dólar)
-VALOR_LINK_BRL     <- 200.0  # R$ 200 - Chainlink SuperSmoother 10h Power-Grid (4 Slots | Meta +0.70%)
-VALOR_SPILL_BRL    <- 120.0  # R$ 120 - Gravidade Zero (BTC -> SOL 72h)
+VALOR_LINK_BRL     <- 240.0  # R$ 240 - Chainlink Quantum Alpha (Dual-Scale 75/25 15m + 10h | Tranches R$ 240/480 | Meta +0.70% a +1.40%)
+VALOR_SPILL_BRL    <- 180.0  # R$ 180 - Gravidade Zero Quantum Alpha (Dual-Scale 75/25 15m + 65.5h | Tranches R$ 180/360 | Meta +1.40% a +6.50%)
 VALOR_CORISCO_BRL  <- 100.0  # R$ 100 - Solana 15m Scalp (2 Slots)
 VALOR_TITAS_BRL    <- 200.0  # R$ 200 - Duelo de Titãs (Harmonicus 12h Maximizer)
-VALOR_SAGARANA_BRL <- 170.0  # R$ 170 - Flecha de Sagarana (Harmonicus 6h Ultra-Consistente | 4 Slots | Meta +0.40%)
-VALOR_MIDAS_BRL    <- 50.0   # R$ 50  - Cofre de Midas (DCA Ouro 48h Simple Earn)
+VALOR_SAGARANA_BRL <- 220.0  # R$ 220 - Flecha de Sagarana Quantum Alpha (Dual-Scale 75/25 | Tranches R$ 220/450 | Meta +0.50% a +0.95%)
+VALOR_MIDAS_BRL    <- 50.0   # R$ 50  - Cofre de Midas (DCA Ouro Ressonante 5d Simple Earn + Ratchet Floor)
 VALOR_BNB_BRL      <- 90.0   # R$ 90  - Sentinela de Minas (BNB Scalp 15m + Fee Discount)
 VALOR_ADA_BRL      <- 80.0   # R$ 80  - Sertão Valente (ADA Scalp 30m)
 VALOR_NEAR_BRL     <- 200.0  # R$ 200 - Farol de NEAR (Harmonicus 10h Maximizer 10x | 4 Slots | Meta +0.70%)
+VALOR_BRUCE_BRL    <- 300.0  # R$ 300 - Plano Bruce Wayne (Contingência de Crise Cripto / Tail-Risk Macro Hedge)
+
+obter_stats_macro_btc_7d <- function() {
+  db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
+  tryCatch({
+    con <- dbConnect(SQLite(), db_path)
+    on.exit(dbDisconnect(con))
+    df <- dbGetQuery(con, "SELECT BTCBRL FROM Historico_binance WHERE BTCBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 10080;")
+    if (nrow(df) >= 120) {
+      p_rec <- rev(df$BTCBRL)
+      m_val <- mean(p_rec, na.rm = TRUE)
+      s_val <- sd(p_rec, na.rm = TRUE)
+      if (is.na(s_val) || s_val <= 0) s_val <- 1000.0
+      
+      dsp <- obter_dsp_ativo(p_rec)
+      return(list(media = m_val, sd = s_val, serie = p_rec, dsp = dsp))
+    }
+  }, error = function(e) NULL)
+  return(list(media = 415000.0, sd = 5000.0, serie = c(415000.0), dsp = list(theta = 0.0, d2Z = 0.0, snr = 5.0)))
+}
 
 obter_stats_near_10h <- function() {
   db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
@@ -78,23 +98,51 @@ obter_ultimo_usd_comercial <- function() {
   return(5.0115)
 }
 
-obter_stats_btc_6h <- function() {
+obter_stats_btc_dual_scale <- function() {
   db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
   tryCatch({
     con <- dbConnect(SQLite(), db_path)
     on.exit(dbDisconnect(con))
-    df <- dbGetQuery(con, "SELECT BTCBRL FROM Historico_binance WHERE BTCBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 360;")
-    if (nrow(df) >= 15) {
+    df <- dbGetQuery(con, "SELECT BTCBRL FROM Historico_binance WHERE BTCBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 600;")
+    if (nrow(df) >= 30) {
       p_rec <- rev(df$BTCBRL)
       n_r <- length(p_rec)
-      smooth_val <- mean(tail(p_rec, min(6, n_r)))
-      detrend <- p_rec - smooth_val
-      sd_val <- max(100.0, sd(tail(detrend, min(15, n_r))))
-      return(list(media = smooth_val, sd = sd_val, serie = p_rec))
+      
+      # Escala Rápida (6 minutos)
+      p_fast <- tail(p_rec, min(30, n_r))
+      smooth_fast <- mean(tail(p_fast, min(6, length(p_fast))))
+      detrend_fast <- p_fast - smooth_fast
+      sd_fast <- max(50.0, sd(tail(detrend_fast, min(15, length(p_fast)))))
+      dsp_fast <- obter_dsp_ativo(p_fast)
+      
+      # Escala Macro Fourier (5.4 horas / 324 minutos)
+      macro_len <- min(324, n_r)
+      p_macro <- tail(p_rec, macro_len)
+      smooth_macro <- mean(p_macro)
+      sd_macro <- max(200.0, sd(p_macro))
+      dsp_macro <- obter_dsp_ativo(p_macro)
+      
+      return(list(
+        media_fast = smooth_fast,
+        sd_fast = sd_fast,
+        dsp_fast = dsp_fast,
+        media_macro = smooth_macro,
+        sd_macro = sd_macro,
+        dsp_macro = dsp_macro,
+        media = smooth_fast, # retrocompatibilidade
+        sd = sd_fast,
+        serie = p_rec
+      ))
     }
   }, error = function(e) NULL)
-  return(list(media = 405000.0, sd = 1500.0, serie = rep(405000.0, 16)))
+  return(list(
+    media_fast = 405000.0, sd_fast = 500.0, dsp_fast = list(theta = 0, d2Z = 0),
+    media_macro = 405000.0, sd_macro = 2000.0, dsp_macro = list(theta = 0, d2Z = 0),
+    media = 405000.0, sd = 1500.0, serie = rep(405000.0, 30)
+  ))
 }
+obter_stats_btc_6h <- obter_stats_btc_dual_scale
+
 
 obter_stats_guiana_72h <- function(p_gold = 4639.0) {
   db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
@@ -110,50 +158,141 @@ obter_stats_guiana_72h <- function(p_gold = 4639.0) {
   return(list(media = 0.05920, sd = 0.00350))
 }
 
-obter_stats_link_1h <- function() {
+obter_stats_link_dual_scale <- function() {
   db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
   tryCatch({
     con <- dbConnect(SQLite(), db_path)
     on.exit(dbDisconnect(con))
-    df <- dbGetQuery(con, "SELECT LINKBRL FROM Historico_binance WHERE LINKBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 600;")
-    if (nrow(df) >= 15) {
+    df <- dbGetQuery(con, "SELECT LINKBRL FROM Historico_binance WHERE LINKBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 800;")
+    if (nrow(df) >= 30) {
       p_rec <- rev(df$LINKBRL)
       n_r <- length(p_rec)
-      smooth_val <- mean(tail(p_rec, min(10, n_r)))
-      detrend <- p_rec - smooth_val
-      sd_val <- max(0.05, sd(tail(detrend, min(20, n_r))))
-      return(list(media = smooth_val, sd = sd_val, serie = p_rec))
+      
+      # Escala Rápida Intradiária (15 minutos)
+      p_fast <- tail(p_rec, min(45, n_r))
+      smooth_fast <- mean(tail(p_fast, min(15, length(p_fast))))
+      detrend_fast <- p_fast - smooth_fast
+      sd_fast <- max(0.05, sd(tail(detrend_fast, min(20, length(p_fast)))))
+      dsp_fast <- obter_dsp_ativo(p_fast)
+      
+      # Escala Macro de Ressonância Fourier (10.0 horas / 600 minutos)
+      macro_len <- min(600, n_r)
+      p_macro <- tail(p_rec, macro_len)
+      smooth_macro <- mean(p_macro)
+      sd_macro <- max(0.30, sd(p_macro))
+      dsp_macro <- obter_dsp_ativo(p_macro)
+      
+      return(list(
+        media_fast = smooth_fast,
+        sd_fast = sd_fast,
+        dsp_fast = dsp_fast,
+        media_macro = smooth_macro,
+        sd_macro = sd_macro,
+        dsp_macro = dsp_macro,
+        media = smooth_fast, # retrocompatibilidade
+        sd = sd_fast,
+        serie = p_rec
+      ))
     }
   }, error = function(e) NULL)
-  return(list(media = 59.50, sd = 0.30, serie = rep(59.50, 16)))
+  return(list(
+    media_fast = 59.50, sd_fast = 0.20, dsp_fast = list(theta = 0, d2Z = 0),
+    media_macro = 59.50, sd_macro = 1.50, dsp_macro = list(theta = 0, d2Z = 0),
+    media = 59.50, sd = 0.30, serie = rep(59.50, 30)
+  ))
 }
+obter_stats_link_1h <- obter_stats_link_dual_scale
 
-obter_stats_sol_btc_72h <- function() {
+
+obter_stats_sol_btc_dual_scale <- function() {
   db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
   tryCatch({
     con <- dbConnect(SQLite(), db_path)
     on.exit(dbDisconnect(con))
     df <- dbGetQuery(con, "SELECT SOLBRL, BTCBRL FROM Historico_binance WHERE SOLBRL IS NOT NULL AND BTCBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 4320;")
-    if (nrow(df) >= 60) {
-      ratios <- df$SOLBRL / df$BTCBRL
-      return(list(media = mean(ratios, na.rm = TRUE), sd = max(0.00002, sd(ratios, na.rm = TRUE))))
+    if (nrow(df) >= 30) {
+      r_rec <- rev(df$SOLBRL / df$BTCBRL)
+      n_r <- length(r_rec)
+      
+      # Escala Rápida Intradiária (15 minutos)
+      r_fast <- tail(r_rec, min(45, n_r))
+      smooth_fast <- mean(tail(r_fast, min(15, length(r_fast))))
+      detrend_fast <- r_fast - smooth_fast
+      sd_fast <- max(0.000005, sd(tail(detrend_fast, min(20, length(r_fast)))))
+      dsp_fast <- obter_dsp_ativo(r_fast)
+      
+      # Escala Macro de Ressonância Fourier (65.5 horas / 3930 minutos)
+      macro_len <- min(3930, n_r)
+      r_macro <- tail(r_rec, macro_len)
+      smooth_macro <- mean(r_macro)
+      sd_macro <- max(0.00002, sd(r_macro))
+      dsp_macro <- obter_dsp_ativo(r_macro)
+      
+      return(list(
+        media_fast = smooth_fast,
+        sd_fast = sd_fast,
+        dsp_fast = dsp_fast,
+        media_macro = smooth_macro,
+        sd_macro = sd_macro,
+        dsp_macro = dsp_macro,
+        media = smooth_macro, # retrocompatibilidade
+        sd = sd_macro,
+        serie = r_rec
+      ))
     }
   }, error = function(e) NULL)
-  return(list(media = 0.00122, sd = 0.00008))
+  return(list(
+    media_fast = 0.00122, sd_fast = 0.00001, dsp_fast = list(theta = 0, d2Z = 0),
+    media_macro = 0.00122, sd_macro = 0.00008, dsp_macro = list(theta = 0, d2Z = 0),
+    media = 0.00122, sd = 0.00008, serie = rep(0.00122, 30)
+  ))
 }
+obter_stats_sol_btc_72h <- obter_stats_sol_btc_dual_scale
 
-obter_stats_sol_15m <- function() {
+obter_stats_sol_dual_scale <- function() {
   db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
   tryCatch({
     con <- dbConnect(SQLite(), db_path)
     on.exit(dbDisconnect(con))
-    df <- dbGetQuery(con, "SELECT SOLBRL FROM Historico_binance WHERE SOLBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 30;")
-    if (nrow(df) >= 5) {
-      return(list(media = mean(df$SOLBRL[1:min(15, nrow(df))], na.rm = TRUE), sd = max(0.05, sd(df$SOLBRL[1:min(15, nrow(df))], na.rm = TRUE)), serie = rev(df$SOLBRL)))
+    df <- dbGetQuery(con, "SELECT SOLBRL FROM Historico_binance WHERE SOLBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 600;")
+    if (nrow(df) >= 30) {
+      p_rec <- rev(df$SOLBRL)
+      n_r <- length(p_rec)
+      
+      # Escala Rápida Intradiária (15 minutos)
+      p_fast <- tail(p_rec, min(45, n_r))
+      smooth_fast <- mean(tail(p_fast, min(15, length(p_fast))))
+      detrend_fast <- p_fast - smooth_fast
+      sd_fast <- max(0.20, sd(tail(detrend_fast, min(20, length(p_fast)))))
+      dsp_fast <- obter_dsp_ativo(p_fast)
+      
+      # Escala Macro Fourier (4.0 horas / 240 minutos)
+      macro_len <- min(240, n_r)
+      p_macro <- tail(p_rec, macro_len)
+      smooth_macro <- mean(p_macro)
+      sd_macro <- max(1.00, sd(p_macro))
+      dsp_macro <- obter_dsp_ativo(p_macro)
+      
+      return(list(
+        media_fast = smooth_fast,
+        sd_fast = sd_fast,
+        dsp_fast = dsp_fast,
+        media_macro = smooth_macro,
+        sd_macro = sd_macro,
+        dsp_macro = dsp_macro,
+        media = smooth_fast, # retrocompatibilidade
+        sd = sd_fast,
+        serie = p_rec
+      ))
     }
   }, error = function(e) NULL)
-  return(list(media = 487.50, sd = 2.50, serie = rep(487.50, 16)))
+  return(list(
+    media_fast = 550.0, sd_fast = 2.0, dsp_fast = list(theta = 0, d2Z = 0),
+    media_macro = 550.0, sd_macro = 8.0, dsp_macro = list(theta = 0, d2Z = 0),
+    media = 550.0, sd = 3.0, serie = rep(550.0, 30)
+  ))
 }
+obter_stats_sol_15m <- obter_stats_sol_dual_scale
 
 obter_stats_bnb_15m <- function() {
   db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
@@ -422,22 +561,33 @@ executar_radar_labtrader <- function() {
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 4: PLANO CABOCLO DOS ORÁCULOS (SuperSmoother 10h Power-Grid | R$ 200 - 4 Slots | Meta +0,70%)
+  # MOTOR 4: PLANO CABOCLO DOS ORÁCULOS (Quantum Alpha Turbo | Dual-Scale 75/25 15m + 10h Fourier | Tranches R$ 240/480)
   # ----------------------------------------------------------------------------
+  stats_link <- obter_stats_link_dual_scale()
   if (is.null(pedido) && !is.null(p_link_brl) && ste_atual >= -0.02 && pc1_atual < 0.75 && w_energy < 55.0) {
-    z_link <- (p_link_brl - stats_link$media) / stats_link$sd
-    dsp_link <- obter_dsp_ativo(stats_link$serie)
+    z_fast_l <- (p_link_brl - stats_link$media_fast) / stats_link$sd_fast
+    z_macro_l <- (p_link_brl - stats_link$media_macro) / stats_link$sd_macro
+    z_comp_l <- 0.75 * z_fast_l + 0.25 * z_macro_l
     
-    # Compra seletiva com Phase Bet Sizing: amplifica lote no vale de fase de Hilbert
-    cond_entrada_link <- (z_link <= -0.95) && (dsp_link$theta < -0.10 || z_link <= -1.20)
+    dsp_fast_l <- stats_link$dsp_fast
+    dsp_macro_l <- stats_link$dsp_macro
+    acc_link <- dsp_fast_l$d2Z
     
-    if (cond_entrada_link && saldo_caixa_brl >= 100.0 && saldo_link_brl < 450.0) {
-      lote_base <- VALOR_LINK_BRL
-      if (dsp_link$theta < -1.10) lote_base <- 240.0
-      if (z_link <= -1.50) lote_base <- 250.0
+    # Condições Quantum Alpha:
+    # Tranche 1 (Sonda em Micro-Dip 15m): Z_comp <= -0.65, sem topo macro (Z_macro <= 0.40), fase rápida < -0.05, aceleração d2Z >= -0.0003
+    cond_tranche1_link <- (saldo_link_brl < 80.0) && (z_comp_l <= -0.65) && (z_macro_l <= 0.40) && (dsp_fast_l$theta < -0.05) && (acc_link >= -0.0003)
+    
+    # Tranche 2 (Martingale de Vale Harmônico 10h): se já tem posição aberta (< R$ 350) e Z_comp <= -1.20 ou Z_macro <= -1.00 com fase < -0.15
+    cond_tranche2_link <- (saldo_link_brl >= 80.0 && saldo_link_brl < 350.0) && (z_comp_l <= -1.20 || z_macro_l <= -1.00) && (dsp_fast_l$theta < -0.15)
+    
+    if ((cond_tranche1_link || cond_tranche2_link) && saldo_caixa_brl >= 80.0 && saldo_link_brl < 720.0) {
+      lote_base <- if (cond_tranche2_link) 480.0 else 240.0
+      # Adaptativo ao caixa livre:
+      lote_l <- if (cond_tranche2_link) min(lote_base * fator_lote, max(200.0, saldo_caixa_brl * 0.60)) else min(lote_base * fator_lote, max(100.0, saldo_caixa_brl * 0.35))
       
-      lote_l <- min(lote_base * fator_lote, max(50.0, saldo_caixa_brl * 0.30))
-      lucro_proj <- max(0.70, ((stats_link$media / p_link_brl) - 1) * 100)
+      # Projeção de lucro dinâmico: se comprou no vale macro harmônico (theta_m < 0), estica a meta até +1.40%
+      lucro_proj <- if (dsp_macro_l$theta < 0 && z_macro_l < -0.50) 1.40 else (if (cond_tranche2_link) 0.95 else 0.70)
+      lucro_proj <- max(0.70, lucro_proj)
       
       pedido <- list(
         estrategia = "PLANO_CABOCLO_DOS_ORACULOS",
@@ -446,16 +596,17 @@ executar_radar_labtrader <- function() {
         lucro_esperado_pct = lucro_proj, timestamp = agora_ts
       )
     } else if (saldo_link_brl >= 30.0) {
-      # Saída Dinâmica Harmonicus: Trailing por Desaceleração (d2Z < 0), Topo de Fase (theta > 0.75) ou Reversão
-      cond_trailing <- (dsp_link$d2Z < 0 || dsp_link$theta > 0.75)
-      cond_reversao <- (z_link >= 0.25)
+      # Saída Dinâmica Harmonicus:
+      # Topo de fase rápida (theta > 0.80 ou desaceleração d2Z < 0) ou repique composto forte (Z_comp >= 0.35)
+      cond_trailing <- (dsp_fast_l$d2Z < 0 || dsp_fast_l$theta > 0.80)
+      cond_reversao <- (z_comp_l >= 0.35)
       
       if (cond_trailing || cond_reversao) {
-        lucro_proj <- max(0.70, ((p_link_brl / stats_link$media) - 1) * 100)
+        lucro_proj <- max(0.70, ((p_link_brl / stats_link$media_fast) - 1) * 100)
         pedido <- list(
           estrategia = "PLANO_CABOCLO_DOS_ORACULOS",
           origem = "LINK", destino = "BRL",
-          valor_brl = saldo_link_brl,
+          valor_brl = saldo_link_brl, # Realiza 100% da custódia do lote
           lucro_esperado_pct = lucro_proj, timestamp = agora_ts
         )
       }
@@ -463,47 +614,84 @@ executar_radar_labtrader <- function() {
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 5: PLANO GRAVIDADE ZERO (BTC -> SOL e SOL -> BRL | R$ 120 - Janela 72h)
+  # MOTOR 5: PLANO GRAVIDADE ZERO (Quantum Alpha Turbo | Dual-Scale 75/25 15m + 65.5h Fourier | Tranches R$ 180/360)
   # ----------------------------------------------------------------------------
+  stats_sol_btc <- obter_stats_sol_btc_dual_scale()
   if (is.null(pedido) && !is.null(p_sol_brl) && !is.null(p_btc_brl) && pc1_atual < 0.75 && ste_atual >= -0.02) {
     ratio_sol_btc <- p_sol_brl / p_btc_brl
-    z_sol_btc     <- (ratio_sol_btc - stats_sol_btc$media) / stats_sol_btc$sd
+    z_fast_r <- (ratio_sol_btc - stats_sol_btc$media_fast) / stats_sol_btc$sd_fast
+    z_macro_r <- (ratio_sol_btc - stats_sol_btc$media_macro) / stats_sol_btc$sd_macro
+    z_comp_r <- 0.75 * z_fast_r + 0.25 * z_macro_r
     
-    if (z_sol_btc <= -1.00 && saldo_btc_brl >= 45.0 && saldo_sol_brl < 220.0) {
-      lucro_proj <- max(2.00, ((stats_sol_btc$media / ratio_sol_btc) - 1) * 100)
+    dsp_fast_r <- stats_sol_btc$dsp_fast
+    dsp_macro_r <- stats_sol_btc$dsp_macro
+    acc_r <- dsp_fast_r$d2Z
+    
+    # Condições Quantum Alpha para Ponta A (Compra BTC -> SOL):
+    # Tranche 1 (Sonda de Micro-Dip 15m no ratio): Z_comp <= -0.60, Z_macro <= 0.40, fase rápida < -0.05, acc >= -0.0003
+    cond_tranche1_grav <- (saldo_sol_brl < 80.0) && (z_comp_r <= -0.60) && (z_macro_r <= 0.40) && (dsp_fast_r$theta < -0.05) && (acc_r >= -0.0003)
+    
+    # Tranche 2 (Martingale de Vale Harmônico 65.5h): Se já tem posição (< R$ 260) e Z_comp <= -1.20 ou Z_macro <= -1.00 com fase < -0.15
+    cond_tranche2_grav <- (saldo_sol_brl >= 80.0 && saldo_sol_brl < 260.0) && (z_comp_r <= -1.20 || z_macro_r <= -1.00) && (dsp_fast_r$theta < -0.15)
+    
+    if ((cond_tranche1_grav || cond_tranche2_grav) && saldo_btc_brl >= 45.0 && saldo_sol_brl < 540.0) {
+      lote_base <- if (cond_tranche2_grav) 360.0 else 180.0
+      lote_g <- if (cond_tranche2_grav) min(lote_base * fator_lote, max(120.0, saldo_btc_brl * 0.50)) else min(lote_base * fator_lote, max(60.0, saldo_btc_brl * 0.30))
+      
+      # Projeção de lucro dinâmico: se comprou no vale macro (theta_m < 0), estica a meta até +3.80% a +6.50%
+      lucro_proj <- if (dsp_macro_r$theta < 0 && z_macro_r < -0.50) 3.80 else (if (cond_tranche2_grav) 2.40 else 1.80)
+      lucro_proj <- max(1.40, lucro_proj)
+      
       pedido <- list(
         estrategia = "PLANO_GRAVIDADE_ZERO",
         origem = "BTC", destino = "SOL",
-        valor_brl = min(VALOR_SPILL_BRL * fator_lote, saldo_btc_brl * 0.30),
+        valor_brl = lote_g,
         lucro_esperado_pct = lucro_proj, timestamp = agora_ts
       )
-    } else if (z_sol_btc >= 1.00 && saldo_sol_brl >= 25.0) {
+    } else if (saldo_sol_brl >= 25.0) {
       # Ponta B: Realização de topo de Solana para BRL
-      lucro_proj <- max(1.40, ((ratio_sol_btc / stats_sol_btc$media) - 1) * 100)
-      pedido <- list(
-        estrategia = "PLANO_GRAVIDADE_ZERO",
-        origem = "SOL", destino = "BRL",
-        valor_brl = saldo_sol_brl,
-        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-      )
+      # Saída em topo de fase rápida (theta > 0.80 ou desaceleração d2Z < 0) ou repique composto forte (Z_comp >= 0.35)
+      cond_trailing <- (dsp_fast_r$d2Z < 0 || dsp_fast_r$theta > 0.80)
+      cond_reversao <- (z_comp_r >= 0.35)
+      
+      if (cond_trailing || cond_reversao) {
+        lucro_proj <- max(1.40, ((ratio_sol_btc / stats_sol_btc$media_fast) - 1) * 100)
+        pedido <- list(
+          estrategia = "PLANO_GRAVIDADE_ZERO",
+          origem = "SOL", destino = "BRL",
+          valor_brl = saldo_sol_brl,
+          lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+        )
+      }
     }
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 6: PLANO CORISCO DA SOLANA (BRL <-> SOL 1h/15m | R$ 100 - 2 Slots)
+  # MOTOR 6: PLANO CORISCO DA SOLANA (Quantum Alpha Turbo | Dual-Scale 75/25 15m + 4h | Tranches R$ 100/220 | Meta +0.60% a +1.40%)
   # ----------------------------------------------------------------------------
+  stats_sol <- obter_stats_sol_dual_scale()
   if (is.null(pedido) && !is.null(p_sol_brl) && ste_atual >= -0.02 && pc1_atual < 0.75 && w_energy < 55.0) {
-    z_sol_15m <- (p_sol_brl - stats_sol_15m$media) / stats_sol_15m$sd
-    dsp_sol   <- obter_dsp_ativo(stats_sol_15m$serie)
+    z_fast_s  <- (p_sol_brl - stats_sol$media_fast) / stats_sol$sd_fast
+    z_macro_s <- (p_sol_brl - stats_sol$media_macro) / stats_sol$sd_macro
+    z_comp_s  <- 0.75 * z_fast_s + 0.25 * z_macro_s
     
-    # Trava de Teto de Custódia com Phase Bet Sizing: Permite até R$ 240 acumulados
-    if (z_sol_15m <= -1.35 && saldo_caixa_brl >= 80.0 && saldo_sol_brl < 240.0) {
-      lote_base_s <- VALOR_CORISCO_BRL
-      if (dsp_sol$theta < -0.2 && dsp_sol$theta > -2.8) lote_base_s <- 130.0
-      if (z_sol_15m <= -1.75) lote_base_s <- 160.0
+    dsp_fast_s  <- stats_sol$dsp_fast
+    dsp_macro_s <- stats_sol$dsp_macro
+    acc_sol     <- dsp_fast_s$d2Z
+    
+    # Condições Quantum Alpha Dupla Escala:
+    # Tranche 1 (Sonda em Micro-Dip 15m): Z_comp <= -0.65, sem topo macro (Z_macro <= 0.40), fase rápida < -0.05, aceleração d2Z >= -0.0003
+    cond_tranche1_sol <- (saldo_sol_brl < 80.0) && (z_comp_s <= -0.65) && (z_macro_s <= 0.40) && (dsp_fast_s$theta < -0.05) && (acc_sol >= -0.0003)
+    
+    # Tranche 2 (Martingale de Vale Harmônico 4h): se já tem posição aberta (< R$ 220) e Z_comp <= -1.20 ou Z_macro <= -1.00 com fase < -0.15
+    cond_tranche2_sol <- (saldo_sol_brl >= 80.0 && saldo_sol_brl < 220.0) && (z_comp_s <= -1.20 || z_macro_s <= -1.00) && (dsp_fast_s$theta < -0.15)
+    
+    if ((cond_tranche1_sol || cond_tranche2_sol) && saldo_caixa_brl >= 80.0 && saldo_sol_brl < 240.0) {
+      lote_base_s <- if (cond_tranche2_sol) 220.0 else VALOR_CORISCO_BRL
+      lote_s <- if (cond_tranche2_sol) min(lote_base_s * fator_lote, max(100.0, saldo_caixa_brl * 0.45)) else min(lote_base_s * fator_lote, max(50.0, saldo_caixa_brl * 0.25))
       
-      lote_s <- min(lote_base_s * fator_lote, max(50.0, saldo_caixa_brl * 0.25))
-      lucro_proj <- max(1.20, ((stats_sol_15m$media / p_sol_brl) - 1) * 100)
+      lucro_proj <- if (dsp_macro_s$theta < 0 && z_macro_s < -0.50) 1.40 else (if (cond_tranche2_sol) 1.00 else 0.60)
+      lucro_proj <- max(0.50, lucro_proj)
       
       pedido <- list(
         estrategia = "PLANO_CORISCO_DA_SOLANA",
@@ -513,11 +701,11 @@ executar_radar_labtrader <- function() {
       )
     } else if (saldo_sol_brl >= 20.0) {
       # Saída Dinâmica Harmonicus: Trailing por Desaceleração, Topo de Fase ou Reversão
-      cond_trailing_s <- (dsp_sol$d2Z < 0 || dsp_sol$theta > 0.85)
-      cond_reversao_s <- (z_sol_15m >= 0.35)
+      cond_trailing_s <- (dsp_fast_s$d2Z < 0 || dsp_fast_s$theta > 0.80)
+      cond_reversao_s <- (z_comp_s >= 0.35)
       
       if (cond_trailing_s || cond_reversao_s) {
-        lucro_proj <- max(0.60, ((p_sol_brl / stats_sol_15m$media) - 1) * 100)
+        lucro_proj <- max(0.50, ((p_sol_brl / stats_sol$media_fast) - 1) * 100)
         pedido <- list(
           estrategia = "PLANO_CORISCO_DA_SOLANA",
           origem = "SOL", destino = "BRL",
@@ -581,23 +769,33 @@ executar_radar_labtrader <- function() {
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 8: PLANO FLECHA DE SAGARANA (Harmonicus 6h Ultra-Consistente | R$ 170 - 4 Slots | Meta +0,40%)
+  # MOTOR 8: PLANO FLECHA DE SAGARANA (Quantum Alpha 10x Turbo | Dual-Scale 75/25 | Fourier Peak 5.4h | Tranches R$ 220/450)
   # ----------------------------------------------------------------------------
-  stats_btc_6h <- obter_stats_btc_6h()
+  stats_btc <- obter_stats_btc_dual_scale()
   if (is.null(pedido) && !is.null(p_btc_brl) && ste_atual >= -0.02 && pc1_atual < 0.75 && w_energy < 55.0) {
-    z_btc_6h <- (p_btc_brl - stats_btc_6h$media) / stats_btc_6h$sd
-    dsp_btc_6h <- obter_dsp_ativo(stats_btc_6h$serie)
+    z_fast <- (p_btc_brl - stats_btc$media_fast) / stats_btc$sd_fast
+    z_macro <- (p_btc_brl - stats_btc$media_macro) / stats_btc$sd_macro
+    z_comp <- 0.75 * z_fast + 0.25 * z_macro
     
-    # Entrada em Dip Harmonicus 6h: Z <= -0.90 ou vale de fase theta < -0.10
-    cond_entrada_sag <- (z_btc_6h <= -0.90) && (dsp_btc_6h$theta < -0.10 || z_btc_6h <= -1.10)
+    dsp_fast <- stats_btc$dsp_fast
+    dsp_macro <- stats_btc$dsp_macro
+    acc_btc <- dsp_fast$d2Z
     
-    if (cond_entrada_sag && saldo_caixa_brl >= 80.0 && saldo_btc_brl < 650.0) {
-      lote_base <- VALOR_SAGARANA_BRL
-      if (dsp_btc_6h$theta < -1.10) lote_base <- 220.0
-      if (z_btc_6h <= -1.40) lote_base <- 250.0
+    # Condições de Entrada Quantum Alpha 10x:
+    # Tranche 1 (Sonda em Micro-Dip): Z_comp <= -0.65, sem topo macro (Z_macro <= 0.40), fase rápida < -0.05, aceleração d2Z >= -0.0003
+    cond_tranche1 <- (saldo_btc_brl < 80.0) && (z_comp <= -0.65) && (z_macro <= 0.40) && (dsp_fast$theta < -0.05) && (acc_btc >= -0.0003)
+    
+    # Tranche 2 (Martingale de Vale Harmônico): se já tem posição aberta (< R$ 350) e Z_comp <= -1.20 ou Z_macro <= -1.00 com fase < -0.15
+    cond_tranche2 <- (saldo_btc_brl >= 80.0 && saldo_btc_brl < 350.0) && (z_comp <= -1.20 || z_macro <= -1.00) && (dsp_fast$theta < -0.15)
+    
+    if ((cond_tranche1 || cond_tranche2) && saldo_caixa_brl >= 80.0 && saldo_btc_brl < 750.0) {
+      lote_base <- if (cond_tranche2) 450.0 else 220.0
+      # Adaptativo ao caixa livre:
+      lote_s <- if (cond_tranche2) min(lote_base * fator_lote, max(180.0, saldo_caixa_brl * 0.55)) else min(lote_base * fator_lote, max(80.0, saldo_caixa_brl * 0.35))
       
-      lote_s <- min(lote_base * fator_lote, max(50.0, saldo_caixa_brl * 0.30))
-      lucro_proj <- max(0.40, ((stats_btc_6h$media / p_btc_brl) - 1) * 100)
+      # Projeção de lucro dinâmico: se comprou no vale macro harmônico, estica a meta até +0.95%
+      lucro_proj <- if (dsp_macro$theta < 0 && z_macro < -0.50) 0.95 else (if (cond_tranche2) 0.75 else 0.50)
+      lucro_proj <- max(0.40, lucro_proj)
       
       pedido <- list(
         estrategia = "PLANO_FLECHA_DE_SAGARANA",
@@ -606,16 +804,17 @@ executar_radar_labtrader <- function() {
         lucro_esperado_pct = lucro_proj, timestamp = agora_ts
       )
     } else if (saldo_btc_brl >= 45.0) {
-      # Saída Dinâmica Harmonicus em repique rápido (+0.40% líquido)
-      cond_trailing_sag <- (dsp_btc_6h$d2Z < 0 || dsp_btc_6h$theta > 0.75)
-      cond_reversao_sag <- (z_btc_6h >= 0.15)
+      # Saída Dinâmica Harmonicus:
+      # Topo de fase rápida (theta > 0.80 ou desaceleração d2Z < 0) ou repique composto forte (Z_comp >= 0.35)
+      cond_trailing_sag <- (dsp_fast$d2Z < 0 || dsp_fast$theta > 0.80)
+      cond_reversao_sag <- (z_comp >= 0.35)
       
       if (cond_trailing_sag || cond_reversao_sag) {
-        lucro_proj <- max(0.40, ((p_btc_brl / stats_btc_6h$media) - 1) * 100)
+        lucro_proj <- max(0.40, ((p_btc_brl / stats_btc$media_fast) - 1) * 100)
         pedido <- list(
           estrategia = "PLANO_FLECHA_DE_SAGARANA",
           origem = "BTC", destino = "BRL",
-          valor_brl = min(VALOR_SAGARANA_BRL * fator_lote * 1.5, saldo_btc_brl),
+          valor_brl = saldo_btc_brl, # Realiza 100% da custódia do slot
           lucro_esperado_pct = lucro_proj, timestamp = agora_ts
         )
       }
@@ -623,7 +822,7 @@ executar_radar_labtrader <- function() {
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 9: PLANO COFRE DE MIDAS (BRL -> PAXG | DCA Sistemático R$ 50 a cada 48h)
+  # MOTOR 9: PLANO COFRE DE MIDAS (BRL -> PAXG | DCA Sistemático R$ 50 a cada 5 dias com Piso Ratchet)
   # ----------------------------------------------------------------------------
   if (is.null(pedido)) {
     hist_exec_file <- "ordens_executadas.rds"
@@ -639,13 +838,14 @@ executar_radar_labtrader <- function() {
       }
     }
     
-    # Condição DCA: 48h completas + Caixa livre >= R$ 150 + Sem tempestade de volatilidade
-    if (horas_desde_midas >= 48.0 && saldo_caixa_brl >= 150.0 && w_energy < 55.0) {
+    # Condição DCA Ressonante: 5 dias completos (120h) + Caixa livre >= R$ 100
+    # Ouro alocado entra diretamente no Simple Earn Flexível e eleva o Piso Ratchet Inviolável
+    if (horas_desde_midas >= 120.0 && saldo_caixa_brl >= 100.0 && w_energy < 55.0) {
       pedido <- list(
         estrategia = "PLANO_COFRE_DE_MIDAS",
         origem = "BRL", destino = "PAXG",
-        valor_brl = VALOR_MIDAS_BRL,
-        lucro_esperado_pct = 3.50, # Rendimento anualizado Simple Earn Flexible
+        valor_brl = VALOR_MIDAS_BRL, # R$ 50,00 fixo por tranche de acumulação
+        lucro_esperado_pct = 3.50,   # Rendimento passivo Simple Earn Flexible
         timestamp = agora_ts
       )
     }
@@ -765,6 +965,50 @@ executar_radar_labtrader <- function() {
           lucro_esperado_pct = lucro_proj, timestamp = agora_ts
         )
       }
+    }
+  }
+  
+  # ----------------------------------------------------------------------------
+  # MOTOR 13: PLANO BRUCE WAYNE (Contingência de Crise Cripto / Tail-Risk Macro Hedge)
+  # Isento Exclusivo da Trava 6 | Acionado APENAS em colapso estrutural prolongado (Bear Market de semanas/meses)
+  # ----------------------------------------------------------------------------
+  stats_macro_btc <- obter_stats_macro_btc_7d()
+  z_macro_btc     <- if (!is.null(p_btc_brl)) (p_btc_brl - stats_macro_btc$media) / stats_macro_btc$sd else 0.0
+  dsp_macro_btc   <- stats_macro_btc$dsp
+  
+  # Gatilho de Crise Extrema: Z_macro <= -1.65σ + Fase macro < -0.10 + Desaceleração d2Z <= 0
+  cond_crise_bruce <- (z_macro_btc <= -1.65) && (dsp_macro_btc$theta < -0.10) && (dsp_macro_btc$d2Z <= 0)
+  
+  if (is.null(pedido) && cond_crise_bruce) {
+    # Identificar se há posições de altcoins abertas em risco
+    saldo_altcoins <- list(
+      SOL = saldo_sol_brl,
+      ETH = saldo_eth_brl,
+      LINK = saldo_link_brl,
+      BNB = saldo_bnb_brl,
+      ADA = saldo_ada_brl,
+      NEAR = saldo_near_brl
+    )
+    
+    # Selecionar o ativo com maior saldo em aberto para desova defensiva
+    ativos_com_saldo <- names(saldo_altcoins)[sapply(saldo_altcoins, function(x) !is.null(x) && x >= 30.0)]
+    
+    if (length(ativos_com_saldo) > 0) {
+      # Escolhe o ativo de maior volume
+      saldos_num <- sapply(ativos_com_saldo, function(a) saldo_altcoins[[a]])
+      ativo_escolhido <- ativos_com_saldo[which.max(saldos_num)]
+      val_desova <- min(saldo_altcoins[[ativo_escolhido]], VALOR_BRUCE_BRL)
+      
+      cat(sprintf("🦇 [PLANO BRUCE WAYNE ACIONADO] Regime de Bear Market Prolongado (Z_macro=%.2fσ, Phase=%.2f, d2Z=%.4f). Desovando %s (R$ %.2f) para proteção em Caixa BRL/Ouro.\n",
+                  z_macro_btc, dsp_macro_btc$theta, dsp_macro_btc$d2Z, ativo_escolhido, val_desova))
+      
+      pedido <- list(
+        estrategia = "PLANO_BRUCE_WAYNE",
+        origem = ativo_escolhido, destino = "BRL",
+        valor_brl = val_desova,
+        lucro_esperado_pct = 0.0, # Isento de Trava 6
+        timestamp = agora_ts
+      )
     }
   }
   

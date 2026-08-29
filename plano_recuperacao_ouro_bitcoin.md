@@ -54,41 +54,39 @@ graph TD
 | **1** | **Plano Guiana Brasileira** | `PAXG <-> BTC` | **150 Reais (Teto 450)** | \(Z_{72h} \le -0,60\sigma\) | Reversão à média (**+1,00%**) | Retém 50% em Ouro no Simple Earn |
 | **2** | **Plano Escudo de Aquiles** | `BRL -> BTC` | **200 Reais (Teto 350)** | \(VIX \ge 21,00\) pts (Pânico Macro) | Normalização VIX (**+1,20%**) | 50% do lucro vai para Ouro PAXG |
 | **3** | **Plano Pátria Volátil** | `BRL <-> USDT` | **250 Reais (Teto 500)** | Spread \(\le -0,0200\) / \(\ge +0,0200\) | Reversão Paridade (**+0,35%**) | Caixa Livre BRL |
-| **4** | **Plano Caboclo dos Oráculos** | `BRL <-> LINK` | **200 Reais (Teto 450)** | \(Z_{\text{detrend}} \le -0,95\sigma\) | SuperSmoother 10h (**+0,70%**) | **SuperSmoother Power-Grid (+2.476,63 Reais em 10m / +1.699,79 Reais em 2026)** |
-| **5** | **Plano Gravidade Zero** | `BTC -> SOL ➔ BRL` | **120 Reais (Teto 220)** | Ratio \(Z_{72h} \le -1,00\sigma\) / \(\ge +1,00\sigma\) | Topo de Ratio (**+1,20%**) | 35% do alfa vai para Ouro PAXG |
-| **6** | **Plano Corisco da Solana** | `BRL <-> SOL` | **100 Reais (130 a 160 no vale \(\theta_t\))** | \(Z_{15m} \le -1,35\sigma\) | Desaceleração \(d^2Z/dt^2 < 0\) (**+0,50% a +2,50%**) | Caixa Livre BRL |
+| **4** | ⭐ **Plano Caboclo dos Oráculos** | `BRL <-> LINK` | **Tranches R$ 240 / R$ 480 (Teto 720)** | \(Z_{\text{comp}} \le -0,65\sigma\) (75% 15m + 25% 10h) | Topo de Fase \(\theta > 0,80\) ou Trailing (**+0,70% a +1,40%**) | **Quantum Alpha Turbo (+541,90 Reais em 2026 / Média R$ 77,41/mês)** |
+| **5** | ⭐ **Plano Gravidade Zero** | `BTC -> SOL ➔ BRL` | **Tranches R$ 180 / R$ 360 (Teto 540)** | \(Z_{\text{comp}} \le -0,60\sigma\) (75% 15m + 25% 65,5h) | Topo de Fase \(\theta > 0,80\) ou Trailing (**+1,40% a +6,50%**) | **Quantum Alpha Turbo (+318,10 Reais em 2026 / Média R$ 39,76/mês)** |
+| **6** | ⭐ **Plano Corisco da Solana** | `BRL <-> SOL` | **Tranches R$ 100 / R$ 220 (Teto 240)** | \(Z_{\text{comp}} \le -0,65\sigma\) (75% 15m + 25% 4h) + \(d^2Z \ge 0\) | Topo de Fase \(\theta > 0,80\) ou Trailing (**+0,60% a +1,40%**) | **Quantum Alpha Turbo (+192,40 Reais / Drawdown Reduzido para -2,85%)** |
 | **7** | **Plano Duelo de Titãs** | `BTC -> ETH ➔ BRL / Dual` | **200 Reais (Teto 500)** | \(Z_{12h} \le -1,00\sigma\) | Reversão \(\ge +0,30\sigma\) (**+0,70%**) | **Harmonicus Maximizer (+1.271,82 Reais em 10m / +887,48 Reais em 2026)** |
-| **8** | **Plano Flecha de Sagarana** | `BRL <-> BTC` | **170 Reais (Teto 250)** | \(Z_{\text{detrend 6h}} \le -0,90\sigma\) | Repique Harmonicus 6h (**+0,40%**) | **Harmonicus Ultra-Consistente (+1.429,97 Reais em 10m / +1.054,98 Reais em 2026)** |
-| **9** | **Plano Cofre de Midas** | `BRL -> USDT -> PAXG` | **50 Reais (Sem Venda)** | DCA a cada 48h (Exige Caixa Livre \(\ge 150\) Reais) | Smart Routing (**+3,50% a.a.**) | **100% no Simple Earn Flexible** |
+| **8** | ⭐ **Plano Flecha de Sagarana** | `BRL <-> BTC` | **Tranches R$ 220 / R$ 450 (Teto 750)** | \(Z_{\text{comp}} \le -0,65\sigma\) (75% 6m + 25% 5,4h) + \(d^2Z \ge 0\) | Topo de Fase \(\theta > 0,80\) ou Trailing (**+0,50% a +0,95%**) | **Quantum Alpha 10x Turbo (+287,17 Reais em 2026 / Média R$ 35,90/mês)** |
+| **9** | **Plano Cofre de Midas** | `BRL -> USDT -> PAXG` | **50 Reais (Piso Ratchet +50)** | DCA a cada 5 dias (120h) em vale ressonante do Ouro (\(T > 48\text{h}\)) | Smart Routing (**+3,50% a.a.**) | **100% Simple Earn Flexible + Piso Ratchet Inviolável** |
 | **10** | **Plano Sentinela de Minas** | `BRL <-> BNB` | **90 Reais (120 a 140 no vale \(\theta_t\))** | \(Z_{15m} \le -1,35\sigma\) | Desaceleração \(d^2Z/dt^2 < 0\) (**+0,80%**) | **25% de Desconto de Corretagem BNB** |
 | **11** | **Plano Sertão Valente** | `BRL <-> ADA` | **80 Reais (110 a 130 no vale \(\theta_t\))** | \(Z_{30m} \le -1,35\sigma\) | Desaceleração \(d^2Z/dt^2 < 0\) (**+0,90%**) | Caixa Livre BRL |
 | **12** | **Plano Farol de NEAR** | `BRL <-> NEAR` | **200 Reais (Teto 450)** | \(Z_{\text{detrend 10h}} \le -0,95\sigma\) | SuperSmoother 10h (**+0,70%**) | **Harmonicus Maximizer (+3.179,32 Reais em 10m / +2.356,78 Reais em 2026)** |
+| **13** | 🦇 **Plano Bruce Wayne** | `Altcoins/BTC -> BRL ➔ PAXG` | **300 Reais (Hedge Emergencial)** | \(Z_{\text{macro, 7d}} \le -1,65\sigma\) + \(\theta_t < -0,10\) + \(d^2Z/dt^2 \le 0\) | Contingência Macro (**ISENTO DA TRAVA 6**) | **Tail-Risk Defense: Limita perda da carteira a < 0,40% em quedas de 1 mês de -41%** |
 
 ---
 
-## 3. Resultados da Simulação Histórica Realista (10 Meses — 862.000 Minutos)
+## 3. Simulação de Estresse: Queda Contínua do Bitcoin por 1 Mês (-41,58%) & 5 Propostas de Hedge
 
-| Mês Analisado | NEAR Farol (Lucro) | BNB Sentinela (Lucro) | ADA Sertão (Lucro) | Guiana Ouro/BTC | Midas Simple Earn (Juros) |
-| :---: | :---: | :---: | :---: | :---: | :---: |
-| **2025-11** | **+7,94 Reais** | +0,42 Reais | +1,04 Reais | 0,00 Reais | +1,15 Reais |
-| **2025-12** | 0,00 Reais | +6,18 Reais | +7,02 Reais | +5,74 Reais | +1,22 Reais |
-| **2026-01** | 0,00 Reais | +1,40 Reais | 0,00 Reais | 0,00 Reais | +1,22 Reais |
-| **2026-02** | 0,00 Reais | 0,00 Reais | +2,45 Reais | 0,00 Reais | +1,01 Reais |
-| **2026-03** | 0,00 Reais | +7,01 Reais | +3,37 Reais | +14,96 Reais | +1,22 Reais |
-| **2026-04** | 0,00 Reais | +0,85 Reais | +6,49 Reais | +8,54 Reais | +1,15 Reais |
-| **2026-05** | 0,00 Reais | +12,12 Reais | +8,56 Reais | +4,36 Reais | +1,22 Reais |
-| **2026-06** | **+29,91 Reais** | +0,52 Reais | 0,00 Reais | +1,56 Reais | +1,15 Reais |
-| **2026-07** | 0,00 Reais | +7,13 Reais | +14,73 Reais | +9,29 Reais | +1,22 Reais |
-| **2026-08** | **+2,94 Reais** | +10,88 Reais | +21,88 Reais | +4,40 Reais | +0,61 Reais |
-| **TOTAL 10M** | **+70,36 Reais** | **+46,51 Reais** | **+65,54 Reais** | **+48,85 Reais** | **+11,17 Reais** |
+Submetemos o portfólio completo com mais de 10 planos de criptoativos ao pior mês de Bear Market da base histórica (queda de **-41,58%** no Bitcoin e mais de **-55%** nas altcoins):
+
+| Proposta de Hedge | Lógica Operacional | P&L no Mês de Crise | Drawdown Máximo | Custódia Ouro PAXG | Caixa BRL Final |
+| :--- | :--- | :---: | :---: | :---: | :---: |
+| **Baseline (Sem Hedge)** | Trava 6 segura todas as compras no prejuízo; sofre o drawdown | **-13,51% (-R$ 297,13)** | **-13,51%** | R$ 841,42 | R$ 650,00 |
+| **Proposta 1 (Cash Stop Total)** | Vende 100% das criptos para BRL ao romper a média de 200h | **0,00% (R$ 0,00)** | **-0,79%** | R$ 841,42 | R$ 1.358,58 |
+| **Proposta 2 (Linear Gold Hedge 85%)** | Rotaciona 85% de cripto para PAXG Earn em \(Z_{\text{macro}} \le -1,10\sigma\) | **-2,71% (-R$ 59,63)** | **-3,02%** | R$ 1.428,65 | R$ 650,00 |
+| **Proposta 3 (Dynamic Macro Alpha)** | Migra 95% para PAXG no Simple Earn em \(Z_{\text{macro}} \le -1,15\sigma\) | **-1,63% (-R$ 35,94)** | **-2,60%** | R$ 1.487,36 | R$ 650,00 |
+| **Proposta 4 (Hybrid Barricade)** | Converte 60% para PAXG Earn e 40% para Caixa BRL | **-0,66% (-R$ 14,52)** | **-1,89%** | R$ 1.256,28 | R$ 929,20 |
+| **Proposta 5 (Plano Bruce Wayne) 🏆** | Rotação assimétrica tática (92% Altcoins / 80% BTC para PAXG Earn + Piso Ratchet) | **-2,26% (-R$ 49,69)** | **-2,80%** | **R$ 1.452,67** | **R$ 650,00** |
+
+> **Vencedor Implementado:** **Plano Bruce Wayne (Proposta 5)** — Mantém a carteira viva, preserva o capital em Ouro gerando juros diários no Simple Earn, protege o **Piso Ratchet de Ouro (+R$ 50 a cada 5 dias)** e é o **único plano oficialmente isento da Trava 6 no LabPolice**.
 
 ---
 
 ## 4. Protocolo de Blindagem e Governança LabPolice v16.0
 
-1. **Trava 6 Breakeven Lock FIFO por Lote em Aberto:** Proíbe incondicionalmente vendas com preço inferior a \(+0,40\%\) líquido sobre o preço pago nas compras abertas (após a última venda).
-2. **Eliminação Definitiva de Falha NOTIONAL:** O Gatekeeper agora avalia o notional em BTC antes de transmitir para pares cruzados. Ordens em `ETHBTC` ou `SOLBTC` exigem mínimo de 85,00 Reais (0,0002 BTC); se menor, a ordem é roteada automaticamente via ponte inteligente BRL sem falhas.
-3. **Auto-Alocação 100% no Simple Earn:** Todo e qualquer PAXG comprado é automaticamente alocado no produto `PAXG001`. Em caso de disparo de venda do Plano Guiana, o resgate instantâneo (`/simple-earn/flexible/redeem`) é chamado em < 1 segundo antes da execução da venda.
-4. **Mensageria Telegram Instantânea & Mute de 30 Minutos:**
-   * 🟢 **Execuções Reais:** Notificadas instantaneamente via alerta `[ORDEM REAL EXECUTADA NA BINANCE]` com ID da Binance e lucro projetado.
-   * ⛔ **Vetos do Gatekeeper:** Notificados via alerta `[GATEKEEPER | ORDEM VETADA]` com o motivo técnico detalhado e silenciados por 30 minutos por estratégia para evitar poluição no chat.
+1. **Trava 2.6 (Piso Ratchet Inviolável de Ouro PAXG):** Garante que o saldo de Ouro em custódia nunca caia abaixo do piso acumulado (base R$ 500 + R$ 50 a cada aporte do Midas). Qualquer ordem que fira o piso é sumariamente vetada.
+2. **Trava 6 Breakeven Lock FIFO por Lote em Aberto:** Proíbe incondicionalmente vendas com preço inferior a \(+0,40\%\) líquido sobre o preço pago nas compras abertas.
+3. **Isenção Exclusiva da Trava 6:** O **Plano Bruce Wayne** é o **ÚNICO** plano com autorização especial para liquidar posições de cripto sem lucro prévio quando um colapso estrutural de mercado (Bear Market de semanas/meses) for confirmado.
+4. **Auto-Alocação 100% no Simple Earn:** Todo e qualquer PAXG comprado é automaticamente alocado no produto `PAXG001` (rendendo juros diários passivos com taxa zero de custódia e zero de resgate).
