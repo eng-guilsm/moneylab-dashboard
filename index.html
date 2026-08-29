@@ -113,15 +113,15 @@
           <div class="chart-legend-row" style="padding: 0 16px 10px 16px; display: flex; align-items: center; flex-wrap: wrap; gap: 14px;">
             <span class="leg-item"><i style="background: #F59E0B;"></i> Preço Instantâneo</span>
 
-            <!-- BOX TOGGLE ZERO-LAG -->
-            <label class="chart-toggle-badge" id="lblToggleZl" style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; background: rgba(192, 132, 252, 0.15); border: 1px solid #C084FC; padding: 4px 10px; border-radius: 6px; font-family: var(--font-mono); font-size: 0.72rem; color: #E9D5FF; transition: all 0.2s;">
-              <input type="checkbox" id="chkToggleZl" checked style="accent-color: #C084FC; width: 14px; height: 14px; cursor: pointer;">
+            <!-- BOX TOGGLE ZERO-LAG (DESLIGADA POR PADRÃO) -->
+            <label class="chart-toggle-badge" id="lblToggleZl" style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(192, 132, 252, 0.35); padding: 4px 10px; border-radius: 6px; font-family: var(--font-mono); font-size: 0.72rem; color: #9CA3AF; transition: all 0.2s;">
+              <input type="checkbox" id="chkToggleZl" style="accent-color: #C084FC; width: 14px; height: 14px; cursor: pointer;">
               <i style="background: #F0ABFC; box-shadow: 0 0 8px #C084FC; width: 10px; height: 10px; border-radius: 2px; display: inline-block;"></i>
-              <span style="font-weight: 700;">Banda & Curva Zero-Lag (Lilás)</span>
+              <span style="font-weight: 700;">+ Banda & Curva Zero-Lag (Lilás)</span>
             </label>
 
-            <!-- BOX TOGGLE BOLLINGER -->
-            <label class="chart-toggle-badge" id="lblToggleBb" style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; background: rgba(6, 182, 212, 0.15); border: 1px solid #06B6D4; padding: 4px 10px; border-radius: 6px; font-family: var(--font-mono); font-size: 0.72rem; color: #CFFAFE; transition: all 0.2s;">
+            <!-- BOX TOGGLE BOLLINGER (LIGADA POR PADRÃO) -->
+            <label class="chart-toggle-badge" id="lblToggleBb" style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; background: rgba(6, 182, 212, 0.16); border: 1px solid #06B6D4; padding: 4px 10px; border-radius: 6px; font-family: var(--font-mono); font-size: 0.72rem; color: #CFFAFE; transition: all 0.2s;">
               <input type="checkbox" id="chkToggleBb" checked style="accent-color: #06B6D4; width: 14px; height: 14px; cursor: pointer;">
               <i style="background: #06B6D4; border-top: 2px dashed #06B6D4; width: 10px; height: 10px; border-radius: 2px; display: inline-block;"></i>
               <span style="font-weight: 700;">Bandas de Bollinger (Ciano)</span>
@@ -140,7 +140,7 @@
   </div>
 
   <!-- SCRIPTS OFICIAIS (IDÊNTICOS AO HARMONICUS SX) -->
-  <script src="data/charts_data.js?v=20260829_v8_toggles"></script>
-  <script src="charts-kinetics.js?v=20260829_v8_toggles"></script>
+  <script src="data/charts_data.js?v=20260829_v9_bbdefault"></script>
+  <script src="charts-kinetics.js?v=20260829_v9_bbdefault"></script>
 </body>
 </html>
