@@ -134,6 +134,26 @@ resgatar_simple_earn_paxg <- function(qtd = NULL) {
   return(FALSE)
 }
 
+resgatar_simple_earn_link <- function(qtd = NULL) {
+  tryCatch({
+    query <- list(productId = "LINK001")
+    if (!is.null(qtd) && qtd > 0) {
+      query$amount <- sprintf("%.4f", qtd)
+    } else {
+      query$redeemAll <- "true"
+    }
+    r <- call_binance_post("/sapi/v1/simple-earn/flexible/redeem", query)
+    if (!is.null(r) && !is.null(r$success) && r$success == TRUE) {
+      cat(sprintf("🔓 [SIMPLE EARN] Resgate de LINK executado com sucesso (Redeem ID: %s)\n", r$redeemId))
+      Sys.sleep(1)
+      return(TRUE)
+    }
+  }, error = function(e) {
+    cat("⚠️ [SIMPLE EARN LINK REDEEM ERROR]:", conditionMessage(e), "\n")
+  })
+  return(FALSE)
+}
+
 subscrever_simple_earn_paxg <- function(qtd = NULL) {
   tryCatch({
     # Se qtd for nula, busca o saldo livre de PAXG na Spot
@@ -202,16 +222,30 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
   quantity <- NULL
   
   # 1. Compras com BRL (quoteOrderQty = valor_brl)
-  if (origem == "BRL" && destino %in% c("BTC", "SOL", "ETH", "LINK", "USDT", "PAXG", "BNB", "ADA", "NEAR")) {
+  if (origem == "BRL" && destino %in% c("BTC", "SOL", "ETH", "LINK", "USDT", "BNB", "ADA", "NEAR")) {
     symbol <- paste0(destino, "BRL")
     side <- "BUY"
     quoteOrderQty <- valor_brl
-  } else if (destino == "BRL" && origem %in% c("BTC", "SOL", "ETH", "LINK", "USDT", "PAXG", "BNB", "ADA", "NEAR")) {
+  } else if (destino == "BRL" && origem %in% c("BTC", "SOL", "ETH", "LINK", "USDT", "BNB", "ADA", "NEAR")) {
     symbol <- paste0(origem, "BRL")
     side <- "SELL"
+    
+    # Se origem for LINK e estiver no Simple Earn, resgata automaticamente antes da venda
+    if (origem == "LINK") {
+      df_w_check <- tryCatch(carteira(silent = TRUE), error = function(e) NULL)
+      if (!is.null(df_w_check) && is.data.frame(df_w_check)) {
+        row_ld <- df_w_check[df_w_check$asset == "LDLINK", ]
+        if (nrow(row_ld) > 0 && sum(row_ld$free, na.rm = TRUE) > 0.1) {
+          cat("🔓 [SIMPLE EARN] Detectado LINK em Simple Earn. Executando resgate automático antes da venda...\n")
+          resgatar_simple_earn_link()
+          Sys.sleep(1)
+        }
+      }
+    }
+    
     p_atual <- tryCatch(as.numeric(content(GET(paste0("https://api.binance.com/api/v3/ticker/price?symbol=", symbol)), "parsed")$price), error = function(e) NULL)
     if (!is.null(p_atual) && p_atual > 0) {
-      precisao <- ifelse(origem == "BTC", 5, ifelse(origem %in% c("ETH", "SOL", "PAXG", "BNB"), 3, ifelse(origem == "ADA", 1, 2)))
+      precisao <- ifelse(origem == "BTC", 5, ifelse(origem %in% c("ETH", "SOL", "BNB"), 3, ifelse(origem == "ADA", 1, 2)))
       mult_p <- 10^precisao
       calc_qty <- floor((valor_brl / p_atual) * mult_p) / mult_p
       
@@ -219,13 +253,8 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
       df_w <- tryCatch(carteira(silent = TRUE), error = function(e) NULL)
       saldo_asset_real <- 0
       if (!is.null(df_w) && is.data.frame(df_w)) {
-        if (origem == "PAXG") {
-          row_p <- df_w[df_w$asset %in% c("PAXG", "LDPAXG"), ]
-          if (nrow(row_p) > 0) saldo_asset_real <- sum(row_p$free, na.rm = TRUE)
-        } else {
-          row_p <- df_w[df_w$asset == origem, ]
-          if (nrow(row_p) > 0) saldo_asset_real <- sum(row_p$free, na.rm = TRUE)
-        }
+        row_p <- df_w[df_w$asset == origem, ]
+        if (nrow(row_p) > 0) saldo_asset_real <- sum(row_p$free, na.rm = TRUE)
       }
       if (saldo_asset_real > 0) {
         quantity <- min(calc_qty, floor(saldo_asset_real * mult_p) / mult_p)
@@ -325,7 +354,12 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
     r_usdt <- enviar_ordem_binance_market("BRL", "USDT", valor_brl)
     if (r_usdt$sucesso) {
       qtd_usdt <- as.numeric(r_usdt$executedQty)
-      if (is.na(qtd_usdt) || length(qtd_usdt) == 0 || qtd_usdt <= 0) qtd_usdt <- valor_brl / 5.18
+      if (is.na(qtd_usdt) || length(qtd_usdt) == 0 || qtd_usdt <= 0) {
+        qtd_usdt <- as.numeric(r_usdt$cummulativeQuoteQty)
+      }
+      if (is.na(qtd_usdt) || length(qtd_usdt) == 0 || qtd_usdt <= 0) {
+        qtd_usdt <- valor_brl / 5.18
+      }
       return(enviar_ordem_binance_market("USDT", "PAXG", valor_brl, quoteOrderQty = qtd_usdt))
     } else {
       return(r_usdt)
@@ -335,6 +369,39 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
     side <- "BUY"
     if (!is.null(quoteOrderQty)) {
       quoteOrderQty <- sprintf("%.2f", as.numeric(quoteOrderQty))
+    }
+  } else if (origem == "PAXG" && destino == "BRL") {
+    # Venda PAXG para BRL: Resgata do Earn -> Vende PAXG por USDT -> Vende USDT por BRL
+    resgatar_simple_earn_paxg()
+    cat(sprintf("🌉 [SMART ROUTING] Vendendo PAXG via ponte PAXG -> USDT -> BRL (R$ %.2f)...\n", valor_brl))
+    p_paxg_u <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT"), "parsed")$price), error = function(e) 2650.0)
+    p_usdt_b <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) 5.18)
+    p_paxg_brl_tmp <- ifelse(!is.null(p_paxg_u) && !is.null(p_usdt_b), p_paxg_u * p_usdt_b, 23777.0)
+    
+    df_w <- tryCatch(carteira(silent = TRUE), error = function(e) NULL)
+    saldo_paxg_real <- 0
+    if (!is.null(df_w) && is.data.frame(df_w)) {
+      row_p <- df_w[df_w$asset %in% c("PAXG", "LDPAXG"), ]
+      if (nrow(row_p) > 0) saldo_paxg_real <- sum(row_p$free, na.rm = TRUE)
+    }
+    calc_qty <- floor((valor_brl / p_paxg_brl_tmp) * 10000) / 10000
+    quantity <- if (saldo_paxg_real > 0) min(calc_qty, floor(saldo_paxg_real * 10000) / 10000) else calc_qty
+    
+    r_paxg <- enviar_ordem_binance_market("PAXG", "USDT", valor_brl, quantity = quantity)
+    if (r_paxg$sucesso) {
+      qtd_usdt <- as.numeric(r_paxg$cummulativeQuoteQty)
+      if (is.na(qtd_usdt) || qtd_usdt <= 0) qtd_usdt <- as.numeric(r_paxg$executedQty) * p_paxg_u
+      if (is.na(qtd_usdt) || qtd_usdt <= 0) qtd_usdt <- valor_brl / 5.18
+      val_brl_usdt <- qtd_usdt * p_usdt_b
+      return(enviar_ordem_binance_market("USDT", "BRL", val_brl_usdt))
+    } else {
+      return(r_paxg)
+    }
+  } else if (origem == "PAXG" && destino == "USDT") {
+    symbol <- "PAXGUSDT"
+    side <- "SELL"
+    if (!is.null(quantity)) {
+      quantity <- sprintf("%.4f", as.numeric(quantity))
     }
   } else if (origem == "PAXG" && destino == "BTC") {
     # Guiana Ponta B: Vende PAXG por BTC usando par direto PAXGBTC
@@ -428,6 +495,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
         aprovado <- TRUE
         motivo_veto <- ""
         estrategia_nome <- as.character(pedido$estrategia)
+        hist_exec_file <- "ordens_executadas.rds"
         
         # --- TABELA DE TETOS DE VOLUME E LUCROS MÍNIMOS ---
         estrategias_validas <- c(
@@ -442,22 +510,24 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_COFRE_DE_MIDAS",
           "PLANO_SENTINELA_DE_MINAS",
           "PLANO_SERTAO_VALENTE",
-          "PLANO_FAROL_DE_NEAR"
+          "PLANO_FAROL_DE_NEAR",
+          "PLANO_BRUCE_WAYNE"
         )
         
         tetos_volume <- list(
           "PLANO_GUIANA_BRASILEIRA" = 250.00,
           "PLANO_ESCUDO_DE_AQUILES" = 350.00,
           "PLANO_PATRIA_VOLATIL" = 350.00,
-          "PLANO_CABOCLO_DOS_ORACULOS" = 300.00,
-          "PLANO_GRAVIDADE_ZERO" = 220.00,
+          "PLANO_CABOCLO_DOS_ORACULOS" = 480.00,
+          "PLANO_GRAVIDADE_ZERO" = 360.00,
           "PLANO_CORISCO_DA_SOLANA" = 220.00,
           "PLANO_DUELO_DE_TITAS" = 300.00,
-          "PLANO_FLECHA_DE_SAGARANA" = 250.00,
+          "PLANO_FLECHA_DE_SAGARANA" = 450.00,
           "PLANO_COFRE_DE_MIDAS" = 55.00,
           "PLANO_SENTINELA_DE_MINAS" = 180.00,
           "PLANO_SERTAO_VALENTE" = 160.00,
-          "PLANO_FAROL_DE_NEAR" = 300.00
+          "PLANO_FAROL_DE_NEAR" = 300.00,
+          "PLANO_BRUCE_WAYNE" = 350.00
         )
         
         lucros_minimos <- list(
@@ -472,7 +542,8 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_COFRE_DE_MIDAS" = 0.00,
           "PLANO_SENTINELA_DE_MINAS" = 0.50,
           "PLANO_SERTAO_VALENTE" = 0.55,
-          "PLANO_FAROL_DE_NEAR" = 0.70
+          "PLANO_FAROL_DE_NEAR" = 0.70,
+          "PLANO_BRUCE_WAYNE" = 0.00
         )
         
         # Trava 0: Validação de Saldo em Custódia Real (Anti-Venda a Descoberto)
@@ -482,9 +553,10 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
             origem_asset <- as.character(pedido$origem)
             
             saldo_disp <- 0
-            if (origem_asset == "PAXG") {
-              row_paxg <- df_wallet[df_wallet$asset %in% c("PAXG", "LDPAXG"), ]
-              if (nrow(row_paxg) > 0) saldo_disp <- sum(row_paxg$free, na.rm = TRUE)
+            if (origem_asset %in% c("PAXG", "LINK")) {
+              earn_asset <- paste0("LD", origem_asset)
+              row_asset <- df_wallet[df_wallet$asset %in% c(origem_asset, earn_asset), ]
+              if (nrow(row_asset) > 0) saldo_disp <- sum(row_asset$free, na.rm = TRUE)
             } else {
               row_asset <- df_wallet[df_wallet$asset == origem_asset, ]
               if (nrow(row_asset) > 0) saldo_disp <- sum(row_asset$free, na.rm = TRUE)
@@ -539,7 +611,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           
           # Subtrava 2.1: Teto de Posição Cumulativa em Aberto (Anti-Empilhamento de Compras Multi-Tranche)
           if (aprovado && pedido$origem == "BRL" && pedido$destino %in% c("SOL", "LINK", "ETH", "USDT", "BTC", "PAXG", "BNB", "ADA", "NEAR")) {
-            teto_custodia_map <- list(SOL = 220.0, LINK = 450.0, ETH = 500.0, USDT = 500.0, BTC = 650.0, PAXG = 800.0, BNB = 180.0, ADA = 160.0, NEAR = 450.0)
+            teto_custodia_map <- list(SOL = 540.0, LINK = 720.0, ETH = 500.0, USDT = 500.0, BTC = 750.0, PAXG = 800.0, BNB = 180.0, ADA = 160.0, NEAR = 450.0)
             teto_custodia <- ifelse(!is.null(teto_custodia_map[[pedido$destino]]), teto_custodia_map[[pedido$destino]], 250.0)
             
             saldo_ativo_brl <- 0.0
@@ -571,6 +643,32 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           }
         }
         
+        # Trava 2.6: Piso Ratchet Inviolável de Ouro PAXG
+        # Garante a preservação do piso estrutural de ouro que sobe a cada DCA de R$ 50 do Cofre de Midas.
+        # Qualquer tentativa de venda/rotação que viole o piso acumulado é VETADA (exceto no Plano Bruce Wayne).
+        if (aprovado && pedido$origem == "PAXG" && estrategia_nome != "PLANO_BRUCE_WAYNE") {
+          piso_ouro_acumulado <- 500.0
+          if (file.exists(hist_exec_file)) {
+            hist_all_tmp <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
+            if (!is.null(hist_all_tmp) && nrow(hist_all_tmp) > 0 && "Estrategia" %in% names(hist_all_tmp)) {
+              midas_compras <- hist_all_tmp[grepl("EXECUTADO_REAL", hist_all_tmp$Status) & hist_all_tmp$Estrategia == "PLANO_COFRE_DE_MIDAS" & hist_all_tmp$Destino == "PAXG", ]
+              if (nrow(midas_compras) > 0) {
+                piso_ouro_acumulado <- piso_ouro_acumulado + (nrow(midas_compras) * 50.0)
+              }
+            }
+          }
+          
+          # Saldo total atual de ouro (Spot + Simple Earn)
+          saldo_ouro_total_brl <- saldo_disp * preco_unit
+          saldo_remanescente_ouro <- saldo_ouro_total_brl - as.numeric(pedido$valor_brl)
+          
+          if (saldo_remanescente_ouro < piso_ouro_acumulado) {
+            aprovado <- FALSE
+            motivo_veto <- sprintf("Piso Ratchet Inviolável de Ouro: Venda de PAXG (R$ %.2f) deixaria a reserva em R$ %.2f, violando o piso protegido de R$ %.2f.",
+                                   as.numeric(pedido$valor_brl), saldo_remanescente_ouro, piso_ouro_acumulado)
+          }
+        }
+        
         # Trava 3: Lucro Mínimo Esperado
         if (aprovado) {
           min_lucro <- ifelse(!is.null(lucros_minimos[[estrategia_nome]]), lucros_minimos[[estrategia_nome]], 0.80)
@@ -592,12 +690,15 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
               horas_dif <- as.numeric(difftime(Sys.time(), ultimo_ts, units = "hours"))
               
               # Cooldown Otimizado Harmonicus Ultra-Deep
-              cooldown_req <- ifelse(estrategia_nome == "PLANO_COFRE_DE_MIDAS", 48.0,
+              cooldown_req <- ifelse(estrategia_nome == "PLANO_COFRE_DE_MIDAS", 120.0, # 5 dias
+                              ifelse(estrategia_nome == "PLANO_BRUCE_WAYNE", 24.0,
                               ifelse(estrategia_nome %in% c("PLANO_CORISCO_DA_SOLANA", "PLANO_SENTINELA_DE_MINAS"), 0.16, 
-                              ifelse(estrategia_nome %in% c("PLANO_FLECHA_DE_SAGARANA", "PLANO_SERTAO_VALENTE"), 0.25,
-                              ifelse(estrategia_nome %in% c("PLANO_CABOCLO_DOS_ORACULOS", "PLANO_FAROL_DE_NEAR"), 1.0,
+                              ifelse(estrategia_nome == "PLANO_FLECHA_DE_SAGARANA", 0.13,
+                              ifelse(estrategia_nome == "PLANO_CABOCLO_DOS_ORACULOS", 0.20,
+                              ifelse(estrategia_nome == "PLANO_SERTAO_VALENTE", 0.25,
+                              ifelse(estrategia_nome == "PLANO_FAROL_DE_NEAR", 1.0,
                               ifelse(estrategia_nome == "PLANO_DUELO_DE_TITAS", 1.5,
-                              ifelse(grepl("GRAVIDADE", estrategia_nome), 0.33, 1.0))))))
+                              ifelse(grepl("GRAVIDADE", estrategia_nome), 0.16, 1.0)))))))))
               
               # Se for realização de lucro / rotação oposta, zera o cooldown
               ultimo_reg <- tail(hist_est, 1)
@@ -619,9 +720,18 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
         # Se a compra foi feita há menos de 5 minutos, exige que seja com lucro confirmado para evitar micro-slippage.
         
         # Trava 6: Trava Anti-Prejuízo / Breakeven Lock Universal (Proíbe Venda Abaixo do Custo Real do Lote em Aberto)
-        if (aprovado && pedido$destino == "BRL" && pedido$origem %in% c("SOL", "LINK", "ETH", "USDT", "BTC", "PAXG", "BNB", "ADA", "NEAR")) {
-          sym_check <- sprintf("%sBRL", pedido$origem)
-          p_atual_mercado <- tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%s", sym_check)), "parsed")$price), error = function(e) NULL)
+        # REGRA SUPREMA: Somente o PLANO BRUCE WAYNE (Contingência de Crise Cripto) está ISENTO da Trava 6
+        if (aprovado && estrategia_nome == "PLANO_BRUCE_WAYNE") {
+          cat("🦇 [PLANO BRUCE WAYNE] Operação de Contingência de Crise Cripto: ISENTO da Trava 6 Breakeven Lock para estancar sangria macro sistêmica.\n")
+        } else if (aprovado && pedido$destino == "BRL" && pedido$origem %in% c("SOL", "LINK", "ETH", "USDT", "BTC", "PAXG", "BNB", "ADA", "NEAR")) {
+          p_atual_mercado <- if (pedido$origem == "PAXG") {
+            p_paxg_u <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT"), "parsed")$price), error = function(e) NULL)
+            p_usdt_b <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) NULL)
+            if (!is.null(p_paxg_u) && !is.null(p_usdt_b)) p_paxg_u * p_usdt_b else NULL
+          } else {
+            sym_check <- sprintf("%sBRL", pedido$origem)
+            tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%s", sym_check)), "parsed")$price), error = function(e) NULL)
+          }
           
           if (!is.null(p_atual_mercado) && p_atual_mercado > 0 && file.exists(hist_exec_file)) {
             hist_all <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
@@ -769,17 +879,20 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           cat(sprintf("[%s] VETO: %s (Motivo: %s)\n", ts_str, ifelse(!is.null(pedido$estrategia), pedido$estrategia, "ORDEM_INVALIDA"), motivo_veto),
               file = "ordens_vetadas.log", append = TRUE)
           
-          # Throttling de Notificação de Veto no Telegram (Máximo 1 alerta a cada 30 min por estratégia)
+          # Throttling de Notificação de Veto no Telegram
+          # Se o veto for relacionado ao Piso Ratchet / Ouro, silenciamento é de 24h (1440 min)
+          # Para outros vetos de mercado, silenciamento de 30 min por estratégia
           veto_throttle_file <- "veto_tg_throttle.rds"
           deve_notificar_tg <- TRUE
           chave_veto <- as.character(estrategia_nome)
+          janela_mute_min <- if (grepl("Piso Ratchet", motivo_veto, ignore.case = TRUE) || grepl("ouro", motivo_veto, ignore.case = TRUE)) 1440 else 30
           
           if (file.exists(veto_throttle_file)) {
             throttle_db <- tryCatch(readRDS(veto_throttle_file), error = function(e) list())
             if (!is.null(throttle_db[[chave_veto]])) {
               ultimo_envio <- as.POSIXct(throttle_db[[chave_veto]])
               minutos_dif <- as.numeric(difftime(Sys.time(), ultimo_envio, units = "mins"))
-              if (minutos_dif < 30) {
+              if (minutos_dif < janela_mute_min) {
                 deve_notificar_tg <- FALSE
               }
             }
@@ -792,11 +905,13 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
             tryCatch(saveRDS(throttle_db, veto_throttle_file), error = function(e) NULL)
             
             # Alerta Telegram de Veto (DM Privada)
-            msg_veto_tg <- sprintf("⛔ <b>[GATEKEEPER | ORDEM VETADA]</b>\n━━━━━━━━━━━━━━━━━━━━\n🎯 <b>Plano:</b> %s\n⚠️ <b>Tentativa:</b> %s ➔ %s\n🚫 <b>Motivo:</b> %s\n⏱️ <b>Data:</b> %s\n🔕 <i>Avisos para este mesmo veto silenciados por 30 min no Telegram (logs gravados no servidor).</i>\n━━━━━━━━━━━━━━━━━━━━",
-                                   estrategia_nome, origem_val, destino_val, motivo_veto, ts_str)
+            txt_mute <- if (janela_mute_min >= 1440) "24h" else "30 min"
+            msg_veto_tg <- sprintf("⛔ <b>[GATEKEEPER | ORDEM VETADA]</b>\n━━━━━━━━━━━━━━━━━━━━\n🎯 <b>Plano:</b> %s\n⚠️ <b>Tentativa:</b> %s ➔ %s\n🚫 <b>Motivo:</b> %s\n⏱️ <b>Data:</b> %s\n🔕 <i>Avisos para este mesmo veto silenciados por %s no Telegram (logs gravados no servidor).</i>\n━━━━━━━━━━━━━━━━━━━━",
+                                   estrategia_nome, origem_val, destino_val, motivo_veto, ts_str, txt_mute)
             notificar_telegram_trade(msg_veto_tg)
           } else {
-            cat(sprintf("🔕 [TELEGRAM SILENCIADO] Notificação de veto para %s suprimida (último envio há < 30 min).\n", estrategia_nome))
+            txt_mute <- if (janela_mute_min >= 1440) "24h" else "30 min"
+            cat(sprintf("🔕 [TELEGRAM SILENCIADO] Notificação de veto para %s suprimida (último envio há < %s).\n", estrategia_nome, txt_mute))
           }
         }
         
