@@ -6,9 +6,11 @@
  * ==============================================================================
  */
 
-document.addEventListener('DOMContentLoaded', () => {
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initChartsKinetics);
+} else {
   initChartsKinetics();
-});
+}
 
 let currentKineticsAsset = 'BTCBRL';
 let currentKineticsTimeframe = '24h';
@@ -199,6 +201,7 @@ function renderKineticsChart(symbol, tfKey, data) {
   const fullLower = series.bollinger_lower || series.bb_lower || [];
   const fullZlUpper = series.zl_upper || [];
   const fullZlLower = series.zl_lower || [];
+  const fullSS = series.supersmoother || [];
   const fullVelocities = series.velocities || [];
   const fullTimestamps = series.timestamps || [];
 
@@ -213,6 +216,7 @@ function renderKineticsChart(symbol, tfKey, data) {
   const lower = fullLower.length > 0 ? fullLower.slice(startIndex, endIndex + 1) : prices;
   const zlUpper = fullZlUpper.length > 0 ? fullZlUpper.slice(startIndex, endIndex + 1) : [];
   const zlLower = fullZlLower.length > 0 ? fullZlLower.slice(startIndex, endIndex + 1) : [];
+  const supersmoother = fullSS.length > 0 ? fullSS.slice(startIndex, endIndex + 1) : [];
   const velocities = fullVelocities.slice(startIndex, endIndex + 1);
   const timestamps = fullTimestamps.slice(startIndex, endIndex + 1);
 
@@ -242,8 +246,8 @@ function renderKineticsChart(symbol, tfKey, data) {
   ctx.fillStyle = '#050811';
   ctx.fillRect(0, 0, w, h);
 
-  // Escalas de Preço
-  const allVals = [...lower, ...upper, ...prices];
+  // Escalas de Preço (considerando todos os envelopes e a curva lilás Zero-Lag)
+  const allVals = [...lower, ...upper, ...prices, ...zlUpper, ...zlLower, ...supersmoother].filter(v => typeof v === 'number' && !isNaN(v));
   const rawMin = Math.min(...allVals);
   const rawMax = Math.max(...allVals);
   const spread = rawMax - rawMin || 1;
@@ -274,7 +278,7 @@ function renderKineticsChart(symbol, tfKey, data) {
     ctx.fillText(labelStr, padLeft - 8, yPos + 3);
   }
 
-  // 1. Faixa de Bollinger (Sombra de Incerteza e Linhas Cyan)
+  // 1. Faixa de Bollinger Clássica (Sombra Cyan e Linhas Tracejadas)
   if (upper.length === prices.length && lower.length === prices.length) {
     ctx.beginPath();
     for (let i = 0; i < upper.length; i++) {
@@ -289,7 +293,7 @@ function renderKineticsChart(symbol, tfKey, data) {
       ctx.lineTo(x, y);
     }
     ctx.closePath();
-    ctx.fillStyle = 'rgba(6, 182, 212, 0.08)';
+    ctx.fillStyle = 'rgba(6, 182, 212, 0.06)';
     ctx.fill();
 
     // Linhas das Bandas Superior e Inferior
@@ -315,7 +319,7 @@ function renderKineticsChart(symbol, tfKey, data) {
     ctx.setLineDash([]);
   }
 
-  // 1.5 BANDA ZERO-LAG (SUPERSMOOTHER +/- 2 SIGMA - ROXO/MAGENTA NEON)
+  // 1.5 ENVELOPES DA BANDA ZERO-LAG (+/- 2 SIGMA - ROXO/LILÁS VIBRANTE)
   if (zlUpper.length === prices.length && zlLower.length === prices.length) {
     ctx.beginPath();
     for (let i = 0; i < zlUpper.length; i++) {
@@ -329,12 +333,13 @@ function renderKineticsChart(symbol, tfKey, data) {
       ctx.lineTo(x, y);
     }
     ctx.closePath();
-    ctx.fillStyle = 'rgba(168, 85, 247, 0.07)'; // Sombra Roxa Neon
+    ctx.fillStyle = 'rgba(192, 132, 252, 0.14)'; // Preenchimento da Banda Lilás bem visível
     ctx.fill();
 
-    // Linha Zero-Lag Upper
+    // Linha Superior da Banda Zero-Lag
     ctx.strokeStyle = '#C084FC';
     ctx.lineWidth = 1.6;
+    ctx.setLineDash([4, 3]);
     ctx.beginPath();
     for (let i = 0; i < zlUpper.length; i++) {
       const x = getX(i);
@@ -343,9 +348,7 @@ function renderKineticsChart(symbol, tfKey, data) {
     }
     ctx.stroke();
 
-    // Linha Zero-Lag Lower
-    ctx.strokeStyle = '#C084FC';
-    ctx.lineWidth = 1.6;
+    // Linha Inferior da Banda Zero-Lag
     ctx.beginPath();
     for (let i = 0; i < zlLower.length; i++) {
       const x = getX(i);
@@ -353,9 +356,11 @@ function renderKineticsChart(symbol, tfKey, data) {
       if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
     ctx.stroke();
+    ctx.setLineDash([]);
   }
 
-  // 2. Linha Principal de Preço (Gradiente Ouro Neon)
+  // 2. Linha Principal de Preço (Ouro Claro)
+  ctx.save();
   ctx.beginPath();
   for (let i = 0; i < prices.length; i++) {
     const x = getX(i);
@@ -363,11 +368,26 @@ function renderKineticsChart(symbol, tfKey, data) {
     if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
   ctx.strokeStyle = '#F59E0B';
-  ctx.lineWidth = 2.5;
-  ctx.shadowColor = '#F59E0B';
-  ctx.shadowBlur = 8;
+  ctx.lineWidth = 2.0;
   ctx.stroke();
-  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // 2.5 CURVA CENTRAL LILÁS ZERO-LAG (SUPERSMOOTHER DE JOHN EHLERS - DESENHADA POR CIMA)
+  if (supersmoother.length === prices.length) {
+    ctx.save();
+    ctx.beginPath();
+    for (let i = 0; i < supersmoother.length; i++) {
+      const x = getX(i);
+      const y = getY(supersmoother[i]);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = '#D8B4FE'; // Lilás Neon Luminoso
+    ctx.lineWidth = 2.4;
+    ctx.shadowColor = '#C084FC';
+    ctx.shadowBlur = 8;
+    ctx.stroke();
+    ctx.restore();
+  }
 
   // 3. Painel Inferior: Histograma de Velocidade Instantânea (dP/dt)
   const derivY0 = h - 35;
@@ -439,14 +459,15 @@ function renderKineticsChart(symbol, tfKey, data) {
       const upVal = isUsdt ? `R$ ${upper[i].toFixed(4)}` : `R$ ${upper[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
       const lowVal = isUsdt ? `R$ ${lower[i].toFixed(4)}` : `R$ ${lower[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
       const zlUpVal = zlUpper && zlUpper[i] ? (isUsdt ? `R$ ${zlUpper[i].toFixed(4)}` : `R$ ${zlUpper[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`) : null;
-      const zlLowVal = zlLower && zlLower[i] ? (isUsdt ? `R$ ${zlLower[i].toFixed(4)}` : `R$ ${zlLower[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`) : null;
+      const ssVal = supersmoother && supersmoother[i] ? (isUsdt ? `R$ ${supersmoother[i].toFixed(4)}` : `R$ ${supersmoother[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`) : null;
       const velVal = `${velocities[i] >= 0 ? '+' : ''}${velocities[i].toFixed(3)}%`;
 
       badge.style.display = 'block';
       badge.innerHTML = `
         <div class="ib-time">⏱️ ${timestamps[i]}</div>
         <div class="ib-price">Cotação: <b>${pVal}</b></div>
-        <div class="ib-bands" style="color: #C084FC;">Zero-Lag (±2σ): <b>${zlLowVal || lowVal} ↔ ${zlUpVal || upVal}</b></div>
+        <div class="ib-bands" style="color: #C084FC; font-weight: bold;">Curva Lilás ZL: ${ssVal || pVal}</div>
+        <div class="ib-bands" style="color: #A855F7; font-size: 11px;">Envelopes ZL (±2σ): ${zlLowVal || lowVal} ↔ ${zlUpVal || upVal}</div>
         <div class="ib-bands" style="color: #06B6D4; font-size: 10px;">Bollinger (SMA): ${lowVal} ↔ ${upVal}</div>
         <div class="ib-vel">Velocidade: <b style="color: ${velocities[i] >= 0 ? '#10B981' : '#EF4444'}">${velVal}</b></div>
       `;

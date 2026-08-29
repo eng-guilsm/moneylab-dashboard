@@ -276,22 +276,21 @@ disp$add_handler(CommandHandler("dash", function(bot, update) {
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n",
       "🌐 <b>1. Dashboard Público (Cinética & Física de Mercado):</b>\n",
       "Trajetória inercial, derivadas de velocidade (dP/dt), aceleração (d²P/dt²), Thrust Gauge e Banda Zero-Lag de Ehlers.\n",
-      "🔗 <a href='https://gsmacedo7-lang.github.io/moneylab-dashboard/'>Acessar Dash Público (Acesso Livre)</a>\n\n",
+      "🔗 <a href='https://eng-guilsm.github.io/moneylab-dashboard/'>Acessar Dash Público (Acesso Livre)</a>\n\n",
       "🛡️ <b>2. Terminal Tático Privado (Harmonicus SX):</b>\n",
       "Radar de proximidade dos 8 planos, custódia ao vivo e sintetizador espectral.\n",
-      "🔐 <i>Protegido pelo Gatekeeper Security Protocol (PIN de 4 dígitos).</i>\n",
-      "🔗 <a href='https://eng-guilsm.github.io/harmonicus-sx/'>Acessar Harmonicus SX Privado</a>\n\n",
-      "💡 <i>Dica: Para o terminal privado, utilize seu PIN mestre para liberar o cockpit.</i>"
+      "🔐 <i>Acesso restrito de custódia e execução.</i>\n",
+      "🔗 <a href='https://eng-guilsm.github.io/harmonicus-sx/'>Acessar Harmonicus SX</a>\n"
     )
     
-    url_pub <- "https://gsmacedo7-lang.github.io/moneylab-dashboard/"
+    url_pub <- "https://eng-guilsm.github.io/moneylab-dashboard/"
     url_priv <- "https://eng-guilsm.github.io/harmonicus-sx/"
     
     teclado <- InlineKeyboardMarkup(
       inline_keyboard = list(
         list(
-          InlineKeyboardButton(text = "🌐 Dash Público (Cinética)", url = url_pub),
-          InlineKeyboardButton(text = "🛡️ Harmonicus Privado (PIN)", url = url_priv)
+          InlineKeyboardButton(text = "🌐 Radar Cinético Público", url = url_pub),
+          InlineKeyboardButton(text = "🛡️ Harmonicus SX Privado", url = url_priv)
         )
       )
     )

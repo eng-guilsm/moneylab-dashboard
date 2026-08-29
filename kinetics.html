@@ -130,21 +130,8 @@
     </section>
   </div>
 
-  <!-- SCRIPTS COM CACHE-BUSTING DINÂMICO -->
-  <script>
-    (function() {
-      const ts = Date.now();
-      const scripts = [
-        'data/charts_data.js',
-        'charts-kinetics.js'
-      ];
-      scripts.forEach(src => {
-        const s = document.createElement('script');
-        s.src = `${src}?_t=${ts}`;
-        s.async = false;
-        document.body.appendChild(s);
-      });
-    })();
-  </script>
+  <!-- SCRIPTS OFICIAIS RADAR CINÉTICO PÚBLICO -->
+  <script src="data/charts_data.js?v=20260829_v7_lilac"></script>
+  <script src="charts-kinetics.js?v=20260829_v7_lilac"></script>
 </body>
 </html>
