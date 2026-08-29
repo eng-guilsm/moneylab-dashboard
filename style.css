@@ -2560,3 +2560,6 @@ input[type="range"]::-webkit-slider-thumb {
   40%, 80% { transform: translateX(10px); }
 }
 
+
+/* Chart Toggle Badges */
+.chart-toggle-badge:hover { filter: brightness(1.2); transform: translateY(-1px); }

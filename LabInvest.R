@@ -268,35 +268,34 @@ disp$add_handler(CommandHandler("musica", function(bot, update) {
   }
 }))
 
-# 1.57 Comando: /dash (Dashboard Aberto e Terminal Tático)
+# 1.57 Comando: /dash (Radar Cinético Público)
 disp$add_handler(CommandHandler("dash", function(bot, update) {
   if(verificar_acesso(bot, update)) {
     msg <- paste0(
-      "📊 <b>MONEYLAB // DASHBOARDS E TERMINAL QUANTITATIVO</b>\n",
+      "📊 <b>MONEYLAB // RADAR CINÉTICO DE MERCADO</b>\n",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n",
-      "🌐 <b>1. Dashboard Público (Cinética & Física de Mercado):</b>\n",
-      "Trajetória inercial, derivadas de velocidade (dP/dt), aceleração (d²P/dt²), Thrust Gauge e Banda Zero-Lag de Ehlers.\n",
-      "🔗 <a href='https://eng-guilsm.github.io/moneylab-dashboard/'>Acessar Dash Público (Acesso Livre)</a>\n\n",
-      "🛡️ <b>2. Terminal Tático Privado (Harmonicus SX):</b>\n",
-      "Radar de proximidade dos 8 planos, custódia ao vivo e sintetizador espectral.\n",
-      "🔐 <i>Acesso restrito de custódia e execução.</i>\n",
-      "🔗 <a href='https://eng-guilsm.github.io/harmonicus-sx/'>Acessar Harmonicus SX</a>\n"
+      "🌐 <b>Física Inercial e Dinâmica de Ativos:</b>\n",
+      "• Trajetória inercial dos 8 ativos (BTC, ETH, SOL, LINK, PAXG, BNB, ADA, USDT)\n",
+      "• Velocidade instantânea (dP/dt) e Aceleração/Impulso (d²P/dt²)\n",
+      "• Medidor de Empuxo (Thrust Gauge)\n",
+      "• Banda Zero-Lag de Ehlers (SuperSmoother ±2σ) com seletor interativo\n",
+      "• Envelopes clássicos de Bollinger\n",
+      "• Multi-timeframe (1h, 24h, 1sem, 1m, 1a, tudo) e zoom dinâmico\n\n",
+      "🔗 <a href='https://eng-guilsm.github.io/moneylab-dashboard/'>Abrir Radar Cinético de Mercado</a>"
     )
     
     url_pub <- "https://eng-guilsm.github.io/moneylab-dashboard/"
-    url_priv <- "https://eng-guilsm.github.io/harmonicus-sx/"
     
     teclado <- InlineKeyboardMarkup(
       inline_keyboard = list(
         list(
-          InlineKeyboardButton(text = "🌐 Radar Cinético Público", url = url_pub),
-          InlineKeyboardButton(text = "🛡️ Harmonicus SX Privado", url = url_priv)
+          InlineKeyboardButton(text = "🌐 Abrir Radar Cinético Público", url = url_pub)
         )
       )
     )
     
     bot$sendMessage(chat_id = update$message$chat_id, text = msg, reply_markup = teclado, parse_mode = "HTML")
-    registrar_log_interacao(update, "COMANDO /dash", "/dash", "Enviou links de acesso aos dashboards.")
+    registrar_log_interacao(update, "COMANDO /dash", "/dash", "Enviou link de acesso ao Radar Cinético Público.")
   }
 }))
 
@@ -305,7 +304,7 @@ disp$add_handler(CommandHandler("ajuda", function(bot, update) {
   if(verificar_acesso(bot, update)) {
     msg <- paste0("🛠️ <b>MENU DE COMANDOS DO MONEYLAB</b>\n\n",
                   "🔹 /ativos - Exibe a cotação instantânea dos ativos no banco de dados e a latência da captura.\n",
-                  "🔹 /dash - Acessa o Dashboard Público de Cinética e o Terminal Tático Harmonicus SX.\n",
+                  "🔹 /dash - Acessa o Radar Cinético Público de Dinâmica de Mercado.\n",
                   "🔹 /risco - Abre o menu do oráculo quantitativo para previsão de volatilidade (MLP+Langevin/GARCH).\n",
                   "🔹 /minigame - Inicia o simulador HFT Dollarus com limites percentuais de trade no navegador.\n",
                   "🔹 /musica - Abre o Harmonicus: visualizador espectral e grafo dinâmico multiativo (Fourier + MST).\n",
