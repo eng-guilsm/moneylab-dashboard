@@ -6,132 +6,141 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>MoneyLab // Terminal Cinético de Mercados (Público)</title>
+  <title>MoneyLab // Terminal Cinético de Mercados (Página 3)</title>
   <meta name="description" content="Terminal de Física Inercial, Derivadas de Mercado (dP/dt, d2P/dt2), Banda Zero-Lag de Ehlers e Thrust Gauge 100% ao vivo.">
   
-  <!-- Google Fonts & D3.js -->
+  <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Orbitron:wght@500;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   
-  <!-- CSS Stylesheet -->
-  <link rel="stylesheet" href="style.css?v=20260829_pub1">
+  <!-- CSS Stylesheet (Idêntico ao Harmonicus SX) -->
+  <link rel="stylesheet" href="style.css?v=20260829_v8_toggles">
 </head>
 <body class="dark-synth">
   <!-- Scanlines & Ambient Matrix Grid -->
   <div class="hud-grid-overlay"></div>
   <div class="hud-vignette"></div>
 
-  <div class="app-container">
+  <div class="app-container" style="max-width: 1400px; margin: 0 auto; padding: 15px 20px;">
     <!-- TOP GLOBAL HEADER -->
-    <header class="hud-header">
+    <header class="hud-header" style="margin-bottom: 20px;">
       <div class="brand-section">
         <div class="pulse-indicator online"></div>
         <div class="brand-titles">
-          <h1 class="hud-logo">MONEYLAB <span class="badge-tag">KINETICS // OPEN RADAR</span></h1>
-          <p class="hud-subtitle">Física Inercial de Criptoativos, Derivadas de Fase e Banda Zero-Lag de Ehlers</p>
+          <h1 class="hud-logo">MONEYLAB <span class="badge-tag">KINETICS // RADAR ABERTO</span></h1>
+          <p class="hud-subtitle">Física Inercial de Criptoativos, Derivadas de Fase e Banda Zero-Lag de Ehlers (Página 3)</p>
         </div>
       </div>
 
       <div class="header-controls">
         <div class="system-status-chip" style="display: flex; flex-direction: column; align-items: flex-end; justify-content: center; line-height: 1.25; padding: 4px 10px; background: rgba(5, 8, 17, 0.90); border: 1px solid var(--border-subtle); border-radius: 6px; min-width: 90px;">
-          <span class="chip-label" style="font-size: 0.60rem; color: var(--text-muted); font-family: var(--font-mono); font-weight: 700; letter-spacing: 0.08em;">STATUS RADAR</span>
-          <span style="font-size: 0.72rem; color: #10B981; font-family: var(--font-mono); font-weight: 700;">🟢 PÚBLICO AO VIVO</span>
+          <span class="chip-label" style="font-size: 0.60rem; color: var(--text-muted); font-family: var(--font-mono); font-weight: 700; letter-spacing: 0.08em;">RADAR CINÉTICO</span>
+          <span style="font-size: 0.72rem; color: #10B981; font-family: var(--font-mono); font-weight: 700;">🟢 AO VIVO</span>
         </div>
       </div>
     </header>
 
-    <!-- SECTION CINÉTICA -->
-    <section id="pageKinetics" class="hud-page active">
-      <!-- SELECTOR DE ATIVOS -->
-      <div class="kinetics-asset-bar" id="kinAssetBar">
-        <button class="kin-asset-pill active" data-sym="BTCBRL">🪙 BITCOIN (BTC)</button>
-        <button class="kin-asset-pill" data-sym="ETHBRL">🔷 ETHEREUM (ETH)</button>
-        <button class="kin-asset-pill" data-sym="SOLBRL">⚡ SOLANA (SOL)</button>
-        <button class="kin-asset-pill" data-sym="LINKBRL">🔗 CHAINLINK (LINK)</button>
-        <button class="kin-asset-pill" data-sym="PAXGBRL">🥇 OURO (PAXG)</button>
-        <button class="kin-asset-pill" data-sym="BNBBRL">🔶 BINANCE COIN (BNB)</button>
-        <button class="kin-asset-pill" data-sym="ADABRL">🟣 CARDANO (ADA)</button>
-        <button class="kin-asset-pill" data-sym="USDTBRL">💵 DÓLAR TETHER (USDT)</button>
-      </div>
+    <!-- ========================================================================= -->
+    <!-- PÁGINA 3: CINÉTICA & DINÂMICA DE ATIVOS (GRÁFICOS & DERIVADAS) - IDÊNTICA  -->
+    <!-- ========================================================================= -->
+    <section id="pageKinetics" class="hud-page active" style="display: block;">
+      <div class="kinetics-layout">
+        <!-- Asset Selector Pills (Injetado dinamicamente via charts-kinetics.js com .asset-pill-btn) -->
+        <div class="asset-pills-bar" id="assetPillsContainer"></div>
 
-      <!-- COCKPIT CINÉTICO -->
-      <div class="cockpit-hero-grid kinetics-hero-grid">
-        <div class="hero-card">
-          <span class="card-eyebrow">COTAÇÃO INSTANTÂNEA</span>
-          <div class="hero-val-row">
-            <span class="hero-number" id="kinPrice">Carregando...</span>
-            <span class="hero-tag neutral" id="kinVar24h">0.00%</span>
+        <!-- Real-Time Kinetic Gauges & Physical Cockpit -->
+        <div class="kinetics-hero-grid">
+          <div class="hero-card kin-price-card">
+            <span class="card-eyebrow">COTAÇÃO AO VIVO (SPOT)</span>
+            <div class="hero-val-row">
+              <span class="hero-number" id="kinPrice">R$ 399.540,00</span>
+              <span class="hero-tag positive" id="kinVar24h">+2.45% (24h)</span>
+            </div>
+            <div class="hero-subtext" id="kinStateTag">🚀 FORTE PROPULSÃO COMPRADORA</div>
           </div>
-          <div class="hero-subtext">Preço em Reais via streaming Binance.</div>
+
+          <div class="hero-card kin-vel-card">
+            <span class="card-eyebrow">VELOCIDADE INSTANTÂNEA (dP/dt)</span>
+            <div class="hero-val-row">
+              <span class="hero-number" id="kinVelocity" style="color: #10B981;">▲ +0.085%/min</span>
+            </div>
+            <div class="hero-subtext">Derivada primeira de subida/descida suavizada no tempo.</div>
+          </div>
+
+          <div class="hero-card kin-acc-card">
+            <span class="card-eyebrow">ACELERAÇÃO / IMPULSO (d²P/dt²)</span>
+            <div class="hero-val-row">
+              <span class="hero-number" id="kinAcc" style="color: #06B6D4;">▲ +0.012%/min²</span>
+            </div>
+            <div class="hero-subtext">Força propulsora e detecção de exaustão de compradores.</div>
+          </div>
+
+          <div class="hero-card kin-thrust-card">
+            <span class="card-eyebrow">PODER DE SUBIDA (THRUST GAUGE)</span>
+            <div class="thrust-meter-box">
+              <div class="thrust-val-text" id="kinThrustVal">78.5 / 100</div>
+              <div class="thrust-bar-track">
+                <div class="thrust-bar-fill" id="kinThrustBar" style="width: 78.5%;"></div>
+              </div>
+            </div>
+            <div class="hero-subtext">Energia cinética líquida calibrada para compras.</div>
+          </div>
         </div>
 
-        <div class="hero-card">
-          <span class="card-eyebrow">VELOCIDADE INSTANTÂNEA (dP/dt)</span>
-          <div class="hero-val-row">
-            <span class="hero-number" id="kinVelocity" style="font-size: 1.6rem; color: #10B981;">0.000%</span>
-          </div>
-          <div class="hero-subtext">Derivada primeira da cotação suavizada por EWM.</div>
-        </div>
-
-        <div class="hero-card">
-          <span class="card-eyebrow">ACELERAÇÃO RELATIVA (d²P/dt²)</span>
-          <div class="hero-val-row">
-            <span class="hero-number" id="kinAcc" style="font-size: 1.6rem; color: #06B6D4;">0.000%</span>
-          </div>
-          <div class="hero-subtext">Variação da velocidade / força inercial impulsiva.</div>
-        </div>
-
-        <div class="hero-card">
-          <span class="card-eyebrow">THRUST GAUGE (EMPUXO 0 A 100)</span>
-          <div class="hero-val-row">
-            <span class="hero-number" id="kinThrustVal" style="font-size: 1.6rem; color: #F59E0B;">50.0 / 100</span>
-          </div>
-          <div class="thrust-meter-track" style="margin-top: 6px;">
-            <div class="thrust-meter-fill" id="kinThrustBar" style="width: 50%;"></div>
-          </div>
-          <div class="hero-subtext" id="kinStateTag" style="margin-top: 4px; font-weight: 600;">EQUILÍBRIO INERCIAL</div>
-        </div>
-      </div>
-
-      <!-- PAINEL DO GRÁFICO MULTI-TIMEFRAME -->
-      <div class="kinetics-chart-card">
-        <div class="chart-header-row">
-          <div class="chart-title-box">
-            <span class="c-icon">📈</span>
-            <h3 id="kinChartTitle">TRAJETÓRIA CINÉTICA & BANDAS ADAPTATIVAS (BTCBRL)</h3>
-          </div>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <button id="kineticsResetZoomBtn" style="display: none; background: rgba(6, 182, 212, 0.15); border: 1px solid #06B6D4; color: #06B6D4; border-radius: 6px; padding: 4px 10px; font-family: var(--font-mono); font-size: 0.70rem; cursor: pointer; transition: all 0.2s;">
-              ↩️ RESETAR ZOOM
-            </button>
-            <div class="timeframe-buttons-bar" id="tfButtonsBar">
-              <button class="tf-btn" data-tf="1h">1H</button>
-              <button class="tf-btn active" data-tf="24h">24H</button>
-              <button class="tf-btn" data-tf="1sem">1SEM</button>
-              <button class="tf-btn" data-tf="1m">1M</button>
-              <button class="tf-btn" data-tf="1a">1A</button>
-              <button class="tf-btn" data-tf="tudo">TUDO</button>
+        <!-- High-Resolution Kinetics & Bollinger Wave Chart -->
+        <div class="hud-card kinetics-chart-card">
+          <div class="card-header-clean chart-card-header-flex">
+            <div class="chart-header-left">
+              <span class="ch-icon">📊</span>
+              <h3 id="chartTitleText">CINÉTICA TEMPORAL & ENVELOPE DINÂMICO DE BOLLINGER (24 HORAS)</h3>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button id="kineticsResetZoomBtn" style="display: none; background: rgba(6, 182, 212, 0.15); border: 1px solid #06B6D4; color: #06B6D4; border-radius: 6px; padding: 4px 10px; font-family: var(--font-mono); font-size: 0.70rem; cursor: pointer; transition: all 0.2s;">
+                ↩️ RESETAR ZOOM
+              </button>
+              <!-- Multi-Timeframe Selector Buttons -->
+              <div class="timeframe-buttons-bar" id="tfButtonsBar">
+                <button class="tf-btn" data-tf="1h">1H</button>
+                <button class="tf-btn active" data-tf="24h">24H</button>
+                <button class="tf-btn" data-tf="1sem">1SEM</button>
+                <button class="tf-btn" data-tf="1m">1M</button>
+                <button class="tf-btn" data-tf="1a">1A</button>
+                <button class="tf-btn" data-tf="tudo">TUDO</button>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="chart-legend-row" style="padding: 0 16px 10px 16px;">
-          <span class="leg-item"><i style="background: #F59E0B;"></i> Preço Instantâneo</span>
-          <span class="leg-item"><i style="background: #C084FC;"></i> Banda Zero-Lag (SuperSmoother ±2σ)</span>
-          <span class="leg-item"><i style="background: #06B6D4; border-top: 2px dashed #06B6D4;"></i> Bollinger Clássica (±2σ)</span>
-          <span class="leg-item"><i style="background: #10B981;"></i> Vetor Velocidade (dP/dt)</span>
-          <span class="leg-item" style="margin-left: auto; color: #9CA3AF; font-size: 11px;">🔍 Arraste sobre o gráfico para selecionar retângulo de zoom</span>
-        </div>
-        <div class="kinetics-canvas-box" id="canvasWrapper">
-          <canvas id="kineticsMainCanvas" width="1200" height="380"></canvas>
-          <div class="chart-hover-inspect" id="chartInspectBadge"></div>
+          <div class="chart-legend-row" style="padding: 0 16px 10px 16px; display: flex; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <span class="leg-item"><i style="background: #F59E0B;"></i> Preço Instantâneo</span>
+
+            <!-- BOX TOGGLE ZERO-LAG -->
+            <label class="chart-toggle-badge" id="lblToggleZl" style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; background: rgba(192, 132, 252, 0.15); border: 1px solid #C084FC; padding: 4px 10px; border-radius: 6px; font-family: var(--font-mono); font-size: 0.72rem; color: #E9D5FF; transition: all 0.2s;">
+              <input type="checkbox" id="chkToggleZl" checked style="accent-color: #C084FC; width: 14px; height: 14px; cursor: pointer;">
+              <i style="background: #F0ABFC; box-shadow: 0 0 8px #C084FC; width: 10px; height: 10px; border-radius: 2px; display: inline-block;"></i>
+              <span style="font-weight: 700;">Banda & Curva Zero-Lag (Lilás)</span>
+            </label>
+
+            <!-- BOX TOGGLE BOLLINGER -->
+            <label class="chart-toggle-badge" id="lblToggleBb" style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; background: rgba(6, 182, 212, 0.15); border: 1px solid #06B6D4; padding: 4px 10px; border-radius: 6px; font-family: var(--font-mono); font-size: 0.72rem; color: #CFFAFE; transition: all 0.2s;">
+              <input type="checkbox" id="chkToggleBb" checked style="accent-color: #06B6D4; width: 14px; height: 14px; cursor: pointer;">
+              <i style="background: #06B6D4; border-top: 2px dashed #06B6D4; width: 10px; height: 10px; border-radius: 2px; display: inline-block;"></i>
+              <span style="font-weight: 700;">Bandas de Bollinger (Ciano)</span>
+            </label>
+
+            <span class="leg-item"><i style="background: #10B981;"></i> Velocidade (dP/dt)</span>
+            <span class="leg-item" style="margin-left: auto; color: #9CA3AF; font-size: 11px;">🔍 Arraste sobre o gráfico para zoom</span>
+          </div>
+          <div class="kinetics-canvas-box" id="canvasWrapper">
+            <canvas id="kineticsMainCanvas" width="1200" height="380"></canvas>
+            <div class="chart-hover-inspect" id="chartInspectBadge"></div>
+          </div>
         </div>
       </div>
     </section>
   </div>
 
-  <!-- SCRIPTS OFICIAIS RADAR CINÉTICO PÚBLICO -->
-  <script src="data/charts_data.js?v=20260829_v7_lilac"></script>
-  <script src="charts-kinetics.js?v=20260829_v7_lilac"></script>
+  <!-- SCRIPTS OFICIAIS (IDÊNTICOS AO HARMONICUS SX) -->
+  <script src="data/charts_data.js?v=20260829_v8_toggles"></script>
+  <script src="charts-kinetics.js?v=20260829_v8_toggles"></script>
 </body>
 </html>

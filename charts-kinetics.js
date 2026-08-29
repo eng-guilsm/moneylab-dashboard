@@ -26,11 +26,29 @@ function initChartsKinetics() {
   
   initAssetPills(assetsData);
   initTimeframeButtons();
+  initBandToggles();
   initCanvasInteractions();
   
   renderKineticsCockpit(currentKineticsAsset, currentKineticsTimeframe, assetsData);
   renderKineticsChart(currentKineticsAsset, currentKineticsTimeframe, assetsData);
   startLiveBinancePoller();
+}
+
+function initBandToggles() {
+  const chkZl = document.getElementById('chkToggleZl');
+  if (chkZl) {
+    chkZl.addEventListener('change', () => {
+      const data = window.ASSETS_KINETICS_DATA || {};
+      renderKineticsChart(currentKineticsAsset, currentKineticsTimeframe, data);
+    });
+  }
+  const chkBb = document.getElementById('chkToggleBb');
+  if (chkBb) {
+    chkBb.addEventListener('change', () => {
+      const data = window.ASSETS_KINETICS_DATA || {};
+      renderKineticsChart(currentKineticsAsset, currentKineticsTimeframe, data);
+    });
+  }
 }
 
 function initAssetPills(assetsData) {
@@ -246,8 +264,19 @@ function renderKineticsChart(symbol, tfKey, data) {
   ctx.fillStyle = '#050811';
   ctx.fillRect(0, 0, w, h);
 
-  // Escalas de Preço (considerando todos os envelopes e a curva lilás Zero-Lag)
-  const allVals = [...lower, ...upper, ...prices, ...zlUpper, ...zlLower, ...supersmoother].filter(v => typeof v === 'number' && !isNaN(v));
+  // Checagem de checkboxes de ativação/desativação
+  const chkZl = document.getElementById('chkToggleZl');
+  const chkBb = document.getElementById('chkToggleBb');
+  const showZl = chkZl ? chkZl.checked : true;
+  const showBb = chkBb ? chkBb.checked : true;
+
+  // Escalas de Preço (considerando camadas ativas)
+  const allVals = [
+    ...prices,
+    ...(showBb ? [...lower, ...upper] : []),
+    ...(showZl ? [...zlUpper, ...zlLower, ...supersmoother] : [])
+  ].filter(v => typeof v === 'number' && !isNaN(v));
+
   const rawMin = Math.min(...allVals);
   const rawMax = Math.max(...allVals);
   const spread = rawMax - rawMin || 1;
@@ -278,8 +307,8 @@ function renderKineticsChart(symbol, tfKey, data) {
     ctx.fillText(labelStr, padLeft - 8, yPos + 3);
   }
 
-  // 1. Faixa de Bollinger Clássica (Sombra Cyan e Linhas Tracejadas)
-  if (upper.length === prices.length && lower.length === prices.length) {
+  // 1. Faixa de Bollinger Clássica (Se Ativada)
+  if (showBb && upper.length === prices.length && lower.length === prices.length) {
     ctx.beginPath();
     for (let i = 0; i < upper.length; i++) {
       const x = getX(i);
@@ -297,7 +326,7 @@ function renderKineticsChart(symbol, tfKey, data) {
     ctx.fill();
 
     // Linhas das Bandas Superior e Inferior
-    ctx.strokeStyle = 'rgba(6, 182, 212, 0.45)';
+    ctx.strokeStyle = 'rgba(6, 182, 212, 0.55)';
     ctx.lineWidth = 1.2;
     ctx.setLineDash([4, 4]);
 
@@ -319,8 +348,8 @@ function renderKineticsChart(symbol, tfKey, data) {
     ctx.setLineDash([]);
   }
 
-  // 1.5 ENVELOPES DA BANDA ZERO-LAG (+/- 2 SIGMA - ROXO/LILÁS VIBRANTE)
-  if (zlUpper.length === prices.length && zlLower.length === prices.length) {
+  // 1.5 BANDA ZERO-LAG (+/- 2 SIGMA - ROXO/LILÁS VIBRANTE SE ATIVADA)
+  if (showZl && zlUpper.length === prices.length && zlLower.length === prices.length) {
     ctx.beginPath();
     for (let i = 0; i < zlUpper.length; i++) {
       const x = getX(i);
@@ -333,13 +362,13 @@ function renderKineticsChart(symbol, tfKey, data) {
       ctx.lineTo(x, y);
     }
     ctx.closePath();
-    ctx.fillStyle = 'rgba(192, 132, 252, 0.14)'; // Preenchimento da Banda Lilás bem visível
+    ctx.fillStyle = 'rgba(192, 132, 252, 0.22)'; // Preenchimento da Banda Lilás rico e destacado
     ctx.fill();
 
     // Linha Superior da Banda Zero-Lag
     ctx.strokeStyle = '#C084FC';
-    ctx.lineWidth = 1.6;
-    ctx.setLineDash([4, 3]);
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([5, 4]);
     ctx.beginPath();
     for (let i = 0; i < zlUpper.length; i++) {
       const x = getX(i);
@@ -372,8 +401,8 @@ function renderKineticsChart(symbol, tfKey, data) {
   ctx.stroke();
   ctx.restore();
 
-  // 2.5 CURVA CENTRAL LILÁS ZERO-LAG (SUPERSMOOTHER DE JOHN EHLERS - DESENHADA POR CIMA)
-  if (supersmoother.length === prices.length) {
+  // 2.5 CURVA CENTRAL LILÁS ZERO-LAG (SUPERSMOOTHER DE JOHN EHLERS - DESENHADA POR CIMA SE ATIVADA)
+  if (showZl && supersmoother.length === prices.length) {
     ctx.save();
     ctx.beginPath();
     for (let i = 0; i < supersmoother.length; i++) {
@@ -381,10 +410,10 @@ function renderKineticsChart(symbol, tfKey, data) {
       const y = getY(supersmoother[i]);
       if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
-    ctx.strokeStyle = '#D8B4FE'; // Lilás Neon Luminoso
-    ctx.lineWidth = 2.4;
+    ctx.strokeStyle = '#F0ABFC'; // Lilás Neon Vibrante
+    ctx.lineWidth = 2.6;
     ctx.shadowColor = '#C084FC';
-    ctx.shadowBlur = 8;
+    ctx.shadowBlur = 10;
     ctx.stroke();
     ctx.restore();
   }
@@ -459,18 +488,30 @@ function renderKineticsChart(symbol, tfKey, data) {
       const upVal = isUsdt ? `R$ ${upper[i].toFixed(4)}` : `R$ ${upper[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
       const lowVal = isUsdt ? `R$ ${lower[i].toFixed(4)}` : `R$ ${lower[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
       const zlUpVal = zlUpper && zlUpper[i] ? (isUsdt ? `R$ ${zlUpper[i].toFixed(4)}` : `R$ ${zlUpper[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`) : null;
+      const zlLowVal = zlLower && zlLower[i] ? (isUsdt ? `R$ ${zlLower[i].toFixed(4)}` : `R$ ${zlLower[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`) : null;
       const ssVal = supersmoother && supersmoother[i] ? (isUsdt ? `R$ ${supersmoother[i].toFixed(4)}` : `R$ ${supersmoother[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`) : null;
       const velVal = `${velocities[i] >= 0 ? '+' : ''}${velocities[i].toFixed(3)}%`;
 
       badge.style.display = 'block';
-      badge.innerHTML = `
+      let badgeContent = `
         <div class="ib-time">⏱️ ${timestamps[i]}</div>
         <div class="ib-price">Cotação: <b>${pVal}</b></div>
-        <div class="ib-bands" style="color: #C084FC; font-weight: bold;">Curva Lilás ZL: ${ssVal || pVal}</div>
-        <div class="ib-bands" style="color: #A855F7; font-size: 11px;">Envelopes ZL (±2σ): ${zlLowVal || lowVal} ↔ ${zlUpVal || upVal}</div>
-        <div class="ib-bands" style="color: #06B6D4; font-size: 10px;">Bollinger (SMA): ${lowVal} ↔ ${upVal}</div>
+      `;
+      if (showZl) {
+        badgeContent += `
+          <div class="ib-bands" style="color: #F0ABFC; font-weight: bold;">Curva Lilás ZL: ${ssVal || pVal}</div>
+          <div class="ib-bands" style="color: #C084FC; font-size: 11px;">Envelopes ZL (±2σ): ${zlLowVal || lowVal} ↔ ${zlUpVal || upVal}</div>
+        `;
+      }
+      if (showBb) {
+        badgeContent += `
+          <div class="ib-bands" style="color: #06B6D4; font-size: 10px;">Bollinger (SMA): ${lowVal} ↔ ${upVal}</div>
+        `;
+      }
+      badgeContent += `
         <div class="ib-vel">Velocidade: <b style="color: ${velocities[i] >= 0 ? '#10B981' : '#EF4444'}">${velVal}</b></div>
       `;
+      badge.innerHTML = badgeContent;
 
       const badgeW = 200;
       let badgeLeft = x + 15;
