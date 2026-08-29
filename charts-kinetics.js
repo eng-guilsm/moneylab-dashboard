@@ -17,9 +17,10 @@ let currentKineticsTimeframe = '24h';
 let kineticsPollerTimer = null;
 let hoveredDataIndex = -1;
 let kineticsZoomRange = null; // [startIdx, endIdx] ou null
-let isDraggingKineticsZoom = false;
-let kineticsDragStartX = 0;
-let kineticsDragCurrentX = 0;
+window.currentKineticsAsset = currentKineticsAsset;
+window.currentKineticsTimeframe = currentKineticsTimeframe;
+window.renderKineticsChart = renderKineticsChart;
+window.renderKineticsCockpit = renderKineticsCockpit;
 
 function initChartsKinetics() {
   const assetsData = window.ASSETS_KINETICS_DATA || {};
@@ -36,15 +37,35 @@ function initChartsKinetics() {
 
 function initBandToggles() {
   const chkZl = document.getElementById('chkToggleZl');
+  const lblZl = document.getElementById('lblToggleZl');
   if (chkZl) {
+    const updateZlStyle = () => {
+      if (lblZl) {
+        lblZl.style.background = chkZl.checked ? 'rgba(192, 132, 252, 0.20)' : 'rgba(255, 255, 255, 0.05)';
+        lblZl.style.borderColor = chkZl.checked ? '#C084FC' : 'rgba(192, 132, 252, 0.35)';
+        lblZl.style.color = chkZl.checked ? '#F5D0FE' : '#9CA3AF';
+      }
+    };
+    updateZlStyle();
     chkZl.addEventListener('change', () => {
+      updateZlStyle();
       const data = window.ASSETS_KINETICS_DATA || {};
       renderKineticsChart(currentKineticsAsset, currentKineticsTimeframe, data);
     });
   }
   const chkBb = document.getElementById('chkToggleBb');
+  const lblBb = document.getElementById('lblToggleBb');
   if (chkBb) {
+    const updateBbStyle = () => {
+      if (lblBb) {
+        lblBb.style.background = chkBb.checked ? 'rgba(6, 182, 212, 0.16)' : 'rgba(255, 255, 255, 0.05)';
+        lblBb.style.borderColor = chkBb.checked ? '#06B6D4' : 'rgba(6, 182, 212, 0.35)';
+        lblBb.style.color = chkBb.checked ? '#CFFAFE' : '#9CA3AF';
+      }
+    };
+    updateBbStyle();
     chkBb.addEventListener('change', () => {
+      updateBbStyle();
       const data = window.ASSETS_KINETICS_DATA || {};
       renderKineticsChart(currentKineticsAsset, currentKineticsTimeframe, data);
     });
@@ -264,10 +285,10 @@ function renderKineticsChart(symbol, tfKey, data) {
   ctx.fillStyle = '#050811';
   ctx.fillRect(0, 0, w, h);
 
-  // Checagem de checkboxes de ativação/desativação
+  // Checagem de checkboxes de ativação/desativação (Bollinger Ligada por padrão, Zero-Lag Opcional)
   const chkZl = document.getElementById('chkToggleZl');
   const chkBb = document.getElementById('chkToggleBb');
-  const showZl = chkZl ? chkZl.checked : true;
+  const showZl = chkZl ? chkZl.checked : false;
   const showBb = chkBb ? chkBb.checked : true;
 
   // Escalas de Preço (considerando camadas ativas)
@@ -307,7 +328,7 @@ function renderKineticsChart(symbol, tfKey, data) {
     ctx.fillText(labelStr, padLeft - 8, yPos + 3);
   }
 
-  // 1. Faixa de Bollinger Clássica (Se Ativada)
+  // 1. Faixa de Bollinger Clássica (Se Ativada - Padrão Ativo)
   if (showBb && upper.length === prices.length && lower.length === prices.length) {
     ctx.beginPath();
     for (let i = 0; i < upper.length; i++) {
@@ -322,13 +343,13 @@ function renderKineticsChart(symbol, tfKey, data) {
       ctx.lineTo(x, y);
     }
     ctx.closePath();
-    ctx.fillStyle = 'rgba(6, 182, 212, 0.06)';
+    ctx.fillStyle = 'rgba(6, 182, 212, 0.10)'; // Preenchimento Ciano Nítido
     ctx.fill();
 
     // Linhas das Bandas Superior e Inferior
-    ctx.strokeStyle = 'rgba(6, 182, 212, 0.55)';
-    ctx.lineWidth = 1.2;
-    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = '#06B6D4';
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([5, 4]);
 
     ctx.beginPath();
     for (let i = 0; i < upper.length; i++) {
