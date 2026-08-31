@@ -740,21 +740,8 @@ function startLiveBinancePoller() {
           pricesMap.PAXGBRL = pricesMap.USDTBRL * 4470.0;
         }
 
-        // Cotação ao vivo do Dólar Oficial via AwesomeAPI (fallback proporcional USDT)
-        try {
-          const resUsd = await fetch('https://economia.awesomeapi.com.br/last/USD-BRL');
-          const dUsd = await resUsd.json();
-          if (dUsd && dUsd.USDBRL) {
-            pricesMap.USDBRL = (parseFloat(dUsd.USDBRL.bid) + parseFloat(dUsd.USDBRL.ask)) / 2.0;
-          }
-        } catch (eUsd) {
-          if (pricesMap.USDTBRL) {
-            pricesMap.USDBRL = pricesMap.USDTBRL * 0.9951;
-          }
-        }
-
         Object.keys(pricesMap).forEach(sym => {
-          if (window.ASSETS_KINETICS_DATA[sym]) {
+          if (window.ASSETS_KINETICS_DATA[sym] && sym !== 'USDBRL') {
             window.ASSETS_KINETICS_DATA[sym].preco_atual = pricesMap[sym];
           }
         });
@@ -766,22 +753,6 @@ function startLiveBinancePoller() {
     }
   };
 
-  const fetchChartsData = async () => {
-    try {
-      const ts = Date.now();
-      const res = await fetch(`data/charts_data.js?_t=${ts}`, { cache: 'no-store' });
-      if (!res.ok) return;
-      const text = await res.text();
-      const scriptFn = new Function(text);
-      scriptFn();
-      if (!isDraggingKineticsZoom && hoveredDataIndex === -1) {
-        renderKineticsChart(currentKineticsAsset, currentKineticsTimeframe, window.ASSETS_KINETICS_DATA || {});
-      }
-    } catch (e) {
-      // Falha silenciosa
-    }
-  };
-
+  // Atualização leve a cada 5 segundos apenas para o ticker spot (sem travar a UI)
   kineticsPollerTimer = setInterval(fetchLive, 5000);
-  setInterval(fetchChartsData, 20000);
 }
