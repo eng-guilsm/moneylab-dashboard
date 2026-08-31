@@ -1137,59 +1137,79 @@ executar_radar_labtrader <- function() {
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 14: PLANO SENTINELA DE WALL STREET (SP500 / VIX Front-Running Hedge | R$ 200)
+  # MOTOR 14: PLANO SENTINELA DE WALL STREET (S&P 500 TradFi / SP500_Pts | 100% NÃO-CRIPTO)
+  # Monitoramento de Wall Street com Ressonância de Hilbert de Fase e Filtro VIX
   # ----------------------------------------------------------------------------
   stats_ws <- obter_stats_wallstreet_vix_hedge()
   if (is.null(pedido)) {
-    # Gatilho de Entrada: VIX em pico de pânico (>= 21.0) ou Regime de Ressonância Sistêmica (PC1 >= 0.40) com BTC em queda
-    cond_entrada_ws <- (stats_ws$vix_atual >= 21.0 || pc1_atual >= 0.40) && (ret_btc_5m <= -0.0030 || w_energy >= 45.0)
+    # Busca cotação histórica do S&P 500 do Historico_rapido
+    sp500_serie <- tryCatch({
+      con_rap <- dbConnect(SQLite(), db_path)
+      on.exit(dbDisconnect(con_rap))
+      df_sp <- dbGetQuery(con_rap, "SELECT SP500_Pts FROM Historico_rapido WHERE SP500_Pts IS NOT NULL ORDER BY Data_Hora DESC LIMIT 60;")
+      if (nrow(df_sp) >= 16) rev(df_sp$SP500_Pts) else rep(7200.0, 16)
+    }, error = function(e) rep(7200.0, 16))
     
-    if (cond_entrada_ws && saldo_caixa_brl >= 100.0 && saldo_usdt_brl < 450.0) {
-      lote_ws <- min(VALOR_WALLSTREET_BRL * fator_lote, saldo_caixa_brl * 0.45)
-      lucro_proj <- max(0.64, 0.85)
+    dsp_sp500 <- obter_dsp_ativo(sp500_serie)
+    sp500_atual <- tail(sp500_serie, 1)
+    
+    # Entrada por Ressonância: Vale de Fase do S&P 500 (theta <= -1.15 rad) com d2Z >= 0 e VIX indicando sobre-venda (>= 18.0)
+    cond_entrada_ws <- (dsp_sp500$theta <= -1.15) && (dsp_sp500$d2Z >= -0.0002) && (stats_ws$vix_atual >= 18.0)
+    
+    if (cond_entrada_ws && saldo_caixa_brl >= 100.0) {
+      lote_ws <- min(VALOR_WALLSTREET_BRL * fator_lote, saldo_caixa_brl * 0.40)
+      lucro_proj <- max(0.80, 1.20)
       pedido <- list(
         estrategia = "PLANO_SENTINELA_WALLSTREET",
-        origem = "BRL", destino = "USDT",
+        origem = "BRL", destino = "SP500",
         valor_brl = lote_ws,
         lucro_esperado_pct = lucro_proj, timestamp = agora_ts
       )
-    } else if (saldo_usdt_brl >= 50.0 && stats_ws$vix_atual < 18.5 && ret_btc_5m >= 0.0030) {
-      # Saída / Realização: Normalização do VIX e repique de cripto -> Devolve liquidez para Caixa BRL
-      lucro_proj <- max(0.64, 0.80)
+    } else if (dsp_sp500$theta >= 1.15 && stats_ws$vix_atual < 16.5) {
+      # Saída / Realização em Topo de Fase do S&P 500 (theta >= +1.15 rad)
+      lucro_proj <- max(0.80, 1.00)
       pedido <- list(
         estrategia = "PLANO_SENTINELA_WALLSTREET",
-        origem = "USDT", destino = "BRL",
-        valor_brl = min(VALOR_WALLSTREET_BRL * fator_lote, saldo_usdt_brl),
+        origem = "SP500", destino = "BRL",
+        valor_brl = VALOR_WALLSTREET_BRL * fator_lote,
         lucro_esperado_pct = lucro_proj, timestamp = agora_ts
       )
     }
   }
 
   # ----------------------------------------------------------------------------
-  # MOTOR 15: PLANO DOLLARUS QUANTUM PEG (USDT <-> BRL + Daniel Tekel & Simple Earn | R$ 195)
+  # MOTOR 15: PLANO COMMODITY ENERGY ALPHA (Petróleo WTI TradFi / WTI_Oil | 100% NÃO-CRIPTO)
+  # Arbitragem e Ressonância de Hilbert sobre a Commodity Energética Global
   # ----------------------------------------------------------------------------
-  stats_peg_q <- obter_stats_dollarus_quantum_peg()
-  if (is.null(pedido) && !is.null(usd_oficial) && usd_oficial > 0) {
-    spread_peg_q <- stats_peg_q$spread_peg
+  if (is.null(pedido)) {
+    wti_serie <- tryCatch({
+      con_wti <- dbConnect(SQLite(), db_path)
+      on.exit(dbDisconnect(con_wti))
+      df_wti <- dbGetQuery(con_wti, "SELECT WTI_Oil FROM Historico_rapido WHERE WTI_Oil IS NOT NULL ORDER BY Data_Hora DESC LIMIT 60;")
+      if (nrow(df_wti) >= 16) rev(df_wti$WTI_Oil) else rep(85.0, 16)
+    }, error = function(e) rep(85.0, 16))
     
-    # Entrada: Desconto do Peg (USDT mais barato que PTAX) ou Alerta de Estresse do Oráculo
-    cond_entrada_peg <- (spread_peg_q <= -0.0150) || (stats_peg_q$oraculo_estresse && spread_peg_q <= -0.0050)
+    dsp_wti <- obter_dsp_ativo(wti_serie)
+    wti_atual <- tail(wti_serie, 1)
     
-    if (cond_entrada_peg && saldo_caixa_brl >= 100.0 && saldo_usdt_brl < 450.0) {
-      lucro_proj <- max(0.60, (abs(spread_peg_q) / usd_oficial) * 100 + 0.15)
+    # Entrada por Ressonância: Vale de Fase do Petróleo (theta <= -1.15 rad) com d2Z >= 0
+    cond_entrada_wti <- (dsp_wti$theta <= -1.15) && (dsp_wti$d2Z >= -0.0002)
+    
+    if (cond_entrada_wti && saldo_caixa_brl >= 80.0) {
+      lucro_proj <- max(1.00, 1.50)
       pedido <- list(
-        estrategia = "PLANO_DOLLARUS_QUANTUM_PEG",
-        origem = "BRL", destino = "USDT",
+        estrategia = "PLANO_COMMODITY_ENERGY_ALPHA",
+        origem = "BRL", destino = "WTI",
         valor_brl = min(VALOR_DOLLARUS_BRL * fator_lote, saldo_caixa_brl * 0.40),
         lucro_esperado_pct = lucro_proj, timestamp = agora_ts
       )
-    } else if (spread_peg_q >= 0.0180 && saldo_usdt_brl >= 40.0) {
-      # Saída: Ágio do Peg do USDT -> Realiza lucro de volta para BRL
-      lucro_proj <- max(0.60, (spread_peg_q / usd_oficial) * 100)
+    } else if (dsp_wti$theta >= 1.15) {
+      # Saída: Topo de Fase do Petróleo (theta >= +1.15 rad)
+      lucro_proj <- max(1.00, 1.20)
       pedido <- list(
-        estrategia = "PLANO_DOLLARUS_QUANTUM_PEG",
-        origem = "USDT", destino = "BRL",
-        valor_brl = min(VALOR_DOLLARUS_BRL * fator_lote, saldo_usdt_brl),
+        estrategia = "PLANO_COMMODITY_ENERGY_ALPHA",
+        origem = "WTI", destino = "BRL",
+        valor_brl = VALOR_DOLLARUS_BRL * fator_lote,
         lucro_esperado_pct = lucro_proj, timestamp = agora_ts
       )
     }
