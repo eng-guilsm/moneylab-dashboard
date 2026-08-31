@@ -78,15 +78,15 @@ function initBandToggles() {
 function initAssetPills(assetsData) {
   const container = document.getElementById('assetPillsContainer');
   const assetList = [
-    { key: 'USDBRL', label: '💵 DÓLAR COMERCIAL (USD) • [BCB/FARIALIMER]', color: '#10B981' },
-    { key: 'BTCBRL', label: '🪙 BITCOIN (BTC)', color: '#F59E0B' },
-    { key: 'ETHBRL', label: '🔹 ETHEREUM (ETH)', color: '#06B6D4' },
-    { key: 'SOLBRL', label: '⚡ SOLANA (SOL)', color: '#EC4899' },
-    { key: 'LINKBRL', label: '🌐 CHAINLINK (LINK)', color: '#8B5CF6' },
-    { key: 'PAXGBRL', label: '🥇 OURO (PAXG)', color: '#FBBF24' },
-    { key: 'USDTBRL', label: '🪙 TETHER (USDT)', color: '#2DD4BF' },
+    { key: 'USDBRL', label: '💵 DÓLAR COMERCIAL • BCB', color: '#10B981' },
+    { key: 'BTCBRL', label: '🪙 BITCOIN', color: '#F59E0B' },
+    { key: 'ETHBRL', label: '🔹 ETHEREUM', color: '#06B6D4' },
+    { key: 'SOLBRL', label: '⚡ SOLANA', color: '#EC4899' },
+    { key: 'LINKBRL', label: '🌐 CHAINLINK', color: '#8B5CF6' },
+    { key: 'PAXGBRL', label: '🥇 OURO', color: '#FBBF24' },
+    { key: 'USDTBRL', label: '💵 TETHER', color: '#2DD4BF' },
     { key: 'BNBBRL', label: '🟡 BNB CHAIN', color: '#EAB308' },
-    { key: 'ADABRL', label: '🔷 CARDANO (ADA)', color: '#3B82F6' }
+    { key: 'ADABRL', label: '🔷 CARDANO', color: '#3B82F6' }
   ];
 
   container.innerHTML = assetList.map(item => `
@@ -123,18 +123,18 @@ function initTimeframeButtons() {
       hoveredDataIndex = -1;
       kineticsZoomRange = null; // Reseta zoom ao trocar de escala
 
-      // Atualizar título do card
+      // Atualizar título do card sem parênteses redundantes
       const titleEl = document.getElementById('chartTitleText');
       const tfNames = {
-        '1h': '1 HORA (ALTA RESOLUÇÃO 1M)',
-        '24h': '24 HORAS (CICLO DIÁRIO)',
-        '1sem': '1 SEMANA (7 DIAS)',
-        '1m': '1 MÊS (30 DIAS)',
-        '1a': '1 ANO (365 DIAS)',
-        'tudo': 'HISTÓRICO COMPLETO (1.4 ANOS / 596 DIAS)'
+        '1h': '1 HORA',
+        '24h': '24 HORAS',
+        '1sem': '1 SEMANA',
+        '1m': '1 MÊS',
+        '1a': '1 ANO',
+        'tudo': 'HISTÓRICO COMPLETO'
       };
       if (titleEl) {
-        titleEl.textContent = `CINÉTICA TEMPORAL & ENVELOPE DE BOLLINGER (${tfNames[currentKineticsTimeframe] || '24 HORAS'})`;
+        titleEl.textContent = `CINÉTICA TEMPORAL & ENVELOPE DE BOLLINGER • ${tfNames[currentKineticsTimeframe] || '24 HORAS'}`;
       }
 
       const data = window.ASSETS_KINETICS_DATA || {};
@@ -173,9 +173,9 @@ function renderKineticsCockpit(symbol, tfKey, data) {
   const elCardEyebrow = document.querySelector('.kin-price-card .card-eyebrow');
   if (elCardEyebrow) {
     if (symbol === 'USDBRL') {
-      elCardEyebrow.innerHTML = 'COTAÇÃO OFICIAL (USD/BRL) <span style="color: #06B6D4; font-size: 0.60rem; margin-left: 6px; font-weight: 700; background: rgba(6, 182, 212, 0.15); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(6, 182, 212, 0.4);">🔍 PESQUISA EXTERNA BCB SGS + FARIALIMER</span>';
+      elCardEyebrow.innerHTML = 'COTAÇÃO OFICIAL USD/BRL <span style="color: #06B6D4; font-size: 0.60rem; margin-left: 6px; font-weight: 700; background: rgba(6, 182, 212, 0.15); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(6, 182, 212, 0.4);">OFICIAL BCB & FARIALIMER</span>';
     } else {
-      elCardEyebrow.textContent = 'COTAÇÃO AO VIVO (SPOT)';
+      elCardEyebrow.textContent = 'COTAÇÃO AO VIVO SPOT';
     }
   }
   
@@ -190,7 +190,7 @@ function renderKineticsCockpit(symbol, tfKey, data) {
   const acc = tfData.aceleracao_inst !== undefined ? tfData.aceleracao_inst : (aList.length > 0 ? aList[aList.length - 1] : 0);
 
   if (elVar24h) {
-    elVar24h.textContent = `${v >= 0 ? '+' : ''}${v.toFixed(2)}% (${tfData.label || tfKey.toUpperCase()})`;
+    elVar24h.textContent = `${v >= 0 ? '+' : ''}${v.toFixed(2)}% • ${tfData.label || tfKey.toUpperCase()}`;
     elVar24h.className = `hero-tag ${v >= 0 ? 'positive' : 'negative'}`;
   }
 
