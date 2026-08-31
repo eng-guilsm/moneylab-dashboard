@@ -78,7 +78,7 @@ function initBandToggles() {
 function initAssetPills(assetsData) {
   const container = document.getElementById('assetPillsContainer');
   const assetList = [
-    { key: 'USDBRL', label: '💵 DÓLAR COMERCIAL (USD)', color: '#10B981' },
+    { key: 'USDBRL', label: '💵 DÓLAR COMERCIAL (USD) • [BCB/FARIALIMER]', color: '#10B981' },
     { key: 'BTCBRL', label: '🪙 BITCOIN (BTC)', color: '#F59E0B' },
     { key: 'ETHBRL', label: '🔹 ETHEREUM (ETH)', color: '#06B6D4' },
     { key: 'SOLBRL', label: '⚡ SOLANA (SOL)', color: '#EC4899' },
@@ -168,9 +168,16 @@ function renderKineticsCockpit(symbol, tfKey, data) {
 
   const p = asset.preco_atual || 0;
   const isFx = symbol === 'USDTBRL' || symbol === 'USDBRL';
-  const priceFmt = isFx ? `R$ ${p.toFixed(4)}` : `R$ ${p.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
   if (elPrice) elPrice.textContent = priceFmt;
+  
+  const elCardEyebrow = document.querySelector('.kin-price-card .card-eyebrow');
+  if (elCardEyebrow) {
+    if (symbol === 'USDBRL') {
+      elCardEyebrow.innerHTML = 'COTAÇÃO OFICIAL (USD/BRL) <span style="color: #06B6D4; font-size: 0.60rem; margin-left: 6px; font-weight: 700; background: rgba(6, 182, 212, 0.15); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(6, 182, 212, 0.4);">🔍 PESQUISA EXTERNA BCB SGS + FARIALIMER</span>';
+    } else {
+      elCardEyebrow.textContent = 'COTAÇÃO AO VIVO (SPOT)';
+    }
+  }
   
   if (elVar24h) {
     const v = tfData.variacao_periodo !== undefined ? tfData.variacao_periodo : 0;
