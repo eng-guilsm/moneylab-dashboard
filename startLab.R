@@ -159,10 +159,11 @@ repeat {
         QQQ_Tech  = if(!is.null(quotes)) quotes["QQQ", "Last"] else NA,
         WTI_Oil   = if(!is.null(quotes)) quotes["CL=F", "Last"] else NA
       )
+      df_rapido$Origem_Dado <- "TICK_REAL_FARIALIMER"
       
       if(!is.na(df_rapido$BTC_BRL) && !is.na(df_rapido$USD_BRL)) {
         db_safe_append("Historico_rapido", df_rapido)
-        cat("    ✅ DB: Rápido OK.\n")
+        cat("    ✅ DB: Rápido OK (Tag: TICK_REAL_FARIALIMER).\n")
       }
     }, error = function(e) cat("    ❌ Erro no Bloco Rápido:", conditionMessage(e), "\n"))
     
