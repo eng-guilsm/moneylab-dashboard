@@ -435,6 +435,11 @@ calibrar_threshold <- function(prob, y, alvo_min = 0.75, alvo_max = 0.80) {
 }
 
 montar_base_dollar_1h <- function(df_usd_raw, df_sent_raw = NULL) {
+  # Filtra para o ciclo de monitoramento intradiário de 2026 (evita distorção de dados diários antigos de 2025)
+  if (any(df_usd_raw$Data_Hora >= "2026-01-01", na.rm = TRUE)) {
+    df_usd_raw <- df_usd_raw %>% dplyr::filter(Data_Hora >= "2026-01-01")
+  }
+  
   df_hourly <- df_usd_raw %>%
     dplyr::mutate(Hora = lubridate::floor_date(as.POSIXct(Data_Hora, format = "%Y-%m-%d %H:%M:%S"), "hour")) %>%
     dplyr::group_by(Hora) %>%
@@ -488,8 +493,14 @@ montar_base_dollar_1h <- function(df_usd_raw, df_sent_raw = NULL) {
   df$Vol_Ratio <- df$Vol_6 / pmax(df$Vol_12, .Machine$double.eps)
   df$Stress_News <- df$Medo_Langevin - (0.45 * df$Apoio_Langevin)
   df$Fwd_Vol_1h <- dplyr::lead(df$Abs_Return, 1)
+  
+  # Quantil robusto com fallback anti-degenerescência
   limiar <- stats::quantile(df$Fwd_Vol_1h, probs = 0.60, na.rm = TRUE)
-  df$Tgt_1h <- ifelse(df$Fwd_Vol_1h >= limiar, 1, 0)
+  if (is.na(limiar) || limiar <= 0) {
+    ret_pos <- df$Fwd_Vol_1h[!is.na(df$Fwd_Vol_1h) & df$Fwd_Vol_1h > 0]
+    limiar <- if (length(ret_pos) >= 10) stats::quantile(ret_pos, probs = 0.50, na.rm = TRUE) else 0.0002
+  }
+  df$Tgt_1h <- ifelse(df$Fwd_Vol_1h >= limiar & df$Fwd_Vol_1h > 0, 1, 0)
   df
 }
 
