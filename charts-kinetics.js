@@ -179,26 +179,39 @@ function renderKineticsCockpit(symbol, tfKey, data) {
     }
   }
   
+  const pList = tfData.precos || (tfData.series && tfData.series.prices) || [];
+  const vList = tfData.velocidades || (tfData.series && tfData.series.velocities) || [];
+  const aList = tfData.aceleracoes || (tfData.series && tfData.series.accelerations) || [];
+
+  const pFirst = pList.length > 0 ? pList[0] : p;
+  const pLast = pList.length > 0 ? pList[pList.length - 1] : p;
+  const v = tfData.variacao_periodo !== undefined ? tfData.variacao_periodo : ((pLast / (pFirst || 1) - 1) * 100);
+  const vel = tfData.velocidade_inst !== undefined ? tfData.velocidade_inst : (vList.length > 0 ? vList[vList.length - 1] : 0);
+  const acc = tfData.aceleracao_inst !== undefined ? tfData.aceleracao_inst : (aList.length > 0 ? aList[aList.length - 1] : 0);
+
   if (elVar24h) {
-    const v = tfData.variacao_periodo !== undefined ? tfData.variacao_periodo : 0;
     elVar24h.textContent = `${v >= 0 ? '+' : ''}${v.toFixed(2)}% (${tfData.label || tfKey.toUpperCase()})`;
     elVar24h.className = `hero-tag ${v >= 0 ? 'positive' : 'negative'}`;
   }
 
   if (elVel) {
-    const vel = tfData.velocidade_inst !== undefined ? tfData.velocidade_inst : 0;
     elVel.textContent = `${vel >= 0 ? '▲ +' : '▼ '}${vel.toFixed(3)}%/ponto`;
     elVel.style.color = vel >= 0 ? '#10B981' : '#EF4444';
   }
 
   if (elAcc) {
-    const acc = tfData.aceleracao_inst !== undefined ? tfData.aceleracao_inst : 0;
     elAcc.textContent = `${acc >= 0 ? '▲ +' : '▼ '}${acc.toFixed(3)}%/ponto²`;
     elAcc.style.color = acc >= 0 ? '#06B6D4' : '#F59E0B';
   }
 
   if (elThrustVal && elThrustBar) {
-    const thrust = tfData.poder_subida_thrust !== undefined ? tfData.poder_subida_thrust : 50;
+    let thrust = tfData.poder_subida_thrust;
+    if (thrust === undefined) {
+      // Cálculo dinâmico do poder de subida (thrust) baseado em velocidade e aceleração
+      const vNorm = Math.max(-1, Math.min(1, vel * 100));
+      const aNorm = Math.max(-1, Math.min(1, acc * 1000));
+      thrust = Math.max(5, Math.min(95, 50 + vNorm * 30 + aNorm * 20));
+    }
     elThrustVal.textContent = `${thrust.toFixed(1)} / 100`;
     elThrustBar.style.width = `${thrust}%`;
     
@@ -212,7 +225,14 @@ function renderKineticsCockpit(symbol, tfKey, data) {
   }
 
   if (elKinState) {
-    const st = tfData.estado_cinetico || 'EQUILIBRIO_INERCIAL';
+    let st = tfData.estado_cinetico;
+    if (!st) {
+      if (vel > 0.005 && acc >= 0) st = 'PROPULSAO_ALTA';
+      else if (vel < -0.005 && acc <= 0) st = 'PRESSAO_QUEDA';
+      else if (vel > 0 && acc < 0) st = 'DESACELERACAO_ALTA';
+      else if (vel < 0 && acc > 0) st = 'EXAUSTAO_QUEDA';
+      else st = 'EQUILIBRIO_INERCIAL';
+    }
     if (st === 'PROPULSAO_ALTA') {
       elKinState.textContent = '🚀 FORTE PROPULSÃO COMPRADORA';
       elKinState.style.color = '#10B981';
@@ -242,16 +262,16 @@ function renderKineticsChart(symbol, tfKey, data) {
 
   const asset = data[symbol] || {};
   const tfData = (asset.timeframes && asset.timeframes[tfKey]) || {};
-  const series = tfData.series || {};
+  const series = tfData.series || tfData || {};
 
-  const fullPrices = series.prices || [];
-  const fullUpper = series.bollinger_upper || series.bb_upper || [];
-  const fullLower = series.bollinger_lower || series.bb_lower || [];
+  const fullPrices = series.precos || series.prices || [];
+  const fullUpper = series.bb_upper || series.bollinger_upper || [];
+  const fullLower = series.bb_lower || series.bollinger_lower || [];
   const fullZlUpper = series.zl_upper || [];
   const fullZlLower = series.zl_lower || [];
-  const fullSS = series.supersmoother || [];
-  const fullVelocities = series.velocities || [];
-  const fullTimestamps = series.timestamps || [];
+  const fullSS = series.zerolag || series.supersmoother || [];
+  const fullVelocities = series.velocidades || series.velocities || [];
+  const fullTimestamps = series.labels || series.timestamps || [];
 
   if (fullPrices.length === 0) return;
 
@@ -584,7 +604,7 @@ function initCanvasInteractions() {
     const assetsData = window.ASSETS_KINETICS_DATA || {};
     const asset = assetsData[currentKineticsAsset] || {};
     const tfData = (asset.timeframes && asset.timeframes[currentKineticsTimeframe]) || {};
-    const fullPrices = (tfData.series && tfData.series.prices) || [];
+    const fullPrices = tfData.precos || (tfData.series && tfData.series.prices) || [];
     if (!kineticsZoomRange) return fullPrices.length;
     return kineticsZoomRange[1] - kineticsZoomRange[0] + 1;
   };
@@ -639,7 +659,7 @@ function initCanvasInteractions() {
       const assetsData = window.ASSETS_KINETICS_DATA || {};
       const asset = assetsData[currentKineticsAsset] || {};
       const tfData = (asset.timeframes && asset.timeframes[currentKineticsTimeframe]) || {};
-      const fullPrices = (tfData.series && tfData.series.prices) || [];
+      const fullPrices = tfData.precos || (tfData.series && tfData.series.prices) || [];
 
       const currentOffset = kineticsZoomRange ? kineticsZoomRange[0] : 0;
       const currentLen = kineticsZoomRange ? (kineticsZoomRange[1] - kineticsZoomRange[0] + 1) : fullPrices.length;
