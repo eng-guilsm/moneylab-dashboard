@@ -12,7 +12,7 @@ if (document.readyState === 'loading') {
   initChartsKinetics();
 }
 
-let currentKineticsAsset = 'BTCBRL';
+let currentKineticsAsset = 'USDBRL';
 let currentKineticsTimeframe = '24h';
 let kineticsPollerTimer = null;
 let hoveredDataIndex = -1;
@@ -77,15 +77,14 @@ function initBandToggles() {
 
 function initAssetPills(assetsData) {
   const container = document.getElementById('assetPillsContainer');
-  if (!container) return;
-
   const assetList = [
+    { key: 'USDBRL', label: '💵 DÓLAR COMERCIAL (USD)', color: '#10B981' },
     { key: 'BTCBRL', label: '🪙 BITCOIN (BTC)', color: '#F59E0B' },
     { key: 'ETHBRL', label: '🔹 ETHEREUM (ETH)', color: '#06B6D4' },
     { key: 'SOLBRL', label: '⚡ SOLANA (SOL)', color: '#EC4899' },
     { key: 'LINKBRL', label: '🌐 CHAINLINK (LINK)', color: '#8B5CF6' },
     { key: 'PAXGBRL', label: '🥇 OURO (PAXG)', color: '#FBBF24' },
-    { key: 'USDTBRL', label: '💵 TETHER (USDT)', color: '#10B981' },
+    { key: 'USDTBRL', label: '🪙 TETHER (USDT)', color: '#2DD4BF' },
     { key: 'BNBBRL', label: '🟡 BNB CHAIN', color: '#EAB308' },
     { key: 'ADABRL', label: '🔷 CARDANO (ADA)', color: '#3B82F6' }
   ];
@@ -168,8 +167,8 @@ function renderKineticsCockpit(symbol, tfKey, data) {
   const elKinState = document.getElementById('kinStateTag');
 
   const p = asset.preco_atual || 0;
-  const isUsdt = symbol === 'USDTBRL';
-  const priceFmt = isUsdt ? `R$ ${p.toFixed(4)}` : `R$ ${p.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const isFx = symbol === 'USDTBRL' || symbol === 'USDBRL';
+  const priceFmt = isFx ? `R$ ${p.toFixed(4)}` : `R$ ${p.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   if (elPrice) elPrice.textContent = priceFmt;
   
@@ -314,7 +313,7 @@ function renderKineticsChart(symbol, tfKey, data) {
   // Grade Horizontal
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
   ctx.lineWidth = 1;
-  const isUsdt = symbol === 'USDTBRL';
+  const isFx = symbol === 'USDTBRL' || symbol === 'USDBRL';
 
   for (let i = 0; i <= 5; i++) {
     const yVal = minP + (i / 5) * pRange;
@@ -327,7 +326,7 @@ function renderKineticsChart(symbol, tfKey, data) {
     ctx.fillStyle = '#6B7280';
     ctx.font = '10px JetBrains Mono';
     ctx.textAlign = 'right';
-    const labelStr = isUsdt ? `R$ ${yVal.toFixed(4)}` : `R$ ${Math.round(yVal).toLocaleString('pt-BR')}`;
+    const labelStr = isFx ? `R$ ${yVal.toFixed(4)}` : `R$ ${Math.round(yVal).toLocaleString('pt-BR')}`;
     ctx.fillText(labelStr, padLeft - 8, yPos + 3);
   }
 
@@ -508,12 +507,12 @@ function renderKineticsChart(symbol, tfKey, data) {
 
     const badge = document.getElementById('chartInspectBadge');
     if (badge) {
-      const pVal = isUsdt ? `R$ ${prices[i].toFixed(4)}` : `R$ ${prices[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-      const upVal = isUsdt ? `R$ ${upper[i].toFixed(4)}` : `R$ ${upper[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-      const lowVal = isUsdt ? `R$ ${lower[i].toFixed(4)}` : `R$ ${lower[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-      const zlUpVal = zlUpper && zlUpper[i] ? (isUsdt ? `R$ ${zlUpper[i].toFixed(4)}` : `R$ ${zlUpper[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`) : null;
-      const zlLowVal = zlLower && zlLower[i] ? (isUsdt ? `R$ ${zlLower[i].toFixed(4)}` : `R$ ${zlLower[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`) : null;
-      const ssVal = supersmoother && supersmoother[i] ? (isUsdt ? `R$ ${supersmoother[i].toFixed(4)}` : `R$ ${supersmoother[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`) : null;
+      const pVal = isFx ? `R$ ${prices[i].toFixed(4)}` : `R$ ${prices[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+      const upVal = isFx ? `R$ ${upper[i].toFixed(4)}` : `R$ ${upper[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+      const lowVal = isFx ? `R$ ${lower[i].toFixed(4)}` : `R$ ${lower[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+      const zlUpVal = zlUpper && zlUpper[i] ? (isFx ? `R$ ${zlUpper[i].toFixed(4)}` : `R$ ${zlUpper[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`) : null;
+      const zlLowVal = zlLower && zlLower[i] ? (isFx ? `R$ ${zlLower[i].toFixed(4)}` : `R$ ${zlLower[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`) : null;
+      const ssVal = supersmoother && supersmoother[i] ? (isFx ? `R$ ${supersmoother[i].toFixed(4)}` : `R$ ${supersmoother[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`) : null;
       const velVal = `${velocities[i] >= 0 ? '+' : ''}${velocities[i].toFixed(3)}%`;
 
       badge.style.display = 'block';
@@ -711,7 +710,20 @@ function startLiveBinancePoller() {
         });
 
         if (pricesMap.USDTBRL) {
-          pricesMap.PAXGBRL = pricesMap.USDTBRL * 4587.0;
+          pricesMap.PAXGBRL = pricesMap.USDTBRL * 4470.0;
+        }
+
+        // Cotação ao vivo do Dólar Oficial via AwesomeAPI (fallback proporcional USDT)
+        try {
+          const resUsd = await fetch('https://economia.awesomeapi.com.br/last/USD-BRL');
+          const dUsd = await resUsd.json();
+          if (dUsd && dUsd.USDBRL) {
+            pricesMap.USDBRL = (parseFloat(dUsd.USDBRL.bid) + parseFloat(dUsd.USDBRL.ask)) / 2.0;
+          }
+        } catch (eUsd) {
+          if (pricesMap.USDTBRL) {
+            pricesMap.USDBRL = pricesMap.USDTBRL * 0.9951;
+          }
         }
 
         Object.keys(pricesMap).forEach(sym => {
