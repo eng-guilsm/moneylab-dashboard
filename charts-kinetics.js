@@ -6,12 +6,6 @@
  * ==============================================================================
  */
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initChartsKinetics);
-} else {
-  initChartsKinetics();
-}
-
 let currentKineticsAsset = 'USDBRL';
 let currentKineticsTimeframe = '24h';
 let kineticsPollerTimer = null;
@@ -20,10 +14,17 @@ let kineticsZoomRange = null; // [startIdx, endIdx] ou null
 let isDraggingKineticsZoom = false;
 let kineticsDragStartX = 0;
 let kineticsDragCurrentX = 0;
+
 window.currentKineticsAsset = currentKineticsAsset;
 window.currentKineticsTimeframe = currentKineticsTimeframe;
 window.renderKineticsChart = renderKineticsChart;
 window.renderKineticsCockpit = renderKineticsCockpit;
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initChartsKinetics);
+} else {
+  initChartsKinetics();
+}
 
 function initChartsKinetics() {
   const assetsData = window.ASSETS_KINETICS_DATA || {};
@@ -168,6 +169,7 @@ function renderKineticsCockpit(symbol, tfKey, data) {
 
   const p = asset.preco_atual || 0;
   const isFx = symbol === 'USDTBRL' || symbol === 'USDBRL';
+  const priceFmt = isFx ? `R$ ${p.toFixed(4)}` : `R$ ${p.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   if (elPrice) elPrice.textContent = priceFmt;
   
   const elCardEyebrow = document.querySelector('.kin-price-card .card-eyebrow');
