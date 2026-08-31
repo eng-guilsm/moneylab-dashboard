@@ -511,7 +511,9 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_SENTINELA_DE_MINAS",
           "PLANO_SERTAO_VALENTE",
           "PLANO_FAROL_DE_NEAR",
-          "PLANO_BRUCE_WAYNE"
+          "PLANO_BRUCE_WAYNE",
+          "PLANO_SENTINELA_WALLSTREET",
+          "PLANO_DOLLARUS_QUANTUM_PEG"
         )
         
         tetos_volume <- list(
@@ -527,7 +529,9 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_SENTINELA_DE_MINAS" = 180.00,
           "PLANO_SERTAO_VALENTE" = 160.00,
           "PLANO_FAROL_DE_NEAR" = 300.00,
-          "PLANO_BRUCE_WAYNE" = 350.00
+          "PLANO_BRUCE_WAYNE" = 350.00,
+          "PLANO_SENTINELA_WALLSTREET" = 220.00,
+          "PLANO_DOLLARUS_QUANTUM_PEG" = 220.00
         )
         
         lucros_minimos <- list(
@@ -543,7 +547,9 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_SENTINELA_DE_MINAS" = 0.50,
           "PLANO_SERTAO_VALENTE" = 0.55,
           "PLANO_FAROL_DE_NEAR" = 0.70,
-          "PLANO_BRUCE_WAYNE" = 0.00
+          "PLANO_BRUCE_WAYNE" = 0.00,
+          "PLANO_SENTINELA_WALLSTREET" = 0.64,
+          "PLANO_DOLLARUS_QUANTUM_PEG" = 0.50
         )
         
         # Trava 0: Validação de Saldo em Custódia Real (Anti-Venda a Descoberto)
@@ -692,13 +698,15 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
               # Cooldown Otimizado Harmonicus Ultra-Deep
               cooldown_req <- ifelse(estrategia_nome == "PLANO_COFRE_DE_MIDAS", 120.0, # 5 dias
                               ifelse(estrategia_nome == "PLANO_BRUCE_WAYNE", 24.0,
+                              ifelse(estrategia_nome == "PLANO_SENTINELA_WALLSTREET", 0.50,
+                              ifelse(estrategia_nome == "PLANO_DOLLARUS_QUANTUM_PEG", 0.25,
                               ifelse(estrategia_nome %in% c("PLANO_CORISCO_DA_SOLANA", "PLANO_SENTINELA_DE_MINAS"), 0.16, 
                               ifelse(estrategia_nome == "PLANO_FLECHA_DE_SAGARANA", 0.13,
                               ifelse(estrategia_nome == "PLANO_CABOCLO_DOS_ORACULOS", 0.20,
                               ifelse(estrategia_nome == "PLANO_SERTAO_VALENTE", 0.25,
                               ifelse(estrategia_nome == "PLANO_FAROL_DE_NEAR", 1.0,
                               ifelse(estrategia_nome == "PLANO_DUELO_DE_TITAS", 1.5,
-                              ifelse(grepl("GRAVIDADE", estrategia_nome), 0.16, 1.0)))))))))
+                              ifelse(grepl("GRAVIDADE", estrategia_nome), 0.16, 1.0)))))))))))
               
               # Se for realização de lucro / rotação oposta, zera o cooldown
               ultimo_reg <- tail(hist_est, 1)
@@ -760,11 +768,26 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
               
               if (!is.na(p_entrada) && p_entrada > 0) {
                 ret_nominal <- ((p_atual_mercado - p_entrada) / p_entrada) * 100
-                # Proíbe terminantemente venda se retorno for menor que +0.40% sobre o custo real do lote em aberto
                 if (ret_nominal < 0.40) {
                   aprovado <- FALSE
-                  motivo_veto <- sprintf("Breakeven Lock FIFO: Preço atual de %s (R$ %.2f) está abaixo ou sem margem do preço de compra do lote em aberto (R$ %.2f | Retorno: %+.2f%% [exige >= +0.40%%]). Venda vetada para garantir lucro real.",
+                  motivo_veto <- sprintf("Breakeven Lock FIFO: Preço atual de %s (R$ %.2f) está abaixo do custo de compra do lote em aberto (R$ %.2f | Retorno: %+.2f%% [exige >= +0.40%%]). Venda vetada.",
                                          pedido$origem, p_atual_mercado, p_entrada, ret_nominal)
+                }
+              }
+            }
+          }
+          
+          # Dupla Validação com carteira.rds (Preço Médio Global)
+          if (aprovado && file.exists("carteira.rds")) {
+            cart_rds <- tryCatch(readRDS("carteira.rds"), error = function(e) NULL)
+            if (!is.null(cart_rds) && !is.null(cart_rds[[pedido$origem]]) && !is.null(cart_rds[[pedido$origem]]$pm)) {
+              pm_cart <- as.numeric(cart_rds[[pedido$origem]]$pm)
+              if (!is.na(pm_cart) && pm_cart > 0 && !is.null(p_atual_mercado) && p_atual_mercado > 0) {
+                ret_pm <- ((p_atual_mercado - pm_cart) / pm_cart) * 100
+                if (ret_pm < 0.40) {
+                  aprovado <- FALSE
+                  motivo_veto <- sprintf("Breakeven Lock Carteira PM: Preço atual de %s (R$ %.2f) está abaixo do preço médio em custódia (R$ %.2f | Retorno: %+.2f%% [exige >= +0.40%%]). Venda vetada.",
+                                         pedido$origem, p_atual_mercado, pm_cart, ret_pm)
                 }
               }
             }
@@ -797,19 +820,19 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           }
           
           p_calc_exec <- 0.0
-          if (!is.null(resultado_binance$cummulativeQuoteQty) && !is.null(resultado_binance$executedQty)) {
-            q_qty <- as.numeric(resultado_binance$cummulativeQuoteQty)
+          ativo_adquirido <- ifelse(pedido$origem == "BRL", pedido$destino, ifelse(pedido$destino == "BRL", pedido$origem, pedido$destino))
+          
+          if (!is.null(resultado_binance$executedQty)) {
             e_qty <- as.numeric(resultado_binance$executedQty)
-            if (!is.na(q_qty) && !is.na(e_qty) && e_qty > 0) {
-              p_calc_exec <- q_qty / e_qty
+            if (!is.na(e_qty) && e_qty > 0) {
+              p_calc_exec <- as.numeric(pedido$valor_brl) / e_qty
             }
           }
-          if (p_calc_exec <= 0) {
-            ativo_check <- ifelse(pedido$origem == "BRL", pedido$destino, pedido$origem)
-            if (ativo_check == "PAXG") {
+          if (p_calc_exec <= 0 || is.na(p_calc_exec)) {
+            if (ativo_adquirido == "PAXG") {
               p_calc_exec <- 24000.0
             } else {
-              p_calc_exec <- tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%sBRL", ativo_check)), "parsed")$price), error = function(e) 0.0)
+              p_calc_exec <- tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%sBRL", ativo_adquirido)), "parsed")$price), error = function(e) 0.0)
               if (is.null(p_calc_exec) || length(p_calc_exec) == 0 || is.na(p_calc_exec)) p_calc_exec <- 0.0
             }
           }

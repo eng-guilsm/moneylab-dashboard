@@ -866,9 +866,24 @@ executar_pipeline_harmonicus <- function(db_path = "MoneyBot_Local.db") {
       tryCatch(dbExecute(con, "ALTER TABLE Harmonicus_Metricas_Globais ADD COLUMN SNR_dB REAL;"), error = function(e) NULL)
     }
     
-    dbWriteTable(con, "Harmonicus_Metricas_Globais", df_global, append = TRUE, row.names = FALSE)
-    dbWriteTable(con, "Harmonicus_Espectro_Ativos", df_ativos, append = TRUE, row.names = FALSE)
-    dbWriteTable(con, "Harmonicus_Pares_Coerencia", df_pares, append = TRUE, row.names = FALSE)
+    tryCatch({
+      dbExecute(con, sprintf("INSERT OR REPLACE INTO Harmonicus_Metricas_Globais 
+        (Data_Hora, Razao_Absorcao_PC1, Entropia_Espectral, Energia_Total_Fourier, Energia_Wavelet_Morlet, Periodo_Dominante_T0, SNR_dB, Fluxo_Informacao_STE, Regime_Topologico)
+        VALUES ('%s', %f, %f, %f, %f, %f, %f, %f, '%s');",
+        df_global$Data_Hora, df_global$Razao_Absorcao_PC1, df_global$Entropia_Espectral, df_global$Energia_Total_Fourier,
+        df_global$Energia_Wavelet_Morlet, df_global$Periodo_Dominante_T0, df_global$SNR_dB, df_global$Fluxo_Informacao_STE, df_global$Regime_Topologico))
+      
+      for (i in 1:nrow(df_ativos)) {
+        dbExecute(con, sprintf("INSERT OR REPLACE INTO Harmonicus_Espectro_Ativos (Data_Hora, Ativo, Volatilidade, Peso_PC1) VALUES ('%s', '%s', %f, %f);",
+          df_ativos$Data_Hora[i], df_ativos$Ativo[i], df_ativos$Volatilidade[i], df_ativos$Peso_PC1[i]))
+      }
+      
+      for (i in 1:nrow(df_pares)) {
+        dbExecute(con, sprintf("INSERT OR REPLACE INTO Harmonicus_Pares_Coerencia (Data_Hora, Par_Ativos, Coerencia, Correlacao_Linear) VALUES ('%s', '%s', %f, %f);",
+          df_pares$Data_Hora[i], df_pares$Par_Ativos[i], df_pares$Coerencia[i], df_pares$Correlacao_Linear[i]))
+      }
+    }, error = function(e) NULL)
+    
     dbDisconnect(con)
     
     log_analyst(sprintf("Harmonicus Atualizado: %s | Regime: %s | PC1: %.1f%% | T0: %.1fh | SNR: %.1fdB | STE: %+.4f", 
