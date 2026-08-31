@@ -84,16 +84,32 @@ repeat {
     })
   }
   
+  # Sincronização do moneylab-dashboard
+  if (dir.exists(path_labinvest)) {
+    tryCatch({
+      cmd_moneylab_sync <- sprintf('cd "%s" && git add data/charts_data.js charts-kinetics.js index.html kinetics.html && git commit -m "Auto-Update Kinetics: %s" && git push origin main', path_labinvest, agora_str)
+      if (.Platform$OS.type == "windows") {
+        cmd_win <- sprintf('powershell -Command "Set-Location \'%s\'; git add data/charts_data.js charts-kinetics.js index.html kinetics.html; git commit -m \'Auto-Update Kinetics: %s\'; git push origin main"', path_labinvest, agora_str)
+        system(cmd_win, intern = FALSE, ignore.stdout = TRUE, ignore.stderr = TRUE)
+      } else {
+        system(cmd_moneylab_sync, intern = FALSE, ignore.stdout = TRUE, ignore.stderr = TRUE)
+      }
+      cat("   🚀 MoneyLab Dashboard publicado no GitHub Pages com sucesso!\n")
+    }, error = function(e) {
+      cat("   ⚠️ Aviso no git push do MoneyLab Dashboard:", conditionMessage(e), "\n")
+    })
+  }
+  
   # ----------------------------------------------------------------------------
   # 3. DEPLOY CLÁSSICO MONEYLAB (DASHBOARD_MONEY.RMD) SE NECESSÁRIO
   # ----------------------------------------------------------------------------
   rmd_alvo <- file.path(path_labinvest, "dashboard_money.Rmd")
   if (file.exists(rmd_alvo) && (ciclo_num %% 5 == 1)) { # A cada 5 minutos
     tryCatch({
-      cat("   📝 3. Renderizando dashboard_money.Rmd clássico...\n")
-      suppressMessages(rmarkdown::render(rmd_alvo, output_file = "index.html", quiet = TRUE, clean = TRUE))
-      system('git add index.html && git commit -m "Auto-Update Classic HUD" && git push origin main', ignore.stdout = TRUE, ignore.stderr = TRUE)
-      cat("   ✅ MoneyLab Classic Dashboard atualizado.\n")
+      cat("   📝 3. Renderizando dashboard_money.Rmd clássico para dashboard_money.html...\n")
+      suppressMessages(rmarkdown::render(rmd_alvo, output_file = "dashboard_money.html", quiet = TRUE, clean = TRUE))
+      system('git add dashboard_money.html && git commit -m "Auto-Update Classic HUD" && git push origin main', ignore.stdout = TRUE, ignore.stderr = TRUE)
+      cat("   ✅ MoneyLab Classic Dashboard atualizado (dashboard_money.html).\n")
     }, error = function(e) {
       # Silencioso
     })
