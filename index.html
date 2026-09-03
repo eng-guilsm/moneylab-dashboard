@@ -6,48 +6,461 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>MoneyLab // Terminal Cinético de Mercados (Página 3)</title>
-  <meta name="description" content="Terminal de Física Inercial, Derivadas de Mercado (dP/dt, d2P/dt2), Banda Zero-Lag de Ehlers e Thrust Gauge 100% ao vivo.">
+  <title>Harmonicus SX // Portfolio Tactical HUD & Spectral Synth</title>
+  <meta name="description" content="Terminal Quant & Sintetizador Espectral de Mercados Financeiros. Monitoramento Tático dos 8 Planos, Topologia Espectral e Cinética de Ativos.">
   
-  <!-- Google Fonts -->
+  <!-- Google Fonts & D3.js -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Orbitron:wght@500;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://d3js.org/d3.v7.min.js"></script>
   
-  <!-- CSS Stylesheet (Idêntico ao Harmonicus SX) -->
-  <link rel="stylesheet" href="style.css?v=20260829_v11_perfect">
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="style.css?v=20260903_v16_live">
 </head>
 <body class="dark-synth">
   <!-- Scanlines & Ambient Matrix Grid -->
   <div class="hud-grid-overlay"></div>
   <div class="hud-vignette"></div>
 
-  <div class="app-container" style="max-width: 1400px; margin: 0 auto; padding: 15px 20px;">
+  <div class="app-container">
     <!-- TOP GLOBAL HEADER -->
-    <header class="hud-header" style="margin-bottom: 20px;">
+    <header class="hud-header">
       <div class="brand-section">
         <div class="pulse-indicator online"></div>
         <div class="brand-titles">
-          <h1 class="hud-logo">MONEYLAB <span class="badge-tag">KINETICS // RADAR ABERTO</span></h1>
-          <p class="hud-subtitle">Física Inercial de Criptoativos, Derivadas de Fase e Banda Zero-Lag de Ehlers (Página 3)</p>
+          <h1 class="hud-logo">HARMONICUS <span class="badge-tag">SX // QUANT HUD</span></h1>
+          <p class="hud-subtitle">Terminal Tático dos 8 Motores, Sintetizador Espectral & Cinética de Mercado</p>
         </div>
       </div>
 
+      <!-- 3-TAB NAVIGATION -->
+      <nav class="hud-nav-tabs">
+        <button id="tabBtnTactical" class="nav-tab active" data-page="pageTactical">
+          <span class="tab-icon">🎯</span>
+          <span class="tab-title">PÁGINA 1: RADAR TÁTICO</span>
+        </button>
+        <button id="tabBtnHarmonicus" class="nav-tab" data-page="pageHarmonicus">
+          <span class="tab-icon">📻</span>
+          <span class="tab-title">PÁGINA 2: SINTETIZADOR SX</span>
+        </button>
+        <button id="tabBtnKinetics" class="nav-tab" data-page="pageKinetics">
+          <span class="tab-icon">📈</span>
+          <span class="tab-title">PÁGINA 3: CINÉTICA & ATIVOS</span>
+        </button>
+      </nav>
+
+      <!-- AUDIO & STATUS CONTROLS -->
       <div class="header-controls">
+        <div class="audio-master-box">
+          <button id="audioToggleBtn" class="hud-btn hud-btn-synth" title="Ativar Motor de Síntese Espectral">
+            <span class="audio-icon" id="audioIcon">🔇</span>
+            <span class="btn-text" id="audioText">ÁUDIO MUTADO</span>
+          </button>
+          <div class="volume-slider-box">
+            <span class="vol-label">VOL</span>
+            <input type="range" id="masterVolume" min="0" max="1" step="0.01" value="0.5" title="Volume Geral">
+          </div>
+        </div>
+
         <div class="system-status-chip" style="display: flex; flex-direction: column; align-items: flex-end; justify-content: center; line-height: 1.25; padding: 4px 10px; background: rgba(5, 8, 17, 0.90); border: 1px solid var(--border-subtle); border-radius: 6px; min-width: 90px;">
-          <span class="chip-label" style="font-size: 0.60rem; color: var(--text-muted); font-family: var(--font-mono); font-weight: 700; letter-spacing: 0.08em;">RADAR CINÉTICO</span>
-          <span style="font-size: 0.72rem; color: #10B981; font-family: var(--font-mono); font-weight: 700;">🟢 AO VIVO</span>
+          <span class="chip-label" style="font-size: 0.60rem; color: var(--text-muted); font-family: var(--font-mono); font-weight: 700; letter-spacing: 0.08em;">AUTORUN</span>
+          <span id="autorunDate" style="font-size: 0.68rem; color: #06B6D4; font-family: var(--font-mono); font-weight: 600;">22/08/2026</span>
+          <span id="autorunTime" style="font-size: 0.82rem; color: #10B981; font-family: var(--font-mono); font-weight: 700;">22:49:00</span>
         </div>
       </div>
     </header>
 
     <!-- ========================================================================= -->
-    <!-- PÁGINA 3: CINÉTICA & DINÂMICA DE ATIVOS (GRÁFICOS & DERIVADAS) - IDÊNTICA  -->
+    <!-- PÁGINA 1: RADAR TÁTICO DA CARTEIRA (PROXIMIDADE DOS 8 PLANOS)             -->
     <!-- ========================================================================= -->
-    <section id="pageKinetics" class="hud-page active" style="display: block;">
+    <section id="pageTactical" class="hud-page active">
+      <!-- HERO PATRIMONIAL COCKPIT -->
+      <div class="cockpit-hero-grid">
+        <div class="hero-card patrimony-card">
+          <span class="card-eyebrow">PATRIMÔNIO EM CUSTÓDIA BINANCE</span>
+          <div class="hero-val-row">
+            <span class="hero-currency">R$</span>
+            <span class="hero-number" id="patrimonioTotal">1.709,72</span>
+            <span class="hero-tag positive">RECUPERAÇÃO 98,8%</span>
+          </div>
+          <div class="hero-subtext">Total Aportado: R$ 1.731,00 | Prejuízo residual reduzido para apenas <b>R$ 21,28</b>.</div>
+        </div>
+
+        <div class="hero-card cash-card">
+          <span class="card-eyebrow">CAIXA LÍQUIDO ESTRATÉGICO (BRL)</span>
+          <div class="hero-val-row">
+            <span class="hero-currency">R$</span>
+            <span class="hero-number" id="caixaLivre">1.150,00</span>
+            <span class="hero-tag neutral">67,3% DO CAPITAL</span>
+          </div>
+          <div class="hero-subtext">Munição líquida em conta Spot com latência zero para compras instantâneas.</div>
+        </div>
+
+        <div class="hero-card market-anchor-card">
+          <span class="card-eyebrow">ÂNCORAS DA REDE AO VIVO</span>
+          <div class="ticker-mini-grid">
+            <div class="ticker-item"><span class="t-sym">BTC:</span> <span class="t-val" id="tickBTC">R$ 398.820</span></div>
+            <div class="ticker-item"><span class="t-sym">LINK:</span> <span class="t-val" id="tickLINK">R$ 58,50</span></div>
+            <div class="ticker-item"><span class="t-sym">SOL:</span> <span class="t-val" id="tickSOL">R$ 486,80</span></div>
+            <div class="ticker-item"><span class="t-sym">PAXG:</span> <span class="t-val" id="tickPAXG">R$ 23.681</span></div>
+            <div class="ticker-item"><span class="t-sym">ETH:</span> <span class="t-val" id="tickETH">R$ 10.350</span></div>
+            <div class="ticker-item"><span class="t-sym">USDT:</span> <span class="t-val" id="tickUSDT">R$ 5,162</span></div>
+            <div class="ticker-item"><span class="t-sym">VIX:</span> <span class="t-val" id="tickVIX">16,09 pts</span></div>
+          </div>
+        </div>
+
+        <div class="hero-card gatekeeper-card">
+          <span class="card-eyebrow">ESTADO DO GATEKEEPER LABPOLICE</span>
+          <div class="gatekeeper-status-box">
+            <div class="status-badge-glow" id="gatekeeperBadge">🟢 VIGILÂNCIA ATIVA</div>
+            <span class="gate-detail" id="gatekeeperDetail">Fator de Lote: <b>100% (Integral)</b> | Sem tempestades</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- EXECUTION PROXIMITY THERMOMETER -->
+      <div class="section-divider thermo-section-header">
+        <div class="divider-title">
+          <span class="d-icon">🔥</span>
+          <h2>TERMÔMETRO DE PROXIMIDADE DE DISPARO (100% AO VIVO)</h2>
+        </div>
+        <div class="filter-buttons">
+          <button class="filter-btn active" data-filter="all">TODOS (8)</button>
+          <button class="filter-btn" data-filter="baixo_risco">🛡️ BAIXO RISCO (5)</button>
+          <button class="filter-btn" data-filter="medio_risco">⚡ MÉDIO RISCO (3)</button>
+        </div>
+      </div>
+
+      <div class="thermometer-container" id="thermometerList">
+        <!-- Injetado via tactical-hud.js -->
+      </div>
+
+      <!-- PAINEL DE CUSTÓDIA PATRIMONIAL -->
+      <div class="tactical-bottom-grid">
+        <div class="tactical-subcard custody-alloc-card">
+          <div class="card-header-clean">
+            <h3>DISTRIBUIÇÃO PATRIMONIAL EM TEMPO REAL</h3>
+            <span class="badge-custody">CUSTÓDIA ATIVA SPOT</span>
+          </div>
+          <div class="alloc-bars" id="allocBarsContainer">
+            <!-- Injetado 100% dinamicamente via tactical-hud.js para qualquer ativo em custódia -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- PÁGINA 2: SINTETIZADOR HARMONICUS SX (TOPOLOGIA, SOM & ESPECTRO)          -->
+    <!-- ========================================================================= -->
+    <section id="pageHarmonicus" class="hud-page">
+      <div class="synth-workspace-layout">
+        
+        <!-- LEFT CONTROL DECK: RADIO TUNER & CHORDS -->
+        <aside class="hud-deck synth-control-deck">
+          <div class="deck-header">
+            <span class="deck-icon">📻</span>
+            <h2>SINTETIZADOR ANALÓGICO HARMONICUS SX</h2>
+          </div>
+
+          <!-- ANALOG RADIO TUNER KNOB -->
+          <div class="deck-group tuner-group">
+            <label class="group-label">SINTONIZADOR DE ONDAS ESPECTRAIS (RADIO TUNER)</label>
+            <div class="radio-tuner-widget">
+              <div class="knob-container">
+                <svg class="dial-face-svg" viewBox="0 0 220 220" width="220" height="220">
+                  <!-- Arco Externo de Calibração -->
+                  <path d="M 45 175 A 92 92 0 1 1 175 175" fill="none" stroke="rgba(6, 182, 212, 0.3)" stroke-width="2" stroke-dasharray="4 3" />
+                  
+                  <!-- Ticks Principais -->
+                  <line x1="63.3" y1="156.7" x2="56.3" y2="163.7" stroke="#06B6D4" stroke-width="2.5" />
+                  <line x1="44.8" y1="99.7" x2="34.9" y2="98.1" stroke="#06B6D4" stroke-width="2.5" />
+                  <line x1="80.0" y1="51.2" x2="75.5" y2="42.3" stroke="#06B6D4" stroke-width="2.5" />
+                  <line x1="140.0" y1="51.2" x2="144.5" y2="42.3" stroke="#06B6D4" stroke-width="2.5" />
+                  <line x1="175.2" y1="99.7" x2="185.1" y2="98.1" stroke="#06B6D4" stroke-width="2.5" />
+                  <line x1="156.7" y1="156.7" x2="163.7" y2="163.7" stroke="#06B6D4" stroke-width="2.5" />
+
+                  <!-- Rótulos Padronizados: MIN para Minutos, D para Dias -->
+                  <text class="svg-marker m-15m" data-marker="15m" x="42" y="180" text-anchor="middle" dominant-baseline="central">15 MIN</text>
+                  <text class="svg-marker m-1h" data-marker="1h" x="18" y="96" text-anchor="middle" dominant-baseline="central">1H</text>
+                  <text class="svg-marker m-4h" data-marker="4h" x="68" y="24" text-anchor="middle" dominant-baseline="central">4H</text>
+                  <text class="svg-marker m-24h active" data-marker="24h" x="152" y="24" text-anchor="middle" dominant-baseline="central">24H</text>
+                  <text class="svg-marker m-7d" data-marker="7d" x="202" y="96" text-anchor="middle" dominant-baseline="central">7D</text>
+                  <text class="svg-marker m-45d" data-marker="45d" x="178" y="180" text-anchor="middle" dominant-baseline="central">45D</text>
+                </svg>
+
+                <div class="rotary-dial" id="tunerDial" title="Gire o Knob com o mouse ou scroll para sintonizar a frequência">
+                  <div class="dial-indicator"></div>
+                  <div class="dial-cap">
+                    <span class="dial-center-label">TUNER</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="tuner-readout-card">
+                <div class="tro-band" id="tunerBandName">ONDAS CURTAS // DIÁRIO (24H)</div>
+                <div class="tro-freq" id="tunerBandFreq">Banda Fundamental: 24 Horas</div>
+                <p class="tro-desc" id="tunerBandDesc">Harmônico fundamental de rotação de mercado. Cointegração forte entre TradFi e Criptoativos.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- COCKPIT DE DIAGNÓSTICO ESPECTRAL & DECISÃO -->
+          <div class="deck-group spectral-cockpit-group">
+            <label class="group-label">COCKPIT ESPECTRAL & TOMADA DE DECISÃO</label>
+            
+            <div class="focused-asset-card" id="focusedAssetCard">
+              <div class="fac-header">
+                <span class="fac-badge" id="facBadge">VISÃO PANORÂMICA</span>
+                <span class="fac-hint" id="facHint">Clique em um ativo para diagnosticar</span>
+              </div>
+              <div class="fac-body">
+                <div class="fac-title" id="facTitle">🌐 REDE COMPLETA (26 ATIVOS)</div>
+                <div class="fac-meta" id="facMeta">Afinação: Multiespectral • Coerência Global Ativa</div>
+              </div>
+            </div>
+
+            <!-- QUADRO DE RELAÇÕES ESPECTRAIS -->
+            <div class="spectral-relations-panel" id="spectralRelationsPanel">
+              <div class="srp-col octave-col">
+                <div class="srp-header">
+                  <span class="srp-dot white"></span>
+                  <span class="srp-title">OITAVADOS (2^k f₀)</span>
+                  <span class="srp-count" id="countOctave">0</span>
+                </div>
+                <div class="srp-list" id="listOctave">
+                  <span class="srp-empty">Selecione um ativo</span>
+                </div>
+              </div>
+
+              <div class="srp-col harmonic-col">
+                <div class="srp-header">
+                  <span class="srp-dot cyan"></span>
+                  <span class="srp-title">HARMÔNICOS (HEDGE)</span>
+                  <span class="srp-count" id="countHarmonic">0</span>
+                </div>
+                <div class="srp-list" id="listHarmonic">
+                  <span class="srp-empty">Selecione um ativo</span>
+                </div>
+              </div>
+
+              <div class="srp-col anarmonic-col">
+                <div class="srp-header">
+                  <span class="srp-dot red"></span>
+                  <span class="srp-title">ANARMÔNICOS (TENSÃO)</span>
+                  <span class="srp-count" id="countAnarmonic">0</span>
+                </div>
+                <div class="srp-list" id="listAnarmonic">
+                  <span class="srp-empty">Selecione um ativo</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- ATALHOS DE FOCO RÁPIDO -->
+            <div class="quick-focus-bar">
+              <span class="qfb-label">FOCO RÁPIDO ESTRATÉGICO:</span>
+              <div class="qfb-buttons">
+                <button class="qfb-btn" data-asset="BTCBRL" title="Focar Bitcoin (C3)">🪙 BTC</button>
+                <button class="qfb-btn" data-asset="SOLBRL" title="Focar Solana (C4)">⚡ SOL</button>
+                <button class="qfb-btn" data-asset="ETHBRL" title="Focar Ethereum (G3)">🔹 ETH</button>
+                <button class="qfb-btn" data-asset="PAXG_Ouro" title="Focar Ouro PAXG (E3)">🥇 PAXG</button>
+                <button class="qfb-btn" data-asset="USDTBRL" title="Focar Tether USD (A2)">💵 USDT</button>
+                <button class="qfb-btn" data-asset="VIX_Index" title="Focar Pânico VIX (F#3)">🛡️ VIX</button>
+                <button class="qfb-btn active" data-asset="all" title="Restaurar Visão Geral">🌐 TODOS</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- BANCA DE SÍNTESE POLIFÔNICA (ATÉ 4 ATIVOS) & ARPEGGIO -->
+          <div class="deck-group polyphonic-group">
+            <div class="poly-header-row">
+              <label class="group-label" style="margin-bottom: 0;">BANCA POLIFÔNICA (ATÉ 4 ATIVOS)</label>
+              <span class="poly-slots-counter" id="polySlotsCounter">0 / 4</span>
+            </div>
+
+            <!-- CARD DE CLASSIFICAÇÃO DA TÉTRADE -->
+            <div class="poly-chord-badge" id="polyChordBadge">
+              <div class="pcb-type" id="pcbType">NENHUM ATIVO NA BANCA</div>
+              <div class="pcb-sub" id="pcbSub">Selecione até 4 nós no grafo para sintetizar acordes</div>
+            </div>
+
+            <!-- 4 SLOTS DE ATIVOS -->
+            <div class="poly-slots-grid">
+              <div class="poly-slot empty" id="polySlot0" data-index="0">
+                <span class="ps-num">①</span>
+                <span class="ps-ticker">Vazio</span>
+                <span class="ps-note">--</span>
+                <button class="ps-remove" title="Remover">×</button>
+              </div>
+              <div class="poly-slot empty" id="polySlot1" data-index="1">
+                <span class="ps-num">②</span>
+                <span class="ps-ticker">Vazio</span>
+                <span class="ps-note">--</span>
+                <button class="ps-remove" title="Remover">×</button>
+              </div>
+              <div class="poly-slot empty" id="polySlot2" data-index="2">
+                <span class="ps-num">③</span>
+                <span class="ps-ticker">Vazio</span>
+                <span class="ps-note">--</span>
+                <button class="ps-remove" title="Remover">×</button>
+              </div>
+              <div class="poly-slot empty" id="polySlot3" data-index="3">
+                <span class="ps-num">④</span>
+                <span class="ps-ticker">Vazio</span>
+                <span class="ps-note">--</span>
+                <button class="ps-remove" title="Remover">×</button>
+              </div>
+            </div>
+
+            <!-- CONTROLES DE ÁUDIO POLIFÔNICO E ARPEGGIO -->
+            <div class="poly-action-buttons">
+              <button class="poly-btn drone-btn" id="btnToggleDrone" title="Ligar/Desligar acorde contínuo com as vozes selecionadas">
+                <span class="pb-icon" id="droneIcon">🔊</span>
+                <span class="pb-text" id="droneText">ACORDE CONTÍNUO</span>
+              </button>
+              <button class="poly-btn arpeggio-btn" id="btnPlayArpeggio" title="Tocar os ativos um por um de forma melódica sequencial">
+                <span class="pb-icon" id="arpeggioIcon">▶</span>
+                <span class="pb-text" id="arpeggioText">PLAY MELODIA</span>
+              </button>
+              <button class="poly-btn clear-btn" id="btnClearPoly" title="Limpar todos os slots">
+                <span class="pb-icon">🗑️</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- REAL-TIME DSP SPECTRAL OBSERVABLES -->
+          <div class="deck-group telemetry-group">
+            <label class="group-label">OBSERVÁVEIS ESPECTRAIS EM TEMPO REAL (DSP)</label>
+            <div class="telemetry-card-grid">
+              <div class="tele-item">
+                <span class="tele-label">RESSONÂNCIA PC1</span>
+                <span class="tele-val highlight" id="telePC1">39.4%</span>
+                <span class="tele-sub">Absorção Sistêmica</span>
+              </div>
+              <div class="tele-item">
+                <span class="tele-label">CICLO T0 (HOMÓDINO)</span>
+                <span class="tele-val" id="teleT0">13.7h</span>
+                <span class="tele-sub">Período Dominante</span>
+              </div>
+              <div class="tele-item">
+                <span class="tele-label">SNR (EHLERS)</span>
+                <span class="tele-val" id="teleSNR" style="color: #F59E0B;">-15.7 dB</span>
+                <span class="tele-sub">Sinal vs Ruído</span>
+              </div>
+              <div class="tele-item">
+                <span class="tele-label">FLUXO CAUSAL STE</span>
+                <span class="tele-val" id="teleSTE" style="color: #10B981;">+0.1325</span>
+                <span class="tele-sub">BTC ➔ Altcoins</span>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <!-- CENTER & RIGHT AREA: NETWORK GRAPH & OSCILLOSCOPE -->
+        <div class="synth-main-stage">
+          <div class="hud-card oscilloscope-card">
+            <div class="card-header-clean">
+              <div class="osc-title-box">
+                <span class="ch-icon">📈</span>
+                <h3>OSCILOSCÓPIO DE SINAL EM TEMPO REAL (60 FPS)</h3>
+              </div>
+              <div class="osc-metrics">
+                <span class="om-item">PC1: <b id="oscPC1">62.8%</b></span>
+                <span class="om-item">ENTROPIA S: <b id="oscS">1.2425</b></span>
+                <span class="om-item">STE FLOW: <b id="oscSTE">+0.0213</b></span>
+              </div>
+            </div>
+            <div class="osc-canvas-wrapper">
+              <canvas id="oscCanvas" width="900" height="140"></canvas>
+            </div>
+          </div>
+
+          <div class="hud-card network-graph-card">
+            <div class="card-header-clean">
+              <div class="graph-title-box">
+                <span class="ch-icon">🌐</span>
+                <h3>GRAFO TOPOLÓGICO DOS 26 ATIVOS (MST DE MANTEGNA & COERÊNCIA)</h3>
+              </div>
+              <div class="graph-header-actions">
+                <div class="graph-legend">
+                  <span class="leg-item"><i style="background: #FFFFFF; box-shadow: 0 0 6px #FFFFFF;"></i> ⚪ Oitavado (2^k)</span>
+                  <span class="leg-item"><i style="background: #06B6D4; box-shadow: 0 0 6px #06B6D4;"></i> 🔵 Harmônico (Hedge)</span>
+                  <span class="leg-item"><i style="background: #EF4444; box-shadow: 0 0 6px #EF4444;"></i> 🔴 Anarmônico (Tensão)</span>
+                  <span class="leg-item" style="color: #F59E0B; font-weight:700;">➔ Linha de Campo STE</span>
+                </div>
+                <button id="btnResetZoom" class="mini-hud-btn" title="Centralizar e ajustar zoom do grafo">🎯 RECENTRALIZAR</button>
+              </div>
+            </div>
+            <div class="network-stage-container" id="networkGraphStage">
+              <!-- HUD FIXO DE INSPEÇÃO ESPECTRAL NO CANTO SUPERIOR ESQUERDO -->
+              <div class="fixed-node-inspector" id="fixedNodeInspector">
+                <div class="fni-header">
+                  <span class="fni-tag" id="fniTag">INSPEÇÃO ESPECTRAL</span>
+                  <span class="fni-live">● VIVO</span>
+                </div>
+                <div class="fni-body" id="fniBody">
+                  <div class="fni-title" id="fniTitle">PASSE O MOUSE NO GRAFO</div>
+                  <div class="fni-sub" id="fniSub">Inspecione afinação (Hz), classe e volatilidade instantânea</div>
+                </div>
+              </div>
+
+              <!-- HUD FIXO DE ATIVOS SELECIONADOS NO CANTO SUPERIOR DIREITO -->
+              <div class="fixed-selection-tray" id="fixedSelectionTray">
+                <div class="fst-header">
+                  <span class="fst-label">BANCA ATIVA (ATÉ 4)</span>
+                  <span class="fst-chord" id="fstChordBadge">SOLO</span>
+                </div>
+                <div class="fst-badges-row" id="fstBadgesRow">
+                  <span class="fst-empty-hint">Nenhum ativo (clique nos nós)</span>
+                </div>
+              </div>
+
+              <div class="graph-nav-hint">🖱️ Clique para selecionar até 4 ativos • Arraste nós para mover • Scroll para Zoom</div>
+            </div>
+          </div>
+
+          <div class="synth-footer-grid">
+            <div class="hud-card cwt-card">
+              <div class="card-header-clean">
+                <span class="ch-icon">🌊</span>
+                <h3>DENSIDADE DE CHOQUE (CWT MORLET CONTÍNUA)</h3>
+              </div>
+              <div class="cwt-bars-visual" id="cwtBarsContainer"></div>
+            </div>
+
+            <div class="hud-card ste-card">
+              <div class="card-header-clean">
+                <span class="ch-icon">⚡</span>
+                <h3>PROPAGAÇÃO CAUSAL DE INFORMAÇÃO (STE)</h3>
+              </div>
+              <div class="ste-visual-box">
+                <div class="ste-arrow-flow">
+                  <div class="ste-node btc">BTC (Líder)</div>
+                  <div class="ste-stream">
+                    <span class="stream-line"></span>
+                    <span class="stream-val">+0.0213 bit/tick</span>
+                  </div>
+                  <div class="ste-node alt">ALTCOINS (Seguidoras)</div>
+                </div>
+                <p class="ste-desc">O fluxo de informação causal está <b>positivo e alinhado</b>. As altcoins confirmam o sinal do Bitcoin sem divergências destrutivas.</p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- PÁGINA 3: CINÉTICA & DINÂMICA DE ATIVOS (GRÁFICOS & DERIVADAS)             -->
+    <!-- ========================================================================= -->
+    <section id="pageKinetics" class="hud-page">
       <div class="kinetics-layout">
-        <!-- Asset Selector Pills (Injetado dinamicamente via charts-kinetics.js com .asset-pill-btn) -->
-        <div class="asset-pills-bar" id="assetPillsContainer"></div>
+        <!-- Asset Selector Pills -->
+        <div class="asset-pills-bar" id="assetPillsContainer">
+          <!-- Injetado dinamicamente via charts-kinetics.js -->
+        </div>
 
         <!-- Real-Time Kinetic Gauges & Physical Cockpit -->
         <div class="kinetics-hero-grid">
@@ -137,10 +550,27 @@
         </div>
       </div>
     </section>
+
   </div>
 
-  <!-- SCRIPTS OFICIAIS (IDÊNTICOS AO HARMONICUS SX) -->
-  <script src="data/charts_data.js?v=20260903_v15_live"></script>
-  <script src="charts-kinetics.js?v=20260903_v15_live"></script>
+  <!-- MODAL DE CONTROLE EXECUTIVO & HISTÓRICO DO PLANO (PAGE 1) -->
+  <div class="hud-modal-overlay" id="planModalOverlay">
+    <div class="hud-modal-card" id="planModalCard">
+      <button class="modal-close-btn" id="modalCloseBtn" title="Fechar Modal">✕</button>
+      <div id="planModalContent">
+        <!-- Injetado dinamicamente via tactical-hud.js -->
+      </div>
+    </div>
+  </div>
+
+  <!-- SCRIPTS OFICIAIS HARMONICUS SX -->
+  <script src="gatekeeper-lock.js?v=20260903_v16_live"></script>
+  <script src="data/planos_data.js?v=20260903_v16_live"></script>
+  <script src="data/harmonicus_sx_data.js?v=20260903_v16_live"></script>
+  <script src="data/charts_data.js?v=20260903_v16_live"></script>
+  <script src="audio-engine.js?v=20260903_v16_live"></script>
+  <script src="tactical-hud.js?v=20260903_v16_live"></script>
+  <script src="harmonicus-sx.js?v=20260903_v16_live"></script>
+  <script src="charts-kinetics.js?v=20260903_v16_live"></script>
 </body>
 </html>
