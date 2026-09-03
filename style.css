@@ -2371,6 +2371,7 @@ input[type="range"]::-webkit-slider-thumb {
   .synth-footer-grid { grid-template-columns: 1fr; }
 }
 
+
 /* ==============================================================================
    GATEKEEPER SECURITY LOCK OVERLAY (CYBERPUNK GLASS-BLUR)
    ============================================================================== */
@@ -2560,6 +2561,3 @@ input[type="range"]::-webkit-slider-thumb {
   40%, 80% { transform: translateX(10px); }
 }
 
-
-/* Chart Toggle Badges */
-.chart-toggle-badge:hover { filter: brightness(1.2); transform: translateY(-1px); }

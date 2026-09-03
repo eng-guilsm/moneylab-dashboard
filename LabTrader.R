@@ -22,7 +22,7 @@ VALOR_SPILL_BRL    <- 180.0  # R$ 180 - Gravidade Zero Quantum Alpha (Dual-Scale
 VALOR_CORISCO_BRL  <- 100.0  # R$ 100 - Solana 15m Scalp (2 Slots)
 VALOR_TITAS_BRL    <- 200.0  # R$ 200 - Duelo de Titãs (Harmonicus 12h Maximizer)
 VALOR_SAGARANA_BRL <- 220.0  # R$ 220 - Flecha de Sagarana Quantum Alpha (Dual-Scale 75/25 | Tranches R$ 220/450 | Meta +0.50% a +0.95%)
-VALOR_MIDAS_BRL    <- 50.0   # R$ 50  - Cofre de Midas (DCA Ouro Ressonante 5d Simple Earn + Ratchet Floor)
+VALOR_MIDAS_BRL    <- 60.0   # R$ 60  - Cofre de Midas (DCA Ouro >= 10.50 USDT Simple Earn + Ratchet Floor)
 VALOR_BNB_BRL      <- 90.0   # R$ 90  - Sentinela de Minas (BNB Scalp 15m + Fee Discount)
 VALOR_ADA_BRL      <- 80.0   # R$ 80  - Sertão Valente (ADA Scalp 30m)
 VALOR_NEAR_BRL     <- 200.0  # R$ 200 - Farol de NEAR (Harmonicus 10h Maximizer 10x | 4 Slots | Meta +0.70%)
@@ -30,23 +30,25 @@ VALOR_BRUCE_BRL      <- 300.0  # R$ 300 - Plano Bruce Wayne (Contingência de Cr
 VALOR_WALLSTREET_BRL <- 200.0  # R$ 200 - Plano 14 Sentinela de Wall Street (SP500 / VIX Front-Running Hedge)
 VALOR_DOLLARUS_BRL   <- 195.0  # R$ 195 - Plano 15 Dollarus Quantum Peg (USDT/BRL Peg Arbitrage + Daniel Tekel & Simple Earn)
 
-obter_stats_macro_btc_7d <- function() {
+obter_stats_macro_btc_30d <- function() {
   db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
   tryCatch({
     con <- dbConnect(SQLite(), db_path)
     on.exit(dbDisconnect(con))
-    df <- dbGetQuery(con, "SELECT BTCBRL FROM Historico_binance WHERE BTCBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 10080;")
-    if (nrow(df) >= 120) {
-      p_rec <- rev(df$BTCBRL)
+    # Janela Macro Real de 30 dias (43.200 minutos)
+    df <- dbGetQuery(con, "SELECT BTCBRL FROM Historico_binance WHERE BTCBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 43200;")
+    if (nrow(df) >= 720) {
+      # Reamostragem horária (a cada 60 pontos) para DSP e Z-score macro limpo sem ruído intradiário
+      p_rec <- rev(df$BTCBRL)[seq(1, nrow(df), by = 60)]
       m_val <- mean(p_rec, na.rm = TRUE)
       s_val <- sd(p_rec, na.rm = TRUE)
-      if (is.na(s_val) || s_val <= 0) s_val <- 1000.0
+      if (is.na(s_val) || s_val <= 0) s_val <- 2000.0
       
       dsp <- obter_dsp_ativo(p_rec)
       return(list(media = m_val, sd = s_val, serie = p_rec, dsp = dsp))
     }
   }, error = function(e) NULL)
-  return(list(media = 415000.0, sd = 5000.0, serie = c(415000.0), dsp = list(theta = 0.0, d2Z = 0.0, snr = 5.0)))
+  return(list(media = 415000.0, sd = 8000.0, serie = c(415000.0), dsp = list(theta = 0.0, d2Z = 0.0, snr = 5.0)))
 }
 
 obter_stats_near_10h <- function() {
@@ -65,6 +67,24 @@ obter_stats_near_10h <- function() {
     }
   }, error = function(e) NULL)
   return(list(media = 9.65, sd = 0.15, serie = rep(9.65, 16)))
+}
+
+obter_stats_avax_1h <- function() {
+  db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
+  tryCatch({
+    con <- dbConnect(SQLite(), db_path)
+    on.exit(dbDisconnect(con))
+    df <- dbGetQuery(con, "SELECT AVAXBRL FROM Historico_binance WHERE AVAXBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 300;")
+    if (nrow(df) >= 15) {
+      p_rec <- rev(df$AVAXBRL)
+      n_r <- length(p_rec)
+      smooth_val <- mean(tail(p_rec, min(10, n_r)))
+      detrend <- p_rec - smooth_val
+      sd_val <- max(0.05, sd(tail(detrend, min(20, n_r))))
+      return(list(media = smooth_val, sd = sd_val, serie = p_rec))
+    }
+  }, error = function(e) NULL)
+  return(list(media = 37.0, sd = 0.50, serie = rep(37.0, 16)))
 }
 
 obter_preco_binance <- function(symbol) {
@@ -516,6 +536,71 @@ obter_stats_dollarus_quantum_peg <- function() {
   return(list(usdt_atual = 5.20, usd_oficial = 5.20, spread_peg = 0.0, oraculo_estresse = FALSE))
 }
 
+verificar_cooldown_veto <- function(estrategia_nome, timeout_seg = 300) {
+  veto_file <- if (file.exists("vetos_recentes.rds")) "vetos_recentes.rds" else "/app/vetos_recentes.rds"
+  if (!file.exists(veto_file)) return(FALSE)
+  vetos <- tryCatch(readRDS(veto_file), error = function(e) list())
+  if (!is.list(vetos) || is.null(vetos[[estrategia_nome]])) return(FALSE)
+  
+  registro <- vetos[[estrategia_nome]]
+  ts_veto <- as.numeric(registro$timestamp)
+  agora <- as.numeric(Sys.time())
+  if (!is.na(ts_veto) && (agora - ts_veto) < timeout_seg) {
+    return(TRUE)
+  }
+  return(FALSE)
+}
+
+obter_lote_aberto_estrategia <- function(estrategia_nome, ativo) {
+  hist_exec_file <- if (file.exists("ordens_executadas.rds")) "ordens_executadas.rds" else "/app/ordens_executadas.rds"
+  if (!file.exists(hist_exec_file)) return(list(tem_lote = TRUE, minutos_posse = 999.0))
+  
+  hist_exec <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
+  if (is.null(hist_exec) || nrow(hist_exec) == 0 || !"Estrategia" %in% names(hist_exec)) {
+    return(list(tem_lote = TRUE, minutos_posse = 999.0))
+  }
+  
+  exec_est <- hist_exec[grepl("EXECUTADO_REAL", hist_exec$Status) & hist_exec$Estrategia == estrategia_nome, ]
+  if (nrow(exec_est) == 0) {
+    return(list(tem_lote = FALSE, minutos_posse = 0.0))
+  }
+  
+  trades_ativo <- exec_est[exec_est$Destino == ativo | exec_est$Origem == ativo, ]
+  if (nrow(trades_ativo) == 0) {
+    return(list(tem_lote = FALSE, minutos_posse = 0.0))
+  }
+  
+  ultimo_trade <- tail(trades_ativo, 1)
+  if (ultimo_trade$Destino == ativo) {
+    minutos_posse <- as.numeric(difftime(Sys.time(), as.POSIXct(ultimo_trade$Data_Hora), units = "mins"))
+    return(list(
+      tem_lote = TRUE,
+      minutos_posse = minutos_posse,
+      preco_compra = ultimo_trade$Preco_Exec,
+      valor_compra = ultimo_trade$Valor_BRL,
+      data_compra = ultimo_trade$Data_Hora
+    ))
+  }
+  
+  return(list(tem_lote = FALSE, minutos_posse = 0.0))
+}
+
+obter_vwap_ativo <- function(ativo_sym) {
+  hist_exec_file <- "ordens_executadas.rds"
+  if (file.exists(hist_exec_file)) {
+    h_exec <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
+    if (!is.null(h_exec) && nrow(h_exec) > 0 && "Destino" %in% names(h_exec)) {
+      compras <- h_exec[h_exec$Destino == ativo_sym & h_exec$Status == "EXECUTADO_REAL_BINANCE", ]
+      if (nrow(compras) > 0) {
+        tot_qtd <- sum(compras$Valor_BRL / compras$Preco_Exec, na.rm = TRUE)
+        tot_val <- sum(compras$Valor_BRL, na.rm = TRUE)
+        return(if (tot_qtd > 0) tot_val / tot_qtd else as.numeric(tail(compras$Preco_Exec, 1)))
+      }
+    }
+  }
+  return(0.0)
+}
+
 # ==============================================================================
 # EXECUÇÃO DO RADAR COMPLETO (8 MOTORES QUANT)
 # ==============================================================================
@@ -538,6 +623,7 @@ executar_radar_labtrader <- function() {
   p_bnb_brl   <- obter_preco_binance("BNBBRL")
   p_ada_brl   <- obter_preco_binance("ADABRL")
   p_near_brl  <- obter_preco_binance("NEARBRL")
+  p_avax_brl  <- obter_preco_binance("AVAXBRL")
   
   if (is.null(p_btc_brl) || is.null(p_paxg_usdt) || is.null(p_usdt_brl)) {
     cat(sprintf("[%s] ⚠️ [LABTRADER] Cotações temporariamente indisponíveis na API.\n", agora_str))
@@ -562,6 +648,7 @@ executar_radar_labtrader <- function() {
   stats_ada     <- obter_stats_ada_30m()
   stats_near    <- obter_stats_near_24h()
   stats_near_10h <- obter_stats_near_10h()
+  stats_avax    <- obter_stats_avax_1h()
   ret_btc_5m    <- obter_retorno_btc_5m()
   
   # Modulação Dinâmica de Lote Harmonicus Ultra-Deep
@@ -579,7 +666,13 @@ executar_radar_labtrader <- function() {
   saldo_bnb_brl   <- 0
   saldo_ada_brl   <- 0
   saldo_near_brl  <- 0
+  saldo_avax_brl  <- 0
   saldo_usdt_brl  <- 0
+  saldo_usdt_usd  <- 0
+  saldo_nvdab_usd <- 0
+  saldo_spyb_usd  <- 0
+  saldo_sqqqb_usd <- 0
+  saldo_tlt_usd   <- 0
   
   if (!is.null(df_w) && is.data.frame(df_w) && nrow(df_w) > 0) {
     if (any(df_w$asset %in% c("BTC", "LDBTC"))) saldo_btc_brl   <- sum(df_w$free[df_w$asset %in% c("BTC", "LDBTC")], na.rm = TRUE) * p_btc_brl
@@ -591,38 +684,50 @@ executar_radar_labtrader <- function() {
     if (any(df_w$asset %in% c("BNB", "LDBNB")) && !is.null(p_bnb_brl))   saldo_bnb_brl  <- sum(df_w$free[df_w$asset %in% c("BNB", "LDBNB")], na.rm = TRUE) * p_bnb_brl
     if (any(df_w$asset %in% c("ADA", "LDADA")) && !is.null(p_ada_brl))   saldo_ada_brl  <- sum(df_w$free[df_w$asset %in% c("ADA", "LDADA")], na.rm = TRUE) * p_ada_brl
     if (any(df_w$asset %in% c("NEAR", "LDNEAR")) && !is.null(p_near_brl)) saldo_near_brl <- sum(df_w$free[df_w$asset %in% c("NEAR", "LDNEAR")], na.rm = TRUE) * p_near_brl
-    if ("USDT" %in% df_w$asset) saldo_usdt_brl  <- sum(df_w$free[df_w$asset == "USDT"], na.rm = TRUE) * p_usdt_brl
+    if (any(df_w$asset %in% c("AVAX", "LDAVAX")) && !is.null(p_avax_brl)) saldo_avax_brl <- sum(df_w$free[df_w$asset %in% c("AVAX", "LDAVAX")], na.rm = TRUE) * p_avax_brl
+    if (any(df_w$asset %in% c("USDT", "LDUSDT"))) {
+      saldo_usdt_usd  <- sum(df_w$free[df_w$asset %in% c("USDT", "LDUSDT")], na.rm = TRUE)
+      saldo_usdt_brl  <- saldo_usdt_usd * p_usdt_brl
+    }
+    if (any(df_w$asset %in% c("NVDAB", "NVDA"))) saldo_nvdab_usd <- sum(df_w$free[df_w$asset %in% c("NVDAB", "NVDA")], na.rm = TRUE)
+    if (any(df_w$asset %in% c("SPYB", "SP500"))) saldo_spyb_usd  <- sum(df_w$free[df_w$asset %in% c("SPYB", "SP500")], na.rm = TRUE)
+    if (any(df_w$asset %in% c("SQQQB", "BITI"))) saldo_sqqqb_usd <- sum(df_w$free[df_w$asset %in% c("SQQQB", "BITI")], na.rm = TRUE)
+    if (any(df_w$asset %in% c("TLT", "TLTB")))   saldo_tlt_usd   <- sum(df_w$free[df_w$asset %in% c("TLT", "TLTB")], na.rm = TRUE)
   }
   
-  total_patrimonio_est <- saldo_caixa_brl + saldo_btc_brl + saldo_paxg_brl + saldo_sol_brl + saldo_eth_brl + saldo_link_brl + saldo_bnb_brl + saldo_ada_brl + saldo_near_brl + saldo_usdt_brl
+  # 🛡️ Governança de Dólar: Preservação de Piso de 30% no Simple Earn e 70% Livre para Rotação US
+  piso_30_usdt <- saldo_usdt_usd * 0.30
+  usdt_livre_rotacao <- max(0.0, saldo_usdt_usd - piso_30_usdt)
+  
+  total_patrimonio_est <- saldo_caixa_brl + saldo_btc_brl + saldo_paxg_brl + saldo_sol_brl + saldo_eth_brl + saldo_link_brl + saldo_bnb_brl + saldo_ada_brl + saldo_near_brl + saldo_avax_brl + saldo_usdt_brl + (saldo_nvdab_usd + saldo_spyb_usd + saldo_sqqqb_usd + saldo_tlt_usd) * p_usdt_brl
   peso_btc <- ifelse(total_patrimonio_est > 0, saldo_btc_brl / total_patrimonio_est, 0.35)
   
   pedido <- NULL
   
   # ----------------------------------------------------------------------------
-  # MOTOR 1: PLANO GUIANA BRASILEIRA (PAXG <-> BTC | R$ 150 - Janela 72h)
+  # MOTOR 1: PLANO GUIANA BRASILEIRA (PAXG <-> BTC | Calibrado Intradiário 12h)
   # ----------------------------------------------------------------------------
   ratio_guiana <- p_paxg_brl / p_btc_brl
   z_guiana     <- (ratio_guiana - stats_guiana$media) / stats_guiana$sd
   
-  if (z_guiana <= -0.75 && w_energy < 55.0 && saldo_btc_brl >= 45.0 && saldo_paxg_brl < 450.0) {
-    # Bitcoin eufórico / Ouro barato -> Drenagem lucrativa: Vende BTC e compra PAXG
-    lucro_proj <- max(1.40, ((stats_guiana$media / ratio_guiana) - 1) * 100 - 0.15)
-    lote_g <- min(VALOR_GUIANA_BRL * fator_lote, saldo_btc_brl * 0.40)
-    if (lote_g >= 42.0) {
+  if (z_guiana <= -0.50 && w_energy < 65.0 && (saldo_btc_brl - 180.0) >= 35.0 && saldo_paxg_brl < 600.0) {
+    # Bitcoin eufórico / Ouro com desconto -> Drenagem lucrativa: Vende BTC excedente e compra PAXG
+    lucro_proj <- max(0.92, ((stats_guiana$media / ratio_guiana) - 1) * 100 - 0.10)
+    lote_g <- min(60.0 * fator_lote, saldo_btc_brl - 180.0)
+    if (lote_g >= 35.0) {
       pedido <- list(
         estrategia = "PLANO_GUIANA_BRASILEIRA",
         origem = "BTC", destino = "PAXG",
         valor_brl = lote_g, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
       )
     }
-  } else if (z_guiana >= 1.00 && w_energy < 55.0 && peso_btc < 0.55 && saldo_paxg_brl >= 40.0) {
-    # Ouro caro / Bitcoin com grande desconto -> Vende PAXG e compra BTC
-    lucro_proj <- max(1.40, ((ratio_guiana / stats_guiana$media) - 1) * 100 - 0.15)
+  } else if (z_guiana >= 0.70 && w_energy < 65.0 && peso_btc < 0.55 && saldo_paxg_brl >= 550.0) {
+    # Ouro valorizado / Bitcoin em dip -> Vende PAXG e compra BTC (preservando piso de Ouro em R$ 480)
+    lucro_proj <- max(1.10, ((ratio_guiana / stats_guiana$media) - 1) * 100 - 0.10)
     pedido <- list(
       estrategia = "PLANO_GUIANA_BRASILEIRA",
       origem = "PAXG", destino = "BTC",
-      valor_brl = min(VALOR_GUIANA_BRL * fator_lote, saldo_paxg_brl * 0.50),
+      valor_brl = min(60.0 * fator_lote, saldo_paxg_brl - 480.0),
       lucro_esperado_pct = lucro_proj, timestamp = agora_ts
     )
   }
@@ -651,78 +756,90 @@ executar_radar_labtrader <- function() {
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 3: PLANO PÁTRIA VOLÁTIL (BRL <-> USDT | R$ 250 - 2 Slots)
+  # MOTOR 3: PLANO PÁTRIA VOLÁTIL (BRL <-> USDT | Desova Escalonada p/ Caixa Livre)
   # ----------------------------------------------------------------------------
-  if (is.null(pedido) && !is.null(usd_oficial) && usd_oficial > 0) {
+  if (is.null(pedido) && !is.null(usd_oficial) && usd_oficial > 0 && !is.null(p_usdt_brl)) {
     spread_peg <- p_usdt_brl - usd_oficial
     
-    if (spread_peg <= -0.0200 && saldo_caixa_brl >= 100.0 && saldo_usdt_brl < 500.0) {
-      lucro_proj <- max(0.40, (abs(spread_peg) / usd_oficial) * 100)
+    # 1. DESOVA ESCALONADA DE EXCESSO DE USDT APENAS SE EM LUCRO REAL (TRAVA 6 >= +0.40% SOBRE O VWAP)
+    # Lote de USDT atende aos planos de Ações Americanas (Piso 30% Simple Earn + Capital de Giro US)
+    pm_usdt <- obter_vwap_ativo("USDT")
+    if (pm_usdt <= 0) pm_usdt <- 5.20
+    p_venda_minima_usdt <- pm_usdt * 1.0040
+    
+    if (saldo_usdt_brl > 1050.0 && p_usdt_brl >= p_venda_minima_usdt) {
+      em_cooldown_peg <- verificar_cooldown_veto("PLANO_PATRIA_VOLATIL", timeout_seg = 3600)
+      if (!em_cooldown_peg) {
+        val_desova_usdt <- min(180.0 * fator_lote, saldo_usdt_brl - 1000.0)
+        if (val_desova_usdt >= 35.0) {
+          ret_usdt <- ((p_usdt_brl - pm_usdt) / pm_usdt) * 100
+          pedido <- list(
+            estrategia = "PLANO_PATRIA_VOLATIL",
+            origem = "USDT", destino = "BRL",
+            valor_brl = val_desova_usdt,
+            lucro_esperado_pct = ret_usdt, timestamp = agora_ts
+          )
+        }
+      }
+    } else if (saldo_usdt_brl <= 280.0 && spread_peg <= -0.0180 && saldo_caixa_brl >= 120.0) {
+      # 2. RECOMPRA EM DESÁGIO APENAS SE CAIXA LIVRE ESTIVER CONFORTÁVEL (>= R$ 120)
       pedido <- list(
         estrategia = "PLANO_PATRIA_VOLATIL",
         origem = "BRL", destino = "USDT",
-        valor_brl = min(VALOR_PEG_BRL * fator_lote, saldo_caixa_brl * 0.35),
-        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-      )
-    } else if (spread_peg >= 0.0200 && saldo_usdt_brl >= 30.0) {
-      lucro_proj <- max(0.40, (spread_peg / usd_oficial) * 100)
-      pedido <- list(
-        estrategia = "PLANO_PATRIA_VOLATIL",
-        origem = "USDT", destino = "BRL",
-        valor_brl = min(VALOR_PEG_BRL * fator_lote, saldo_usdt_brl),
-        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+        valor_brl = min(80.0 * fator_lote, saldo_caixa_brl * 0.30),
+        lucro_esperado_pct = max(0.45, abs(spread_peg) * 10), timestamp = agora_ts
       )
     }
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 4: PLANO CABOCLO DOS ORÁCULOS (Quantum Alpha Turbo + VECM/Langevin 3-Layer | LINKBRL)
+  # MOTOR 4: PLANO TITÃ DO SILÍCIO (USDT <-> NVDAB - Tech Alpha Intradiário Spot)
+  # Binance Backed Equity Spot: NVDABUSDT | Rastreamento Hilbert 1m | Lote 40 USDT
   # ----------------------------------------------------------------------------
-  stats_link <- obter_stats_link_dual_scale()
-  vecm_link  <- obter_stats_vecm_ativo("LINKBRL", "BTCBRL")
-  if (is.null(pedido) && !is.null(p_link_brl) && ste_atual >= -0.02 && pc1_atual < 0.75 && w_energy < 55.0) {
-    z_fast_l <- (p_link_brl - stats_link$media_fast) / stats_link$sd_fast
-    z_macro_l <- (p_link_brl - stats_link$media_macro) / stats_link$sd_macro
-    z_comp_l <- 0.75 * z_fast_l + 0.25 * z_macro_l
-    
-    dsp_fast_l <- stats_link$dsp_fast
-    dsp_macro_l <- stats_link$dsp_macro
-    acc_link <- dsp_fast_l$d2Z
-    
-    # Camada 3: Veto Físico de Vale 6h (-3% de queda iminente)
-    veto_vale_link <- vecm_link$alerta_vale_6h
-    
-    # Condições de Entrada (Harmonicus + VECM Cointegrado + Cinemática d2Z >= -0.0004):
-    cond_tranche1_link <- (saldo_link_brl < 70.0) && (z_comp_l <= -0.65) && (z_macro_l <= 0.40) && (dsp_fast_l$theta < -0.05) && (acc_link >= -0.0004)
-    cond_tranche2_link <- (saldo_link_brl >= 70.0 && saldo_link_brl < 240.0) && (z_comp_l <= -1.20 || z_macro_l <= -1.00) && (dsp_fast_l$theta < -0.15)
-    cond_vecm_link     <- (saldo_link_brl < 240.0) && (vecm_link$z_vecm <= -1.50) && (acc_link >= -0.0004)
-    
-    cond_entrada_link  <- (cond_tranche1_link || cond_tranche2_link || cond_vecm_link) && !veto_vale_link
-    
-    if (cond_entrada_link && saldo_caixa_brl >= 30.0 && saldo_link_brl < 260.0) {
-      # Lote adaptativo de R$ 65 base para evitar esgotamento de caixa em vales seculares
-      lote_l <- min(65.0 * fator_lote, max(30.0, saldo_caixa_brl * 0.30))
+  if (is.null(pedido)) {
+    # 1. REALIZAÇÃO DE LUCRO: Venda NVDAB -> USDT sob a Trava 6 (>= +0.90%)
+    if (saldo_nvdab_usd > 0.01) {
+      p_nvda_live <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=NVDABUSDT"), "parsed")$price), error = function(e) NULL)
+      pm_nvda <- obter_vwap_ativo("NVDAB")
+      if (!is.null(p_nvda_live) && p_nvda_live > 0 && pm_nvda > 0) {
+        ret_nvda <- (p_nvda_live / pm_nvda) - 1.0
+        if (ret_nvda >= 0.0090) {
+          val_venda_brl <- saldo_nvdab_usd * p_nvda_live * p_usdt_brl
+          pedido <- list(
+            estrategia = "PLANO_TITA_DO_SILICIO",
+            origem = "NVDAB", destino = "USDT",
+            valor_brl = val_venda_brl,
+            lucro_esperado_pct = round(ret_nvda * 100, 2), timestamp = agora_ts
+          )
+        }
+      }
+    } else if (usdt_livre_rotacao >= 20.0) {
+      # 2. ENTRADA EM DIP: Compra USDT -> NVDAB (Lote 40.00 USDT / ~R$ 205)
+      nvda_serie <- tryCatch({
+        con_nv <- dbConnect(SQLite(), db_path)
+        on.exit(dbDisconnect(con_nv))
+        df_nv <- dbGetQuery(con_nv, "SELECT NVDABUSDT FROM Historico_binance WHERE NVDABUSDT IS NOT NULL ORDER BY Data_Hora DESC LIMIT 60;")
+        if (nrow(df_nv) >= 16) rev(df_nv$NVDABUSDT) else {
+          df_nv2 <- dbGetQuery(con_nv, "SELECT Close FROM Historico_Binance_Equities_1m WHERE Ativo='NVDABUSDT' ORDER BY Data_Hora DESC LIMIT 60;")
+          if (nrow(df_nv2) >= 16) rev(df_nv2$Close) else rep(224.0, 16)
+        }
+      }, error = function(e) rep(224.0, 16))
       
-      lucro_proj <- max(1.00, ifelse(vecm_link$z_vecm <= -1.60, 1.20, 1.00))
+      dsp_nvda <- obter_dsp_ativo(nvda_serie)
+      m_nvda <- mean(nvda_serie, na.rm = TRUE)
+      s_nvda <- sd(nvda_serie, na.rm = TRUE)
+      if (is.na(s_nvda) || s_nvda <= 0) s_nvda <- 1.5
+      z_nvda <- (tail(nvda_serie, 1) - m_nvda) / s_nvda
       
-      pedido <- list(
-        estrategia = "PLANO_CABOCLO_DOS_ORACULOS",
-        origem = "BRL", destino = "LINK",
-        valor_brl = lote_l,
-        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-      )
-    } else if (saldo_link_brl >= 25.0) {
-      # Saída Dinâmica VECM/Harmonicus:
-      cond_trailing <- (dsp_fast_l$d2Z < 0 || dsp_fast_l$theta > 0.80)
-      cond_reversao <- (z_comp_l >= 0.05 || vecm_link$z_vecm >= 0.05)
-      
-      if (cond_trailing || cond_reversao) {
-        lucro_proj <- max(1.00, ((p_link_brl / stats_link$media_fast) - 1) * 100)
+      # Entrada Alpha Tech em Dip Intradiário: Z <= -0.90 com aceleração positiva d2Z >= -0.0002
+      if (z_nvda <= -0.90 && dsp_nvda$d2Z >= -0.0002) {
+        lote_usdt_nv <- min(40.0 * fator_lote, usdt_livre_rotacao)
+        lote_brl_nv <- lote_usdt_nv * p_usdt_brl
         pedido <- list(
-          estrategia = "PLANO_CABOCLO_DOS_ORACULOS",
-          origem = "LINK", destino = "BRL",
-          valor_brl = saldo_link_brl,
-          lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+          estrategia = "PLANO_TITA_DO_SILICIO",
+          origem = "USDT", destino = "NVDAB",
+          valor_brl = lote_brl_nv,
+          lucro_esperado_pct = 1.00, timestamp = agora_ts
         )
       }
     }
@@ -743,19 +860,14 @@ executar_radar_labtrader <- function() {
     acc_r <- dsp_fast_r$d2Z
     
     # Condições Quantum Alpha para Ponta A (Compra BTC -> SOL):
-    # Tranche 1 (Sonda de Micro-Dip 15m no ratio): Z_comp <= -0.60, Z_macro <= 0.40, fase rápida < -0.05, acc >= -0.0003
-    cond_tranche1_grav <- (saldo_sol_brl < 80.0) && (z_comp_r <= -0.60) && (z_macro_r <= 0.40) && (dsp_fast_r$theta < -0.05) && (acc_r >= -0.0003)
+    # BLINDAGEM LABANALYST: Piso Inviolável de BTC de R$ 180, Teto Máximo de SOL de R$ 160, Sem Martingale
+    can_trade_btc <- (saldo_btc_brl - 180.0) >= 40.0
+    can_add_sol   <- saldo_sol_brl < 160.0
+    cond_entrada_grav <- (z_comp_r <= -0.75) && (z_macro_r <= 0.40) && (dsp_fast_r$theta < -0.05) && (acc_r >= -0.0003)
     
-    # Tranche 2 (Martingale de Vale Harmônico 65.5h): Se já tem posição (< R$ 260) e Z_comp <= -1.20 ou Z_macro <= -1.00 com fase < -0.15
-    cond_tranche2_grav <- (saldo_sol_brl >= 80.0 && saldo_sol_brl < 260.0) && (z_comp_r <= -1.20 || z_macro_r <= -1.00) && (dsp_fast_r$theta < -0.15)
-    
-    if ((cond_tranche1_grav || cond_tranche2_grav) && saldo_btc_brl >= 45.0 && saldo_sol_brl < 540.0) {
-      lote_base <- if (cond_tranche2_grav) 360.0 else 180.0
-      lote_g <- if (cond_tranche2_grav) min(lote_base * fator_lote, max(120.0, saldo_btc_brl * 0.50)) else min(lote_base * fator_lote, max(60.0, saldo_btc_brl * 0.30))
-      
-      # Projeção de lucro dinâmico: se comprou no vale macro (theta_m < 0), estica a meta até +3.80% a +6.50%
-      lucro_proj <- if (dsp_macro_r$theta < 0 && z_macro_r < -0.50) 3.80 else (if (cond_tranche2_grav) 2.40 else 1.80)
-      lucro_proj <- max(1.40, lucro_proj)
+    if (cond_entrada_grav && can_trade_btc && can_add_sol) {
+      lote_g <- min(60.0 * fator_lote, saldo_btc_brl - 180.0)
+      lucro_proj <- max(1.80, if (dsp_macro_r$theta < 0 && z_macro_r < -0.50) 3.50 else 2.20)
       
       pedido <- list(
         estrategia = "PLANO_GRAVIDADE_ZERO",
@@ -764,75 +876,74 @@ executar_radar_labtrader <- function() {
         lucro_esperado_pct = lucro_proj, timestamp = agora_ts
       )
     } else if (saldo_sol_brl >= 25.0) {
-      # Ponta B: Realização de topo de Solana para BRL
-      # Saída em topo de fase rápida (theta > 0.80 ou desaceleração d2Z < 0) ou repique composto forte (Z_comp >= 0.35)
-      cond_trailing <- (dsp_fast_r$d2Z < 0 || dsp_fast_r$theta > 0.80)
-      cond_reversao <- (z_comp_r >= 0.35)
-      
-      if (cond_trailing || cond_reversao) {
-        lucro_proj <- max(1.40, ((ratio_sol_btc / stats_sol_btc$media_fast) - 1) * 100)
-        pedido <- list(
-          estrategia = "PLANO_GRAVIDADE_ZERO",
-          origem = "SOL", destino = "BRL",
-          valor_brl = saldo_sol_brl,
-          lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-        )
+      # Ponta B: Realização de topo de Solana para BRL (Caixa Livre) com Segregação Estrita de Lote
+      lote_grav <- obter_lote_aberto_estrategia("PLANO_GRAVIDADE_ZERO", "SOL")
+      if (lote_grav$tem_lote) {
+        cond_trailing <- (dsp_fast_r$d2Z < 0 || dsp_fast_r$theta > 0.80)
+        cond_reversao <- (z_comp_r >= 0.35)
+        cond_tempo_grav <- (lote_grav$minutos_posse >= 15.0)
+        
+        em_cooldown_grav <- verificar_cooldown_veto("PLANO_GRAVIDADE_ZERO", timeout_seg = 300)
+        if ((cond_trailing || cond_reversao) && cond_tempo_grav && !em_cooldown_grav) {
+          lucro_proj <- max(1.40, ((ratio_sol_btc / stats_sol_btc$media_fast) - 1) * 100)
+          pedido <- list(
+            estrategia = "PLANO_GRAVIDADE_ZERO",
+            origem = "SOL", destino = "BRL",
+            valor_brl = min(saldo_sol_brl, 360.0 * fator_lote),
+            lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+          )
+        }
       }
     }
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 6: PLANO CORISCO DA SOLANA (Quantum Alpha Turbo | Dual-Scale 75/25 15m + 4h | Tranches R$ 100/220 | Meta +0.60% a +1.40%)
+  # MOTOR 6: PLANO CHOQUE ENERGÉTICO (XLE - Energy SPDR ETF Hedge | Correlação -0.35 contra BTC)
+  # Substituição do Plano Corisco da Solana | Proteção contra Inflação e Choques de Petróleo
   # ----------------------------------------------------------------------------
-  stats_sol <- obter_stats_sol_dual_scale()
-  if (is.null(pedido) && !is.null(p_sol_brl) && ste_atual >= -0.02 && pc1_atual < 0.75 && w_energy < 55.0) {
-    z_fast_s  <- (p_sol_brl - stats_sol$media_fast) / stats_sol$sd_fast
-    z_macro_s <- (p_sol_brl - stats_sol$media_macro) / stats_sol$sd_macro
-    z_comp_s  <- 0.75 * z_fast_s + 0.25 * z_macro_s
+  if (is.null(pedido) && saldo_caixa_brl >= 50.0) {
+    xle_serie <- tryCatch({
+      con_xle <- dbConnect(SQLite(), db_path)
+      on.exit(dbDisconnect(con_xle))
+      df_xle <- dbGetQuery(con_xle, "SELECT XLE_Energy FROM Historico_rapido WHERE XLE_Energy IS NOT NULL ORDER BY Data_Hora DESC LIMIT 60;")
+      if (nrow(df_xle) >= 16) rev(df_xle$XLE_Energy) else {
+        df_xle2 <- dbGetQuery(con_xle, "SELECT Close FROM Novos_Ativos_Hedge_10Anos WHERE Ativo='XLE' ORDER BY Data_Hora DESC LIMIT 60;")
+        if (nrow(df_xle2) >= 16) rev(df_xle2$Close) else rep(88.0, 16)
+      }
+    }, error = function(e) rep(88.0, 16))
     
-    dsp_fast_s  <- stats_sol$dsp_fast
-    dsp_macro_s <- stats_sol$dsp_macro
-    acc_sol     <- dsp_fast_s$d2Z
+    dsp_xle <- obter_dsp_ativo(xle_serie)
+    m_xle <- mean(xle_serie, na.rm = TRUE)
+    s_xle <- sd(xle_serie, na.rm = TRUE)
+    if (is.na(s_xle) || s_xle <= 0) s_xle <- 1.5
+    z_xle <- (tail(xle_serie, 1) - m_xle) / s_xle
     
-    # Condições Quantum Alpha Dupla Escala:
-    # Tranche 1 (Sonda em Micro-Dip 15m): Z_comp <= -0.65, sem topo macro (Z_macro <= 0.40), fase rápida < -0.05, aceleração d2Z >= -0.0003
-    cond_tranche1_sol <- (saldo_sol_brl < 80.0) && (z_comp_s <= -0.65) && (z_macro_s <= 0.40) && (dsp_fast_s$theta < -0.05) && (acc_sol >= -0.0003)
-    
-    # Tranche 2 (Martingale de Vale Harmônico 4h): se já tem posição aberta (< R$ 220) e Z_comp <= -1.20 ou Z_macro <= -1.00 com fase < -0.15
-    cond_tranche2_sol <- (saldo_sol_brl >= 80.0 && saldo_sol_brl < 220.0) && (z_comp_s <= -1.20 || z_macro_s <= -1.00) && (dsp_fast_s$theta < -0.15)
-    
-    if ((cond_tranche1_sol || cond_tranche2_sol) && saldo_caixa_brl >= 80.0 && saldo_sol_brl < 240.0) {
-      lote_base_s <- if (cond_tranche2_sol) 220.0 else VALOR_CORISCO_BRL
-      lote_s <- if (cond_tranche2_sol) min(lote_base_s * fator_lote, max(100.0, saldo_caixa_brl * 0.45)) else min(lote_base_s * fator_lote, max(50.0, saldo_caixa_brl * 0.25))
-      
-      lucro_proj <- if (dsp_macro_s$theta < 0 && z_macro_s < -0.50) 1.40 else (if (cond_tranche2_sol) 1.00 else 0.60)
-      lucro_proj <- max(0.50, lucro_proj)
-      
+    # Entrada por Hedge Energético: Z <= -0.95 com d2Z >= -0.0002
+    if (z_xle <= -0.95 && dsp_xle$d2Z >= -0.0002) {
+      lote_xle <- min(90.0 * fator_lote, saldo_caixa_brl * 0.30)
+      lucro_proj <- max(0.65, 1.10)
       pedido <- list(
-        estrategia = "PLANO_CORISCO_DA_SOLANA",
-        origem = "BRL", destino = "SOL",
-        valor_brl = lote_s,
+        estrategia = "PLANO_CHOQUE_ENERGETICO",
+        origem = "BRL", destino = "XLE",
+        valor_brl = lote_xle,
         lucro_esperado_pct = lucro_proj, timestamp = agora_ts
       )
-    } else if (saldo_sol_brl >= 20.0) {
-      # Saída Dinâmica Harmonicus: Trailing por Desaceleração, Topo de Fase ou Reversão
-      cond_trailing_s <- (dsp_fast_s$d2Z < 0 || dsp_fast_s$theta > 0.80)
-      cond_reversao_s <- (z_comp_s >= 0.35)
-      
-      if (cond_trailing_s || cond_reversao_s) {
-        lucro_proj <- max(0.50, ((p_sol_brl / stats_sol$media_fast) - 1) * 100)
+    } else if (saldo_sol_brl >= 30.0) {
+      # Saída / Desova de Solana remanescente para Caixa BRL via Trava 6
+      em_cooldown_sol <- verificar_cooldown_veto("PLANO_CORISCO_DA_SOLANA", timeout_seg = 300)
+      if (!em_cooldown_sol) {
         pedido <- list(
           estrategia = "PLANO_CORISCO_DA_SOLANA",
           origem = "SOL", destino = "BRL",
-          valor_brl = saldo_sol_brl,
-          lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+          valor_brl = min(saldo_sol_brl, 220.0 * fator_lote),
+          lucro_esperado_pct = 0.50, timestamp = agora_ts
         )
       }
     }
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 7: PLANO DUELO DE TITÃS (Harmonicus + VECM/Langevin 3-Layer | ETHBRL)
+  # MOTOR 7: PLANO DUELO DE TITÃS (Harmonicus + VECM/Langevin 3-Layer | ETHBRL / ETHBTC)
   # ----------------------------------------------------------------------------
   if (is.null(pedido) && !is.null(p_eth_brl) && !is.null(p_btc_brl) && pc1_atual < 0.75) {
     ratio_eth_btc <- p_eth_brl / p_btc_brl
@@ -873,12 +984,16 @@ executar_radar_labtrader <- function() {
         )
       }
     } else if (saldo_eth_brl >= 25.0) {
-      # Ponta B: Realização Dinâmica VECM/Harmonicus
+      # Ponta B: Realização Dinâmica VECM/Harmonicus com Simetria de Pares Cruzados
+      # Gatilho Ágil: Topo de Fase (theta > 0.75), Reversão (z >= 0.01) ou Desaceleração em Lucro (z >= 0.0 e d2Z < 0)
       cond_topo_fase_t <- (dsp_eth_btc$theta > 0.75 && z_eth_btc >= 0.0)
-      cond_reversao_t  <- (z_eth_btc >= 0.05 || vecm_eth$z_vecm >= 0.05)
+      cond_reversao_t  <- (z_eth_btc >= 0.01 || vecm_eth$z_vecm >= 0.02 || (z_eth_btc >= 0.0 && dsp_eth_btc$d2Z < 0))
       
-      if (cond_topo_fase_t || cond_reversao_t) {
-        lucro_proj <- max(1.00, ((ratio_eth_btc / stats_eth_btc$media) - 1) * 100)
+      em_cooldown_titas <- verificar_cooldown_veto("PLANO_DUELO_DE_TITAS", timeout_seg = 300)
+      if ((cond_topo_fase_t || cond_reversao_t) && !em_cooldown_titas) {
+        lucro_proj <- max(0.70, ((ratio_eth_btc / stats_eth_btc$media) - 1) * 100)
+        
+        # Saída soberana diretamente em BRL (Caixa Livre)
         pedido <- list(
           estrategia = "PLANO_DUELO_DE_TITAS",
           origem = "ETH", destino = "BRL",
@@ -890,32 +1005,30 @@ executar_radar_labtrader <- function() {
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 8: PLANO FLECHA DE SAGARANA (Quantum Alpha 10x Turbo | Dual-Scale 75/25 | Fourier Peak 5.4h | Tranches R$ 220/450)
+  # MOTOR 8: PLANO FLECHA DE SAGARANA (BTCBRL | Calibrado Intradiário 4h + Tranches 70/90 reais)
   # ----------------------------------------------------------------------------
   stats_btc <- obter_stats_btc_dual_scale()
   if (is.null(pedido) && !is.null(p_btc_brl) && ste_atual >= -0.02 && pc1_atual < 0.75 && w_energy < 55.0) {
     z_fast <- (p_btc_brl - stats_btc$media_fast) / stats_btc$sd_fast
     z_macro <- (p_btc_brl - stats_btc$media_macro) / stats_btc$sd_macro
-    z_comp <- 0.75 * z_fast + 0.25 * z_macro
+    z_comp <- 0.70 * z_fast + 0.30 * z_macro
     
     dsp_fast <- stats_btc$dsp_fast
     dsp_macro <- stats_btc$dsp_macro
     acc_btc <- dsp_fast$d2Z
     
-    # Condições de Entrada Quantum Alpha 10x:
-    # Tranche 1 (Sonda em Micro-Dip): Z_comp <= -0.65, sem topo macro (Z_macro <= 0.40), fase rápida < -0.05, aceleração d2Z >= -0.0003
-    cond_tranche1 <- (saldo_btc_brl < 80.0) && (z_comp <= -0.65) && (z_macro <= 0.40) && (dsp_fast$theta < -0.05) && (acc_btc >= -0.0003)
+    # Condições Calibradas por GA Intradiário (50 Variações):
+    # Tranche 1: Z_comp <= -0.96, sem topo macro, aceleração de fase d2Z >= -0.0002
+    cond_tranche1 <- (vix_atual < 20.0) && (saldo_btc_brl < 80.0) && (z_comp <= -0.96) && (z_macro <= 0.40) && (acc_btc >= -0.0002)
     
-    # Tranche 2 (Martingale de Vale Harmônico): se já tem posição aberta (< R$ 350) e Z_comp <= -1.20 ou Z_macro <= -1.00 com fase < -0.15
-    cond_tranche2 <- (saldo_btc_brl >= 80.0 && saldo_btc_brl < 350.0) && (z_comp <= -1.20 || z_macro <= -1.00) && (dsp_fast$theta < -0.15)
+    # Tranche 2 (Martingale de Vale Fundo): Z_comp <= -1.50
+    cond_tranche2 <- (vix_atual < 20.0) && (saldo_btc_brl >= 60.0 && saldo_btc_brl < 200.0) && (z_comp <= -1.50 || z_macro <= -1.00)
     
-    if ((cond_tranche1 || cond_tranche2) && saldo_caixa_brl >= 80.0 && saldo_btc_brl < 750.0) {
-      lote_base <- if (cond_tranche2) 450.0 else 220.0
-      # Adaptativo ao caixa livre:
-      lote_s <- if (cond_tranche2) min(lote_base * fator_lote, max(180.0, saldo_caixa_brl * 0.55)) else min(lote_base * fator_lote, max(80.0, saldo_caixa_brl * 0.35))
+    if ((cond_tranche1 || cond_tranche2) && saldo_caixa_brl >= 45.0 && saldo_btc_brl < 220.0) {
+      lote_base <- if (cond_tranche2) 90.0 else 70.0
+      lote_s <- min(lote_base * fator_lote, saldo_caixa_brl * 0.45)
       
-      # Projeção de lucro dinâmico: se comprou no vale macro harmônico, estica a meta até +0.95%
-      lucro_proj <- if (dsp_macro$theta < 0 && z_macro < -0.50) 0.95 else (if (cond_tranche2) 0.75 else 0.50)
+      lucro_proj <- if (cond_tranche2) 1.87 else 0.97
       lucro_proj <- max(0.40, lucro_proj)
       
       pedido <- list(
@@ -924,20 +1037,23 @@ executar_radar_labtrader <- function() {
         valor_brl = lote_s,
         lucro_esperado_pct = lucro_proj, timestamp = agora_ts
       )
-    } else if (saldo_btc_brl >= 45.0) {
-      # Saída Dinâmica Harmonicus:
-      # Topo de fase rápida (theta > 0.80 ou desaceleração d2Z < 0) ou repique composto forte (Z_comp >= 0.35)
+    } else if (saldo_btc_brl >= 30.0) {
+      # Saída Dinâmica Harmonicus com desova direta para Caixa BRL
       cond_trailing_sag <- (dsp_fast$d2Z < 0 || dsp_fast$theta > 0.80)
-      cond_reversao_sag <- (z_comp >= 0.35)
+      cond_reversao_sag <- (z_comp >= 0.25)
       
-      if (cond_trailing_sag || cond_reversao_sag) {
+      em_cooldown_sag <- verificar_cooldown_veto("PLANO_FLECHA_DE_SAGARANA", timeout_seg = 300)
+      if ((cond_trailing_sag || cond_reversao_sag) && !em_cooldown_sag) {
         lucro_proj <- max(0.40, ((p_btc_brl / stats_btc$media_fast) - 1) * 100)
-        pedido <- list(
-          estrategia = "PLANO_FLECHA_DE_SAGARANA",
-          origem = "BTC", destino = "BRL",
-          valor_brl = saldo_btc_brl, # Realiza 100% da custódia do slot
-          lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-        )
+        valor_desova_btc <- min(saldo_btc_brl, 160.0 * fator_lote)
+        if (valor_desova_btc >= 25.0) {
+          pedido <- list(
+            estrategia = "PLANO_FLECHA_DE_SAGARANA",
+            origem = "BTC", destino = "BRL",
+            valor_brl = valor_desova_btc,
+            lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+          )
+        }
       }
     }
   }
@@ -959,13 +1075,14 @@ executar_radar_labtrader <- function() {
       }
     }
     
-    # Condição DCA Ressonante: 5 dias completos (120h) + Caixa livre >= R$ 100
+    # Condição DCA Ressonante: 5 dias completos (120h) + Caixa livre >= R$ 120 + Cooldown 1h
     # Ouro alocado entra diretamente no Simple Earn Flexível e eleva o Piso Ratchet Inviolável
-    if (horas_desde_midas >= 120.0 && saldo_caixa_brl >= 100.0 && w_energy < 55.0) {
+    em_cooldown_midas <- verificar_cooldown_veto("PLANO_COFRE_DE_MIDAS", timeout_seg = 3600)
+    if (!em_cooldown_midas && horas_desde_midas >= 120.0 && saldo_caixa_brl >= 120.0 && w_energy < 55.0) {
       pedido <- list(
         estrategia = "PLANO_COFRE_DE_MIDAS",
         origem = "BRL", destino = "PAXG",
-        valor_brl = VALOR_MIDAS_BRL, # R$ 50,00 fixo por tranche de acumulação
+        valor_brl = VALOR_MIDAS_BRL, # R$ 60,00 fixo (garante >= 10.50 USDT para filtro Binance)
         lucro_esperado_pct = 3.50,   # Rendimento passivo Simple Earn Flexible
         timestamp = agora_ts
       )
@@ -974,19 +1091,20 @@ executar_radar_labtrader <- function() {
   
   # ----------------------------------------------------------------------------
   # MOTOR 10: PLANO SENTINELA DE MINAS (BRL <-> BNB 15m Scalp + Desconto Taxas BNB)
+  # Calibração Homologada Longa: Ganho Ponderado +32.0% (Z <= -1.15, d2Z >= 0, Caixa >= 50)
   # ----------------------------------------------------------------------------
   if (is.null(pedido) && !is.null(p_bnb_brl) && ste_atual >= -0.02 && pc1_atual < 0.75 && w_energy < 55.0) {
     z_bnb_15m <- (p_bnb_brl - stats_bnb$media) / stats_bnb$sd
     dsp_bnb   <- obter_dsp_ativo(stats_bnb$serie)
     
-    # Trava de Caixa Mínimo Global: exige Caixa Livre >= R$ 250
-    if (z_bnb_15m <= -1.35 && saldo_caixa_brl >= 250.0 && saldo_bnb_brl < 180.0) {
+    # Trava de Caixa Mínimo Global: exige Caixa Livre >= R$ 50
+    if (z_bnb_15m <= -1.15 && dsp_bnb$d2Z >= -0.0001 && saldo_caixa_brl >= 50.0 && saldo_bnb_brl < 180.0) {
       lote_base_b <- VALOR_BNB_BRL
-      if (dsp_bnb$theta < -0.2 && dsp_bnb$theta > -2.8) lote_base_b <- 120.0
-      if (z_bnb_15m <= -1.60) lote_base_b <- 140.0
+      if (dsp_bnb$theta < -0.2 && dsp_bnb$theta > -2.8) lote_base_b <- 90.0
+      if (z_bnb_15m <= -1.45) lote_base_b <- 110.0
       
-      lote_b <- min(lote_base_b * fator_lote, max(50.0, saldo_caixa_brl * 0.20))
-      lucro_proj <- max(0.80, ((stats_bnb$media / p_bnb_brl) - 1) * 100)
+      lote_b <- min(lote_base_b * fator_lote, max(45.0, saldo_caixa_brl * 0.45))
+      lucro_proj <- max(0.75, ((stats_bnb$media / p_bnb_brl) - 1) * 100)
       
       pedido <- list(
         estrategia = "PLANO_SENTINELA_DE_MINAS",
@@ -996,10 +1114,11 @@ executar_radar_labtrader <- function() {
       )
     } else if (saldo_bnb_brl >= 20.0) {
       cond_trailing_b <- (dsp_bnb$d2Z < 0 || dsp_bnb$theta > 0.85)
-      cond_reversao_b <- (z_bnb_15m >= 0.35)
+      cond_reversao_b <- (z_bnb_15m >= 0.30)
       
-      if (cond_trailing_b || cond_reversao_b) {
-        lucro_proj <- max(0.60, ((p_bnb_brl / stats_bnb$media) - 1) * 100)
+      em_cooldown_bnb <- verificar_cooldown_veto("PLANO_SENTINELA_DE_MINAS", timeout_seg = 300)
+      if ((cond_trailing_b || cond_reversao_b) && !em_cooldown_bnb) {
+        lucro_proj <- max(0.75, ((p_bnb_brl / stats_bnb$media) - 1) * 100)
         pedido <- list(
           estrategia = "PLANO_SENTINELA_DE_MINAS",
           origem = "BNB", destino = "BRL",
@@ -1011,82 +1130,83 @@ executar_radar_labtrader <- function() {
   }
 
   # ----------------------------------------------------------------------------
-  # MOTOR 11: PLANO SERTÃO VALENTE (BRL <-> ADA 30m Scalp / Reversão Harmonicus)
+  # MOTOR 11: PLANO ESCUDO DE WASHINGTON (USDT <-> TLT - US 20Y Treasury Bonds Hedge)
+  # Renda Fixa Soberana Americana | Par Exclusivo Dólar | Lote 20 USDT
   # ----------------------------------------------------------------------------
-  if (is.null(pedido) && !is.null(p_ada_brl) && ste_atual >= -0.02 && pc1_atual < 0.75 && w_energy < 55.0) {
-    z_ada_30m <- (p_ada_brl - stats_ada$media) / stats_ada$sd
-    dsp_ada   <- obter_dsp_ativo(stats_ada$serie)
-    
-    # Trava de Caixa Mínimo Global: exige Caixa Livre >= R$ 250
-    if (z_ada_30m <= -1.35 && saldo_caixa_brl >= 250.0 && saldo_ada_brl < 160.0) {
-      lote_base_a <- VALOR_ADA_BRL
-      if (dsp_ada$theta < -0.2 && dsp_ada$theta > -2.8) lote_base_a <- 110.0
-      if (z_ada_30m <= -1.60) lote_base_a <- 130.0
+  if (is.null(pedido)) {
+    if (saldo_tlt_usd > 0.01) {
+      pm_tlt <- obter_vwap_ativo("TLT")
+      p_tlt_live <- tryCatch(as.numeric(tail(getQuote("TLT")$Last, 1)), error = function(e) 95.0)
+      if (pm_tlt > 0 && p_tlt_live > 0) {
+        ret_tlt <- (p_tlt_live / pm_tlt) - 1.0
+        if (ret_tlt >= 0.0080) {
+          pedido <- list(
+            estrategia = "PLANO_ESCUDO_DE_WASHINGTON",
+            origem = "TLT", destino = "USDT",
+            valor_brl = saldo_tlt_usd * p_tlt_live * p_usdt_brl,
+            lucro_esperado_pct = round(ret_tlt * 100, 2), timestamp = agora_ts
+          )
+        }
+      }
+    } else if (usdt_livre_rotacao >= 20.0) {
+      tlt_serie <- tryCatch({
+        con_tlt <- dbConnect(SQLite(), db_path)
+        on.exit(dbDisconnect(con_tlt))
+        df_tlt <- dbGetQuery(con_tlt, "SELECT TLT_Bond FROM Historico_rapido WHERE TLT_Bond IS NOT NULL ORDER BY Data_Hora DESC LIMIT 60;")
+        if (nrow(df_tlt) >= 16) rev(df_tlt$TLT_Bond) else {
+          df_tlt2 <- dbGetQuery(con_tlt, "SELECT Close FROM Novos_Ativos_Hedge_10Anos WHERE Ativo='TLT' ORDER BY Data_Hora DESC LIMIT 60;")
+          if (nrow(df_tlt2) >= 16) rev(df_tlt2$Close) else rep(95.0, 16)
+        }
+      }, error = function(e) rep(95.0, 16))
       
-      lote_a <- min(lote_base_a * fator_lote, max(50.0, saldo_caixa_brl * 0.20))
-      lucro_proj <- max(0.90, ((stats_ada$media / p_ada_brl) - 1) * 100)
+      dsp_tlt <- obter_dsp_ativo(tlt_serie)
+      m_tlt <- mean(tlt_serie, na.rm = TRUE)
+      s_tlt <- sd(tlt_serie, na.rm = TRUE)
+      if (is.na(s_tlt) || s_tlt <= 0) s_tlt <- 1.2
+      z_tlt <- (tail(tlt_serie, 1) - m_tlt) / s_tlt
       
-      pedido <- list(
-        estrategia = "PLANO_SERTAO_VALENTE",
-        origem = "BRL", destino = "ADA",
-        valor_brl = lote_a,
-        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-      )
-    } else if (saldo_ada_brl >= 20.0) {
-      cond_trailing_a <- (dsp_ada$d2Z < 0 || dsp_ada$theta > 0.85)
-      cond_reversao_a <- (z_ada_30m >= 0.40)
-      
-      if (cond_trailing_a || cond_reversao_a) {
-        lucro_proj <- max(0.60, ((p_ada_brl / stats_ada$media) - 1) * 100)
+      if (z_tlt <= -1.10 && dsp_tlt$d2Z >= -0.0002) {
+        lote_usdt_tlt <- min(20.0 * fator_lote, usdt_livre_rotacao)
+        lote_brl_tlt <- lote_usdt_tlt * p_usdt_brl
         pedido <- list(
-          estrategia = "PLANO_SERTAO_VALENTE",
-          origem = "ADA", destino = "BRL",
-          valor_brl = saldo_ada_brl,
-          lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+          estrategia = "PLANO_ESCUDO_DE_WASHINGTON",
+          origem = "USDT", destino = "TLT",
+          valor_brl = lote_brl_tlt,
+          lucro_esperado_pct = 0.80, timestamp = agora_ts
         )
       }
     }
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 12: PLANO FAROL DE NEAR (Harmonicus 10h Maximizer | R$ 200 - 4 Slots | Meta +0,70%)
+  # MOTOR 12: PLANO SENTINELA ANTIFRÁGIL (USDT <-> SQQQB - Inverse Equity Spot Binance)
+  # Binance Backed Equity Spot: SQQQBUSDT | Lucro na Queda | Lote 25 USDT
   # ----------------------------------------------------------------------------
-  if (is.null(pedido) && !is.null(p_near_brl) && ste_atual >= -0.02 && pc1_atual < 0.75 && w_energy < 55.0) {
-    z_near <- (p_near_brl - stats_near_10h$media) / stats_near_10h$sd
-    dsp_near <- obter_dsp_ativo(stats_near_10h$serie)
-    vecm_near <- obter_stats_vecm_ativo("NEARBRL", "BTCBRL")
-    
-    # Entrada seletiva Harmonicus + VECM Cointegrado com d2Z >= -0.0004
-    cond_harm_near <- (z_near <= -0.95) && (dsp_near$theta < -0.10 || z_near <= -1.15) && (dsp_near$d2Z >= -0.0004)
-    cond_vecm_near <- (vecm_near$z_vecm <= -1.40) && (dsp_near$d2Z >= -0.0004)
-    cond_entrada_near <- (cond_harm_near || cond_vecm_near) && !vecm_near$alerta_vale_6h
-    
-    if (cond_entrada_near && saldo_caixa_brl >= 50.0 && saldo_near_brl < 450.0) {
-      lote_base_n <- VALOR_NEAR_BRL
-      if (dsp_near$theta < -1.10) lote_base_n <- 240.0
-      if (z_near <= -1.40 || vecm_near$z_vecm <= -1.50) lote_base_n <- 250.0
-      
-      lote_n <- min(lote_base_n * fator_lote, max(50.0, saldo_caixa_brl * 0.30))
-      lucro_proj <- max(0.80, ((stats_near_10h$media / p_near_brl) - 1) * 100)
-      
-      pedido <- list(
-        estrategia = "PLANO_FAROL_DE_NEAR",
-        origem = "BRL", destino = "NEAR",
-        valor_brl = lote_n,
-        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-      )
-    } else if (saldo_near_brl >= 20.0) {
-      # Saída Dinâmica Harmonicus: Trailing por Desaceleração (d2Z < 0), Topo de Fase (theta > 0.75) ou Reversão
-      cond_trailing_n <- (dsp_near$d2Z < 0 || dsp_near$theta > 0.75)
-      cond_reversao_n <- (z_near >= 0.25)
-      
-      if (cond_trailing_n || cond_reversao_n) {
-        lucro_proj <- max(0.70, ((p_near_brl / stats_near_10h$media) - 1) * 100)
+  if (is.null(pedido)) {
+    if (saldo_sqqqb_usd > 0.01) {
+      p_sqqq_live <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=SQQQBUSDT"), "parsed")$price), error = function(e) NULL)
+      pm_sqqq <- obter_vwap_ativo("SQQQB")
+      if (!is.null(p_sqqq_live) && p_sqqq_live > 0 && pm_sqqq > 0) {
+        ret_sqqq <- (p_sqqq_live / pm_sqqq) - 1.0
+        if (ret_sqqq >= 0.0090) {
+          val_venda_brl <- saldo_sqqqb_usd * p_sqqq_live * p_usdt_brl
+          pedido <- list(
+            estrategia = "PLANO_SENTINELA_ANTIFRAGIL",
+            origem = "SQQQB", destino = "USDT",
+            valor_brl = val_venda_brl,
+            lucro_esperado_pct = round(ret_sqqq * 100, 2), timestamp = agora_ts
+          )
+        }
+      }
+    } else if (usdt_livre_rotacao >= 20.0) {
+      if (!is.null(p_btc_brl) && ret_btc_5m <= -0.0060) {
+        lote_usdt_anti <- min(25.0 * fator_lote, usdt_livre_rotacao)
+        lote_brl_anti <- lote_usdt_anti * p_usdt_brl
         pedido <- list(
-          estrategia = "PLANO_FAROL_DE_NEAR",
-          origem = "NEAR", destino = "BRL",
-          valor_brl = saldo_near_brl,
-          lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+          estrategia = "PLANO_SENTINELA_ANTIFRAGIL",
+          origem = "USDT", destino = "SQQQB",
+          valor_brl = lote_brl_anti,
+          lucro_esperado_pct = 1.00, timestamp = agora_ts
         )
       }
     }
@@ -1096,12 +1216,14 @@ executar_radar_labtrader <- function() {
   # MOTOR 13: PLANO BRUCE WAYNE (Contingência de Crise Cripto / Tail-Risk Macro Hedge)
   # Isento Exclusivo da Trava 6 | Acionado APENAS em colapso estrutural prolongado (Bear Market de semanas/meses)
   # ----------------------------------------------------------------------------
-  stats_macro_btc <- obter_stats_macro_btc_7d()
+  stats_macro_btc <- obter_stats_macro_btc_30d()
   z_macro_btc     <- if (!is.null(p_btc_brl)) (p_btc_brl - stats_macro_btc$media) / stats_macro_btc$sd else 0.0
   dsp_macro_btc   <- stats_macro_btc$dsp
   
-  # Gatilho de Crise Extrema: Z_macro <= -1.65σ + Fase macro < -0.10 + Desaceleração d2Z <= 0
-  cond_crise_bruce <- (z_macro_btc <= -1.65) && (dsp_macro_btc$theta < -0.10) && (dsp_macro_btc$d2Z <= 0)
+  # Gatilho de Crise Estrutural Blindado (Janela Macro 30d + Confirmação de Estresse Institucional VIX >= 24 ou PC1 >= 0.40)
+  cond_crise_bruce <- (z_macro_btc <= -1.85) && (dsp_macro_btc$theta < -0.15) && 
+                      (dsp_macro_btc$d2Z <= -0.0002) && 
+                      (!is.null(vix_atual) && (vix_atual >= 24.0 || (!is.null(pc1_atual) && pc1_atual >= 0.40)))
   
   if (is.null(pedido) && cond_crise_bruce) {
     # Identificar se há posições de altcoins abertas em risco
@@ -1118,100 +1240,167 @@ executar_radar_labtrader <- function() {
     ativos_com_saldo <- names(saldo_altcoins)[sapply(saldo_altcoins, function(x) !is.null(x) && x >= 30.0)]
     
     if (length(ativos_com_saldo) > 0) {
-      # Escolhe o ativo de maior volume
       saldos_num <- sapply(ativos_com_saldo, function(a) saldo_altcoins[[a]])
       ativo_escolhido <- ativos_com_saldo[which.max(saldos_num)]
       val_desova <- min(saldo_altcoins[[ativo_escolhido]], VALOR_BRUCE_BRL)
       
-      cat(sprintf("🦇 [PLANO BRUCE WAYNE ACIONADO] Regime de Bear Market Prolongado (Z_macro=%.2fσ, Phase=%.2f, d2Z=%.4f). Desovando %s (R$ %.2f) para proteção em Caixa BRL/Ouro.\n",
-                  z_macro_btc, dsp_macro_btc$theta, dsp_macro_btc$d2Z, ativo_escolhido, val_desova))
+      autorizado_ratchet <- FALSE
+      hist_exec_file <- "ordens_executadas.rds"
+      if (file.exists(hist_exec_file)) {
+        h_exec <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
+        if (!is.null(h_exec) && nrow(h_exec) > 0 && "Destino" %in% names(h_exec)) {
+          compras_ativo <- h_exec[h_exec$Destino == ativo_escolhido & h_exec$Status == "EXECUTADO_REAL_BINANCE", ]
+          if (nrow(compras_ativo) > 0) {
+            tot_qtd <- sum(compras_ativo$Valor_BRL / compras_ativo$Preco_Exec, na.rm = TRUE)
+            tot_val <- sum(compras_ativo$Valor_BRL, na.rm = TRUE)
+            pm_lote <- if (tot_qtd > 0) tot_val / tot_qtd else as.numeric(tail(compras_ativo$Preco_Exec, 1))
+            p_ativo_now <- tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%sBRL", ativo_escolhido)), "parsed")$price), error = function(e) NULL)
+            if (!is.null(p_ativo_now) && p_ativo_now > 0 && !is.na(pm_lote) && pm_lote > 0) {
+              ret_lote <- (p_ativo_now / pm_lote) - 1.0
+              if (ret_lote >= -0.045 && ret_lote <= -0.015) {
+                autorizado_ratchet <- TRUE
+              } else {
+                cat(sprintf("🦇 [BRUCE WAYNE VETO RATCHET] Retorno de %s (VWAP: %.2f) é %.2f%% (fora da banda de corte seguro de -1.5%% a -4.5%%). Venda vetada para evitar torrar dinheiro no fundo do poço.\n", 
+                            ativo_escolhido, pm_lote, ret_lote * 100))
+              }
+            }
+          }
+        }
+      }
       
-      pedido <- list(
-        estrategia = "PLANO_BRUCE_WAYNE",
-        origem = ativo_escolhido, destino = "BRL",
-        valor_brl = val_desova,
-        lucro_esperado_pct = 0.0, # Isento de Trava 6
-        timestamp = agora_ts
-      )
+      if (autorizado_ratchet) {
+        cat(sprintf("🦇 [PLANO BRUCE WAYNE ACIONADO] Regime de Bear Market Prolongado (Z_macro=%.2fσ, Phase=%.2f, d2Z=%.4f). Desovando %s (R$ %.2f) para proteção em Caixa BRL/Ouro.\n",
+                    z_macro_btc, dsp_macro_btc$theta, dsp_macro_btc$d2Z, ativo_escolhido, val_desova))
+        
+        pedido <- list(
+          estrategia = "PLANO_BRUCE_WAYNE",
+          origem = ativo_escolhido, destino = "BRL",
+          valor_brl = val_desova,
+          lucro_esperado_pct = 0.0, # Isento de Trava 6
+          timestamp = agora_ts
+        )
+      }
     }
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 14: PLANO SENTINELA DE WALL STREET (S&P 500 TradFi / SP500_Pts | 100% NÃO-CRIPTO)
-  # Monitoramento de Wall Street com Ressonância de Hilbert de Fase e Filtro VIX
+  # MOTOR 14: PLANO SENTINELA DE WALL STREET (SPYB / USDT & BRL - S&P 500 Trust)
+  # Binance Backed Equity Spot: SPYBUSDT | Rastreamento Hilbert e Filtro VIX
   # ----------------------------------------------------------------------------
   stats_ws <- obter_stats_wallstreet_vix_hedge()
   if (is.null(pedido)) {
-    # Busca cotação histórica do S&P 500 do Historico_rapido
-    sp500_serie <- tryCatch({
-      con_rap <- dbConnect(SQLite(), db_path)
-      on.exit(dbDisconnect(con_rap))
-      df_sp <- dbGetQuery(con_rap, "SELECT SP500_Pts FROM Historico_rapido WHERE SP500_Pts IS NOT NULL ORDER BY Data_Hora DESC LIMIT 60;")
-      if (nrow(df_sp) >= 16) rev(df_sp$SP500_Pts) else rep(7200.0, 16)
-    }, error = function(e) rep(7200.0, 16))
-    
-    dsp_sp500 <- obter_dsp_ativo(sp500_serie)
-    sp500_atual <- tail(sp500_serie, 1)
-    
-    # Entrada por Ressonância: Vale de Fase do S&P 500 (theta <= -1.15 rad) com d2Z >= 0 e VIX indicando sobre-venda (>= 18.0)
-    cond_entrada_ws <- (dsp_sp500$theta <= -1.15) && (dsp_sp500$d2Z >= -0.0002) && (stats_ws$vix_atual >= 18.0)
-    
-    if (cond_entrada_ws && saldo_caixa_brl >= 100.0) {
-      lote_ws <- min(VALOR_WALLSTREET_BRL * fator_lote, saldo_caixa_brl * 0.40)
-      lucro_proj <- max(0.80, 1.20)
-      pedido <- list(
-        estrategia = "PLANO_SENTINELA_WALLSTREET",
-        origem = "BRL", destino = "SP500",
-        valor_brl = lote_ws,
-        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-      )
-    } else if (dsp_sp500$theta >= 1.15 && stats_ws$vix_atual < 16.5) {
-      # Saída / Realização em Topo de Fase do S&P 500 (theta >= +1.15 rad)
-      lucro_proj <- max(0.80, 1.00)
-      pedido <- list(
-        estrategia = "PLANO_SENTINELA_WALLSTREET",
-        origem = "SP500", destino = "BRL",
-        valor_brl = VALOR_WALLSTREET_BRL * fator_lote,
-        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-      )
+    # 1. REALIZAÇÃO DE LUCRO: Venda SPYB -> USDT sob a Trava 6 (>= +0.85%)
+    if (saldo_spyb_usd > 0.01) {
+      p_spy_live <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=SPYBUSDT"), "parsed")$price), error = function(e) NULL)
+      pm_spy <- obter_vwap_ativo("SPYB")
+      if (!is.null(p_spy_live) && p_spy_live > 0 && pm_spy > 0) {
+        ret_spy <- (p_spy_live / pm_spy) - 1.0
+        if (ret_spy >= 0.0085) {
+          val_venda_brl <- saldo_spyb_usd * p_spy_live * p_usdt_brl
+          pedido <- list(
+            estrategia = "PLANO_SENTINELA_WALLSTREET",
+            origem = "SPYB", destino = "USDT",
+            valor_brl = val_venda_brl,
+            lucro_esperado_pct = round(ret_spy * 100, 2), timestamp = agora_ts
+          )
+        }
+      }
+    } else if (usdt_livre_rotacao >= 20.0) {
+      # 2. ENTRADA EM DIP: Compra USDT -> SPYB (Lote 35.00 USDT / ~R$ 180)
+      sp500_serie <- tryCatch({
+        con_sp <- dbConnect(SQLite(), db_path)
+        on.exit(dbDisconnect(con_sp))
+        df_sp <- dbGetQuery(con_sp, "SELECT SPYBUSDT FROM Historico_binance WHERE SPYBUSDT IS NOT NULL ORDER BY Data_Hora DESC LIMIT 60;")
+        if (nrow(df_sp) >= 16) rev(df_sp$SPYBUSDT) else {
+          df_sp2 <- dbGetQuery(con_sp, "SELECT Close FROM Historico_Binance_Equities_1m WHERE Ativo='SPYBUSDT' ORDER BY Data_Hora DESC LIMIT 60;")
+          if (nrow(df_sp2) >= 16) rev(df_sp2$Close) else rep(765.0, 16)
+        }
+      }, error = function(e) rep(765.0, 16))
+      
+      dsp_sp500 <- obter_dsp_ativo(sp500_serie)
+      m_sp <- mean(sp500_serie, na.rm = TRUE)
+      s_sp <- sd(sp500_serie, na.rm = TRUE)
+      if (is.na(s_sp) || s_sp <= 0) s_sp <- 2.0
+      z_sp <- (tail(sp500_serie, 1) - m_sp) / s_sp
+      
+      cond_entrada_ws <- (z_sp <= -1.10 || (dsp_sp500$theta <= -1.15 && stats_ws$vix_atual >= 18.0)) && (dsp_sp500$d2Z >= -0.0002)
+      
+      if (cond_entrada_ws) {
+        lote_usdt_ws <- min(35.0 * fator_lote, usdt_livre_rotacao)
+        lote_brl_ws <- lote_usdt_ws * p_usdt_brl
+        pedido <- list(
+          estrategia = "PLANO_SENTINELA_WALLSTREET",
+          origem = "USDT", destino = "SPYB",
+          valor_brl = lote_brl_ws,
+          lucro_esperado_pct = 0.90, timestamp = agora_ts
+        )
+      }
     }
   }
 
   # ----------------------------------------------------------------------------
-  # MOTOR 15: PLANO COMMODITY ENERGY ALPHA (Petróleo WTI TradFi / WTI_Oil | 100% NÃO-CRIPTO)
-  # Arbitragem e Ressonância de Hilbert sobre a Commodity Energética Global
+  # MOTOR 15: PLANO ADEUS, PERRY (Desova e Liquidação Cirúrgica de Ativos Legados)
+  # Monitora LINK, ADA, NEAR, AVAX e executa venda estritamente sob a Trava 6 (>= +0.40%)
   # ----------------------------------------------------------------------------
   if (is.null(pedido)) {
-    wti_serie <- tryCatch({
-      con_wti <- dbConnect(SQLite(), db_path)
-      on.exit(dbDisconnect(con_wti))
-      df_wti <- dbGetQuery(con_wti, "SELECT WTI_Oil FROM Historico_rapido WHERE WTI_Oil IS NOT NULL ORDER BY Data_Hora DESC LIMIT 60;")
-      if (nrow(df_wti) >= 16) rev(df_wti$WTI_Oil) else rep(85.0, 16)
-    }, error = function(e) rep(85.0, 16))
-    
-    dsp_wti <- obter_dsp_ativo(wti_serie)
-    wti_atual <- tail(wti_serie, 1)
-    
-    # Entrada por Ressonância: Vale de Fase do Petróleo (theta <= -1.15 rad) com d2Z >= 0
-    cond_entrada_wti <- (dsp_wti$theta <= -1.15) && (dsp_wti$d2Z >= -0.0002)
-    
-    if (cond_entrada_wti && saldo_caixa_brl >= 80.0) {
-      lucro_proj <- max(1.00, 1.50)
-      pedido <- list(
-        estrategia = "PLANO_COMMODITY_ENERGY_ALPHA",
-        origem = "BRL", destino = "WTI",
-        valor_brl = min(VALOR_DOLLARUS_BRL * fator_lote, saldo_caixa_brl * 0.40),
-        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+    em_cooldown_perry <- verificar_cooldown_veto("PLANO_ADEUS_PERRY", timeout_seg = 300)
+    if (!em_cooldown_perry) {
+      saldo_legados <- list(
+        LINK = saldo_link_brl,
+        ADA  = saldo_ada_brl,
+        NEAR = saldo_near_brl,
+        AVAX = saldo_avax_brl
       )
-    } else if (dsp_wti$theta >= 1.15) {
-      # Saída: Topo de Fase do Petróleo (theta >= +1.15 rad)
-      lucro_proj <- max(1.00, 1.20)
-      pedido <- list(
-        estrategia = "PLANO_COMMODITY_ENERGY_ALPHA",
-        origem = "WTI", destino = "BRL",
-        valor_brl = VALOR_DOLLARUS_BRL * fator_lote,
-        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-      )
+      
+      for (ast_leg in names(saldo_legados)) {
+        if (!is.null(pedido)) break
+        val_leg <- saldo_legados[[ast_leg]]
+        if (!is.null(val_leg) && !is.na(val_leg) && val_leg >= 15.0) {
+          # Consulta lote em aberto e VWAP
+          pm_leg <- 0.0
+          hist_exec_file <- "ordens_executadas.rds"
+          if (file.exists(hist_exec_file)) {
+            h_exec <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
+            if (!is.null(h_exec) && nrow(h_exec) > 0 && "Destino" %in% names(h_exec)) {
+              compras_leg <- h_exec[h_exec$Destino == ast_leg & h_exec$Status == "EXECUTADO_REAL_BINANCE", ]
+              if (nrow(compras_leg) > 0) {
+                tot_qtd <- sum(compras_leg$Valor_BRL / compras_leg$Preco_Exec, na.rm = TRUE)
+                tot_val <- sum(compras_leg$Valor_BRL, na.rm = TRUE)
+                pm_leg <- if (tot_qtd > 0) tot_val / tot_qtd else as.numeric(tail(compras_leg$Preco_Exec, 1))
+              }
+            }
+          }
+          
+          # Fallback auditado de preço de aquisição na Binance:
+          if (pm_leg <= 0) {
+            precos_aquisicao_legados <- list(ADA = 1.083, LINK = 59.00, NEAR = 22.50, AVAX = 135.0)
+            if (!is.null(precos_aquisicao_legados[[ast_leg]])) pm_leg <- precos_aquisicao_legados[[ast_leg]]
+          }
+          
+          p_now_leg <- tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%sBRL", ast_leg)), "parsed")$price), error = function(e) NULL)
+          
+          # Se o preço de mercado estiver em lucro ou >= VWAP * 1.0040 (Trava 6)
+          lucro_atingido <- FALSE
+          if (!is.null(p_now_leg) && p_now_leg > 0 && pm_leg > 0) {
+            ret_leg <- (p_now_leg / pm_leg) - 1.0
+            if (ret_leg >= 0.0040) {
+              lucro_atingido <- TRUE
+            }
+          } else {
+            # Se não há histórico de compra registrado, permite desova controlada
+            lucro_atingido <- TRUE
+          }
+          
+          if (lucro_atingido) {
+            pedido <- list(
+              estrategia = "PLANO_ADEUS_PERRY",
+              origem = ast_leg, destino = "BRL",
+              valor_brl = val_leg,
+              lucro_esperado_pct = 0.50, timestamp = agora_ts
+            )
+          }
+        }
+      }
     }
   }
   
@@ -1219,14 +1408,14 @@ executar_radar_labtrader <- function() {
   z_bnb_val  <- if (!is.null(p_bnb_brl)) (p_bnb_brl - stats_bnb$media) / stats_bnb$sd else 0.0
   z_ada_val  <- if (!is.null(p_ada_brl)) (p_ada_brl - stats_ada$media) / stats_ada$sd else 0.0
   z_near_val <- if (!is.null(p_near_brl)) (p_near_brl - stats_near$media) / stats_near$sd else 0.0
+  z_avax_val <- if (!is.null(p_avax_brl)) (p_avax_brl - stats_avax$media) / stats_avax$sd else 0.0
   
-  log_line <- sprintf("[%s] RADAR: Z_Guiana=%.2f | VIX=%.2f | SpreadPeg=%.4f | Z_Link=%.2f | Z_SOL=%.2f | Z_SOL15m=%.2f | Z_ETH=%.2f | Z_BNB=%.2f | Z_ADA=%.2f | Z_NEAR=%.2f | RetBTC5m=%.2f%% | Disparo=%s\n",
+  log_line <- sprintf("[%s] RADAR: Z_Guiana=%.2f | VIX=%.2f | SpreadPeg=%.4f | Z_Link=%.2f | Z_SOL=%.2f | Z_ETH=%.2f | Z_BNB=%.2f | Z_ADA=%.2f | Z_NEAR=%.2f | Z_AVAX=%.2f | RetBTC5m=%.2f%% | Disparo=%s\n",
                       agora_str, z_guiana, vix_atual, ifelse(!is.null(usd_oficial), p_usdt_brl - usd_oficial, 0),
                       (p_link_brl - stats_link$media) / stats_link$sd,
                       (p_sol_brl / p_btc_brl - stats_sol_btc$media) / stats_sol_btc$sd,
-                      (p_sol_brl - stats_sol_15m$media) / stats_sol_15m$sd,
                       (p_eth_brl / p_btc_brl - stats_eth_btc$media) / stats_eth_btc$sd,
-                      z_bnb_val, z_ada_val, z_near_val,
+                      z_bnb_val, z_ada_val, z_near_val, z_avax_val,
                       ret_btc_5m * 100,
                       ifelse(!is.null(pedido), pedido$estrategia, "NENHUM"))
   cat(log_line, file = "labtrader_radar.log", append = TRUE)
