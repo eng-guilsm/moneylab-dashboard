@@ -284,11 +284,33 @@ function renderKineticsChart(symbol, tfKey, data) {
   const prices = fullPrices.slice(startIndex, endIndex + 1);
   const upper = fullUpper.length > 0 ? fullUpper.slice(startIndex, endIndex + 1) : prices;
   const lower = fullLower.length > 0 ? fullLower.slice(startIndex, endIndex + 1) : prices;
-  const zlUpper = fullZlUpper.length > 0 ? fullZlUpper.slice(startIndex, endIndex + 1) : [];
-  const zlLower = fullZlLower.length > 0 ? fullZlLower.slice(startIndex, endIndex + 1) : [];
+  let zlUpper = fullZlUpper.length > 0 ? fullZlUpper.slice(startIndex, endIndex + 1) : [];
+  let zlLower = fullZlLower.length > 0 ? fullZlLower.slice(startIndex, endIndex + 1) : [];
   const supersmoother = fullSS.length > 0 ? fullSS.slice(startIndex, endIndex + 1) : [];
   const velocities = fullVelocities.slice(startIndex, endIndex + 1);
   const timestamps = fullTimestamps.slice(startIndex, endIndex + 1);
+
+  // Fallback de alta precisão para garantir a Banda Zero-Lag caso não venha no dataset estático
+  if (zlUpper.length === 0 && supersmoother.length === prices.length && prices.length > 0) {
+    const isFxSymbol = symbol === 'USDTBRL' || symbol === 'USDBRL' || symbol === 'ADABRL';
+    const decDigits = isFxSymbol ? 4 : 2;
+    const win = Math.max(5, Math.min(20, Math.floor(prices.length / 3)));
+    zlUpper = [];
+    zlLower = [];
+    for (let i = 0; i < prices.length; i++) {
+      const start = Math.max(0, i - win + 1);
+      let sumDiff = 0;
+      let count = 0;
+      for (let j = start; j <= i; j++) {
+        sumDiff += Math.abs(prices[j] - supersmoother[j]);
+        count++;
+      }
+      const meanDiff = count > 0 ? sumDiff / count : 1;
+      const sigma = meanDiff * 1.25; // Estimador robusto de 1 sigma
+      zlUpper.push(Number((supersmoother[i] + 2.0 * sigma).toFixed(decDigits)));
+      zlLower.push(Number((supersmoother[i] - 2.0 * sigma).toFixed(decDigits)));
+    }
+  }
 
   const resetBtn = document.getElementById('kineticsResetZoomBtn');
   if (resetBtn) {
@@ -304,8 +326,8 @@ function renderKineticsChart(symbol, tfKey, data) {
   canvas.height = h * dpr;
   ctx.scale(dpr, dpr);
 
-  const padLeft = 75;
-  const padRight = 30;
+  const padLeft = 70;
+  const padRight = 75;
   const padTop = 20;
   const padBottom = 65;
   const chartH = h - padBottom - padTop;
@@ -470,8 +492,62 @@ function renderKineticsChart(symbol, tfKey, data) {
     ctx.restore();
   }
 
-  // 3. Painel Inferior: Histograma de Velocidade Instantânea (dP/dt)
-  const derivY0 = h - 35;
+  // 2.8 LINHA DE PREÇO ATUAL, BEACON PULSANTE E ETIQUETA NO EIXO DIREITO
+  if (prices.length > 0) {
+    const currentVal = prices[prices.length - 1];
+    const currentY = getY(currentVal);
+    const lastX = getX(prices.length - 1);
+    const isFx = symbol === 'USDTBRL' || symbol === 'USDBRL' || symbol === 'ADABRL';
+    const badgeText = isFx ? `R$ ${currentVal.toFixed(4)}` : `R$ ${Math.round(currentVal).toLocaleString('pt-BR')}`;
+
+    ctx.save();
+    // Linha horizontal pontilhada de preço atual cruzando todo o gráfico
+    ctx.strokeStyle = 'rgba(245, 158, 11, 0.60)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(padLeft, currentY);
+    ctx.lineTo(w - padRight, currentY);
+    ctx.stroke();
+
+    // Beacon pulsante (Halo) no último candle do gráfico
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(245, 158, 11, 0.35)';
+    ctx.beginPath();
+    ctx.arc(lastX, currentY, 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#F59E0B';
+    ctx.beginPath();
+    ctx.arc(lastX, currentY, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Etiqueta de Preço no Eixo Direito (Right Price Badge)
+    const bw = 70;
+    const bh = 18;
+    const bx = w - padRight + 3;
+    const by = Math.max(padTop, Math.min(h - padBottom - bh, currentY - bh / 2));
+
+    ctx.fillStyle = '#F59E0B';
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(bx, by, bw, bh, 3);
+    } else {
+      ctx.rect(bx, by, bw, bh);
+    }
+    ctx.fill();
+
+    ctx.fillStyle = '#050811';
+    ctx.font = 'bold 9.5px JetBrains Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(badgeText.replace('R$ ', ''), bx + bw / 2, by + bh / 2);
+    ctx.restore();
+  }
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -742,13 +818,33 @@ function startLiveBinancePoller() {
           pricesMap.PAXGBRL = pricesMap.USDTBRL * 4470.0;
         }
 
+        let hasPriceChange = false;
         Object.keys(pricesMap).forEach(sym => {
           if (window.ASSETS_KINETICS_DATA[sym] && sym !== 'USDBRL') {
-            window.ASSETS_KINETICS_DATA[sym].preco_atual = pricesMap[sym];
+            const newP = pricesMap[sym];
+            if (window.ASSETS_KINETICS_DATA[sym].preco_atual !== newP) {
+              hasPriceChange = true;
+              window.ASSETS_KINETICS_DATA[sym].preco_atual = newP;
+              
+              // Atualizar também o último ponto da série para todos os timeframes desse ativo
+              const tfs = window.ASSETS_KINETICS_DATA[sym].timeframes;
+              if (tfs) {
+                const dec = (sym === 'USDTBRL' || sym === 'ADABRL') ? 4 : 2;
+                Object.keys(tfs).forEach(tf => {
+                  const pArr = tfs[tf].precos || (tfs[tf].series && tfs[tf].series.prices);
+                  if (pArr && pArr.length > 0) {
+                    pArr[pArr.length - 1] = Number(newP.toFixed(dec));
+                  }
+                });
+              }
+            }
           }
         });
 
-        renderKineticsCockpit(currentKineticsAsset, currentKineticsTimeframe, window.ASSETS_KINETICS_DATA);
+        if (hasPriceChange) {
+          renderKineticsCockpit(currentKineticsAsset, currentKineticsTimeframe, window.ASSETS_KINETICS_DATA);
+          renderKineticsChart(currentKineticsAsset, currentKineticsTimeframe, window.ASSETS_KINETICS_DATA);
+        }
       }
     } catch (e) {
       // Falha segura
