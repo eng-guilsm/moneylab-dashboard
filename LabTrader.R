@@ -744,20 +744,20 @@ executar_radar_labtrader <- function() {
   z_guiana     <- (ratio_guiana - stats_guiana$media) / stats_guiana$sd
   dsp_guiana   <- if (!is.null(stats_guiana$dsp)) stats_guiana$dsp else list(theta = 0, d2Z = 0)
   
-  if (z_guiana <= -1.00 && dsp_guiana$d2Z >= -0.015 && (saldo_btc_brl - 180.0) >= 48.0 && saldo_paxg_brl < 800.0) {
+  if (z_guiana <= -1.00 && dsp_guiana$d2Z >= -0.015 && (saldo_btc_brl - 180.0) >= 65.0 && saldo_paxg_brl < 800.0) {
     # Bitcoin eufórico / Ouro com desconto -> Vende BTC excedente e compra PAXG
     lote_g <- min(VALOR_GUIANA_BRL * fator_lote, saldo_btc_brl - 180.0)
-    if (lote_g >= 48.0) {
+    if (lote_g >= 65.0) {
       pedido <- list(
         estrategia = "PLANO_GUIANA_BRASILEIRA",
         origem = "BTC", destino = "PAXG",
         valor_brl = lote_g, lucro_esperado_pct = 0.40, timestamp = agora_ts
       )
     }
-  } else if (z_guiana >= 0.95 && (saldo_paxg_brl - 450.0) >= 48.0) {
+  } else if (z_guiana >= 0.95 && (saldo_paxg_brl - 450.0) >= 65.0) {
     # Ouro valorizado / Bitcoin em dip -> Vende PAXG e compra BTC (preservando piso de Ouro em R$ 450)
     lote_g <- min(VALOR_GUIANA_BRL * fator_lote, saldo_paxg_brl - 450.0)
-    if (lote_g >= 48.0) {
+    if (lote_g >= 65.0) {
       pedido <- list(
         estrategia = "PLANO_GUIANA_BRASILEIRA",
         origem = "PAXG", destino = "BTC",

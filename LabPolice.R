@@ -410,9 +410,9 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
     
     # 🛡️ Blindagem Notional Mínimo Binance (0.00010000 BTC ~ R$ 45,00)
     p_btc_brl_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=BTCBRL"), "parsed")$price), error = function(e) 416000.0)
-    if (valor_brl < 48.0 || (valor_brl / p_btc_brl_tmp) < 0.00011) {
-      cat(sprintf("⚠️ [GATEKEEPER NOTIONAL VETO] Ordem PAXGBTC de R$ %.2f abaixo do NOTIONAL mínimo da Binance (0.0001 BTC). Requer no mínimo R$ 48.00.\n", valor_brl))
-      return(list(sucesso = FALSE, msg = sprintf("Ordem PAXGBTC de R$ %.2f abaixo do Notional mínimo de 0.0001 BTC da Binance. Requer no mínimo R$ 48.00.", valor_brl)))
+    if (valor_brl < 60.0 || (valor_brl / p_btc_brl_tmp) < 0.00012) {
+      cat(sprintf("⚠️ [GATEKEEPER NOTIONAL VETO] Ordem PAXGBTC de R$ %.2f abaixo do NOTIONAL mínimo da Binance (0.0001 BTC). Requer no mínimo R$ 60.00.\n", valor_brl))
+      return(list(sucesso = FALSE, msg = sprintf("Ordem PAXGBTC de R$ %.2f abaixo do Notional mínimo de 0.0001 BTC da Binance. Requer no mínimo R$ 60.00.", valor_brl)))
     }
     
     symbol <- "PAXGBTC"
@@ -502,9 +502,9 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
     
     # 🛡️ Blindagem Notional Mínimo Binance (0.00010000 BTC ~ R$ 45,00)
     p_btc_brl_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=BTCBRL"), "parsed")$price), error = function(e) 416000.0)
-    if (valor_brl < 48.0 || (valor_brl / p_btc_brl_tmp) < 0.00011) {
-      cat(sprintf("⚠️ [GATEKEEPER NOTIONAL VETO] Ordem PAXGBTC de R$ %.2f abaixo do NOTIONAL mínimo da Binance (0.0001 BTC). Requer no mínimo R$ 48.00.\n", valor_brl))
-      return(list(sucesso = FALSE, msg = sprintf("Ordem PAXGBTC de R$ %.2f abaixo do Notional mínimo de 0.0001 BTC da Binance. Requer no mínimo R$ 48.00.", valor_brl)))
+    if (valor_brl < 60.0 || (valor_brl / p_btc_brl_tmp) < 0.00012) {
+      cat(sprintf("⚠️ [GATEKEEPER NOTIONAL VETO] Ordem PAXGBTC de R$ %.2f abaixo do NOTIONAL mínimo da Binance (0.0001 BTC). Requer no mínimo R$ 60.00.\n", valor_brl))
+      return(list(sucesso = FALSE, msg = sprintf("Ordem PAXGBTC de R$ %.2f abaixo do Notional mínimo de 0.0001 BTC da Binance. Requer no mínimo R$ 60.00.", valor_brl)))
     }
     
     # Resgata do Simple Earn se estiver no Earn flexível
