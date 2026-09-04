@@ -710,26 +710,29 @@ executar_radar_labtrader <- function() {
   ratio_guiana <- p_paxg_brl / p_btc_brl
   z_guiana     <- (ratio_guiana - stats_guiana$media) / stats_guiana$sd
   
-  if (z_guiana <= -0.50 && w_energy < 65.0 && (saldo_btc_brl - 180.0) >= 35.0 && saldo_paxg_brl < 600.0) {
+  if (z_guiana <= -0.50 && w_energy < 65.0 && (saldo_btc_brl - 180.0) >= 50.0 && saldo_paxg_brl < 600.0) {
     # Bitcoin eufórico / Ouro com desconto -> Drenagem lucrativa: Vende BTC excedente e compra PAXG
     lucro_proj <- max(0.92, ((stats_guiana$media / ratio_guiana) - 1) * 100 - 0.10)
-    lote_g <- min(60.0 * fator_lote, saldo_btc_brl - 180.0)
-    if (lote_g >= 35.0) {
+    lote_g <- min(65.0 * fator_lote, saldo_btc_brl - 180.0)
+    if (lote_g >= 50.0) {
       pedido <- list(
         estrategia = "PLANO_GUIANA_BRASILEIRA",
         origem = "BTC", destino = "PAXG",
         valor_brl = lote_g, lucro_esperado_pct = lucro_proj, timestamp = agora_ts
       )
     }
-  } else if (z_guiana >= 0.70 && w_energy < 65.0 && peso_btc < 0.55 && saldo_paxg_brl >= 550.0) {
+  } else if (z_guiana >= 0.70 && w_energy < 65.0 && peso_btc < 0.55 && (saldo_paxg_brl - 480.0) >= 50.0) {
     # Ouro valorizado / Bitcoin em dip -> Vende PAXG e compra BTC (preservando piso de Ouro em R$ 480)
     lucro_proj <- max(1.10, ((ratio_guiana / stats_guiana$media) - 1) * 100 - 0.10)
-    pedido <- list(
-      estrategia = "PLANO_GUIANA_BRASILEIRA",
-      origem = "PAXG", destino = "BTC",
-      valor_brl = min(60.0 * fator_lote, saldo_paxg_brl - 480.0),
-      lucro_esperado_pct = lucro_proj, timestamp = agora_ts
-    )
+    lote_g <- min(65.0 * fator_lote, saldo_paxg_brl - 480.0)
+    if (lote_g >= 50.0) {
+      pedido <- list(
+        estrategia = "PLANO_GUIANA_BRASILEIRA",
+        origem = "PAXG", destino = "BTC",
+        valor_brl = lote_g,
+        lucro_esperado_pct = lucro_proj, timestamp = agora_ts
+      )
+    }
   }
   
   # ----------------------------------------------------------------------------
@@ -1214,8 +1217,9 @@ executar_radar_labtrader <- function() {
   
   # ----------------------------------------------------------------------------
   # MOTOR 13: PLANO BRUCE WAYNE (Contingência de Crise Cripto / Tail-Risk Macro Hedge)
-  # Isento Exclusivo da Trava 6 | Acionado APENAS em colapso estrutural prolongado (Bear Market de semanas/meses)
+  # [DESATIVADO TEMPORARIAMENTE CONFORME DIRETRIZ DE GOVERNANÇA]
   # ----------------------------------------------------------------------------
+  PLANO_BRUCE_WAYNE_ATIVO <- FALSE
   stats_macro_btc <- obter_stats_macro_btc_30d()
   z_macro_btc     <- if (!is.null(p_btc_brl)) (p_btc_brl - stats_macro_btc$media) / stats_macro_btc$sd else 0.0
   dsp_macro_btc   <- stats_macro_btc$dsp
@@ -1225,7 +1229,7 @@ executar_radar_labtrader <- function() {
                       (dsp_macro_btc$d2Z <= -0.0002) && 
                       (!is.null(vix_atual) && (vix_atual >= 24.0 || (!is.null(pc1_atual) && pc1_atual >= 0.40)))
   
-  if (is.null(pedido) && cond_crise_bruce) {
+  if (is.null(pedido) && cond_crise_bruce && PLANO_BRUCE_WAYNE_ATIVO) {
     # Identificar se há posições de altcoins abertas em risco
     saldo_altcoins <- list(
       SOL = saldo_sol_brl,
@@ -1340,9 +1344,10 @@ executar_radar_labtrader <- function() {
 
   # ----------------------------------------------------------------------------
   # MOTOR 15: PLANO ADEUS, PERRY (Desova e Liquidação Cirúrgica de Ativos Legados)
-  # Monitora LINK, ADA, NEAR, AVAX e executa venda estritamente sob a Trava 6 (>= +0.40%)
+  # [DESATIVADO TEMPORARIAMENTE CONFORME DIRETRIZ DE GOVERNANÇA]
   # ----------------------------------------------------------------------------
-  if (is.null(pedido)) {
+  PLANO_ADEUS_PERRY_ATIVO <- FALSE
+  if (is.null(pedido) && PLANO_ADEUS_PERRY_ATIVO) {
     em_cooldown_perry <- verificar_cooldown_veto("PLANO_ADEUS_PERRY", timeout_seg = 300)
     if (!em_cooldown_perry) {
       saldo_legados <- list(

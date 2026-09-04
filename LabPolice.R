@@ -407,9 +407,22 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
     # Guiana Ponta A: Compra PAXG com BTC usando par direto PAXGBTC
     p_paxg_brl_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT"), "parsed")$price) * as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) NULL)
     if (is.null(p_paxg_brl_tmp) || p_paxg_brl_tmp <= 0) p_paxg_brl_tmp <- 23777.0
+    
+    # 🛡️ Blindagem Notional Mínimo Binance (0.00010000 BTC ~ R$ 45,00)
+    p_btc_brl_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=BTCBRL"), "parsed")$price), error = function(e) 416000.0)
+    if (valor_brl < 48.0 || (valor_brl / p_btc_brl_tmp) < 0.00011) {
+      cat(sprintf("⚠️ [GATEKEEPER NOTIONAL VETO] Ordem PAXGBTC de R$ %.2f abaixo do NOTIONAL mínimo da Binance (0.0001 BTC). Requer no mínimo R$ 48.00.\n", valor_brl))
+      return(list(sucesso = FALSE, msg = sprintf("Ordem PAXGBTC de R$ %.2f abaixo do Notional mínimo de 0.0001 BTC da Binance. Requer no mínimo R$ 48.00.", valor_brl)))
+    }
+    
     symbol <- "PAXGBTC"
     side <- "BUY"
-    quantity <- floor((valor_brl / p_paxg_brl_tmp) * 10000) / 10000
+    p_paxg_btc <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGBTC"), "parsed")$price), error = function(e) 0.055)
+    calc_qty <- ceiling((valor_brl / p_paxg_brl_tmp) * 10000) / 10000
+    if (calc_qty * p_paxg_btc < 0.000105) {
+      calc_qty <- ceiling((0.000105 / p_paxg_btc) * 10000) / 10000
+    }
+    quantity <- sprintf("%.4f", calc_qty)
   } else if (origem == "BRL" && destino == "PAXG") {
     # Midas DCA: Compra USDT com BRL e em seguida compra PAXG com USDT (par PAXGUSDT)
     p_usdt_b <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) 5.18)
@@ -487,6 +500,13 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
     p_paxg_brl_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT"), "parsed")$price) * as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) NULL)
     if (is.null(p_paxg_brl_tmp) || p_paxg_brl_tmp <= 0) p_paxg_brl_tmp <- 23777.0
     
+    # 🛡️ Blindagem Notional Mínimo Binance (0.00010000 BTC ~ R$ 45,00)
+    p_btc_brl_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=BTCBRL"), "parsed")$price), error = function(e) 416000.0)
+    if (valor_brl < 48.0 || (valor_brl / p_btc_brl_tmp) < 0.00011) {
+      cat(sprintf("⚠️ [GATEKEEPER NOTIONAL VETO] Ordem PAXGBTC de R$ %.2f abaixo do NOTIONAL mínimo da Binance (0.0001 BTC). Requer no mínimo R$ 48.00.\n", valor_brl))
+      return(list(sucesso = FALSE, msg = sprintf("Ordem PAXGBTC de R$ %.2f abaixo do Notional mínimo de 0.0001 BTC da Binance. Requer no mínimo R$ 48.00.", valor_brl)))
+    }
+    
     # Resgata do Simple Earn se estiver no Earn flexível
     resgatar_simple_earn_paxg()
     
@@ -498,8 +518,14 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
     }
     symbol <- "PAXGBTC"
     side <- "SELL"
+    p_paxg_btc <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGBTC"), "parsed")$price), error = function(e) 0.055)
     calc_qty <- floor((valor_brl / p_paxg_brl_tmp) * 10000) / 10000
-    quantity <- if (saldo_paxg_real > 0) min(calc_qty, floor(saldo_paxg_real * 10000) / 10000) else calc_qty
+    quantity_num <- if (saldo_paxg_real > 0) min(calc_qty, floor(saldo_paxg_real * 10000) / 10000) else calc_qty
+    if (quantity_num * p_paxg_btc < 0.000105) {
+      cat(sprintf("⚠️ [GATEKEEPER NOTIONAL VETO] Quantidade PAXGBTC (%.4f PAXG ~ %.8f BTC) abaixo do Notional mínimo de 0.0001 BTC.\n", quantity_num, quantity_num * p_paxg_btc))
+      return(list(sucesso = FALSE, msg = "Quantidade PAXGBTC abaixo do Notional mínimo de 0.0001 BTC da Binance."))
+    }
+    quantity <- sprintf("%.4f", quantity_num)
   } else if (as.character(destino) %in% c("NVDAB", "NVDA", "SPYB", "SP500", "SQQQB", "BITI", "TSLAB", "TSLA", "QQQB", "AAPLB", "MSFTB")) {
     # 🇺🇸 Backed Equities Spot da Binance (NVDABUSDT, SPYBUSDT, SQQQBUSDT, TSLABUSDT, QQQBUSDT)
     alvo_sym <- as.character(destino)

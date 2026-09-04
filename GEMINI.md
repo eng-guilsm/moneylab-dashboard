@@ -34,6 +34,7 @@ Sempre que o usuário solicitar uma tarefa ou o assistente for interagir com o s
 
 ## 🔬 4. Princípio do Ceticismo Científico e Auditoria Anti-Trapaça (A Falácia dos Extremos)
 * **Banimento de Absolutos ("Nunca", "Garantido", "0%" e "100%"):** Em finanças quantitativas, métricas de 0% ou 100% (Win Rate de 100%, Drawdown de 0 reais, "0 horas de rompimento de piso") NÃO atestam perfeição — **expõem a falha metodológica, a cegueira de regime ou o viés do modelo**.
+* **Proibição Estrita de Modelos com Métricas Pobres / Benchmark Mínimo Exigido:** É TERMINANTEMENTE PROIBIDO aprovar, homologar, sugerir ou recomendar modelos estatísticos, preditivos ou operacionais que apresentem Precision, Recall, F1-Score ou taxa de falsos alarmes abaixo de um benchmark sólido para o cenário testado. Se um modelo preditivo apresenta F1-Score ou Precision medíocres (ex: < 50%, ou resultados ruidosos de 5% a 10%), ele DEVE ser expressamente rotulado como **REJEITADO / INVIÁVEL PARA PRODUÇÃO**, declarando abertamente sua incapacidade de separar sinal de ruído, jamais propondo sua adoção para o usuário.
 * **O Exemplo Canônico do "Bitcoin Nunca Mais é Drenado":** Uma simulação determinística estática concluiu falsamente que uma trava de software garantia "0,0 horas de violação do piso de 180 reais". Ao submeter o modelo a **100 simulações estocásticas com Block Bootstrap, ruído de microestrutura e slippage**, revelou-se que em **52% dos cenários o saldo fura o piso unicamente pela desvalorização de mercado do próprio Bitcoin**, passando **45,6% do tempo abaixo do piso**.
 * **Generalização para Todas as Trapaças Quantitativas:**
   1. **Confundir Trava de Código com Imunidade de Mercado:** Travas de software impedem a *drenagem ativa pelo robô*, mas JAMAIS anulam o risco de mercado (*beta* intrínseco do ativo).
@@ -78,9 +79,9 @@ Sempre que o usuário solicitar uma tarefa ou o assistente for interagir com o s
 | **10** | ⭐ **Plano Sentinela de Minas** | BRL <-> BNB | 90 reais | Mean-reversion 15m e economia perpétua de 25% em taxas Binance. | Ativo (+13,97 reais / DAS 79,5%) |
 | **11** | 🇺🇸 🛡️ **Plano Escudo de Washington** | USDT <-> TLT | 80 reais | T-Bonds Soberanos de 20 anos. Flight to safety contra bear market cripto (Corr: -0,35). | Ativo (Hedge Soberano) |
 | **12** | 🇺🇸 🐻 **Plano Sentinela Antifrágil** | USDT <-> SQQQB| 90 reais | ProShares UltraPro Short QQQ Spot. Lucro direto na queda dos mercados (Corr: -0,78). | Ativo (Binance Backed Inverse ETF) |
-| **13** | 🦇 **Plano Bruce Wayne** | Altcoins -> BRL | 300 reais | Circuit breaker com Quarentena de 12h, janela macro 30d e VWAP. | Ativo (Blindagem de Falso Pânico) |
+| **13** | 🦇 **Plano Bruce Wayne** | Altcoins -> BRL | 300 reais | Circuit breaker com Quarentena de 12h, janela macro 30d e VWAP. | ⏸️ **Desativado Temporariamente** |
 | **14** | 🇺🇸 **Plano Sentinela Wall Street**| USDT <-> SPYB | 100 reais | S&P 500 ETF Trust em SPYBUSDT real Spot na Binance. | Ativo (Binance Backed S&P 500) |
-| **15** | 🎩 🚪 **Plano Adeus, Perry** | Legados -> BRL/USDT | Custódia Total | Desova e liquidação cirúrgica de ativos legados (LINK, ADA, NEAR, AVAX) sob a Trava 6. | Ativo (Vazão e Desestocagem) |
+| **15** | 🎩 🚪 **Plano Adeus, Perry** | Legados -> BRL/USDT | Custódia Total | Desova e liquidação cirúrgica de ativos legados (LINK, ADA, NEAR, AVAX) sob a Trava 6. | ⏸️ **Desativado Temporariamente** |
 
 ---
 
