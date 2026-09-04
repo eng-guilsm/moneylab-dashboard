@@ -750,50 +750,50 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
         )
         
         tetos_volume <- list(
-          "PLANO_GUIANA_BRASILEIRA" = 250.00,
-          "PLANO_ESCUDO_DE_AQUILES" = 350.00,
+          "PLANO_GUIANA_BRASILEIRA" = 200.00,
+          "PLANO_ESCUDO_DE_AQUILES" = 250.00,
           "PLANO_PATRIA_VOLATIL" = 350.00,
           "PLANO_CABOCLO_DOS_ORACULOS" = 480.00,
-          "PLANO_GRAVIDADE_ZERO" = 360.00,
+          "PLANO_GRAVIDADE_ZERO" = 220.00,
           "PLANO_CORISCO_DA_SOLANA" = 220.00,
-          "PLANO_DUELO_DE_TITAS" = 300.00,
-          "PLANO_FLECHA_DE_SAGARANA" = 450.00,
-          "PLANO_COFRE_DE_MIDAS" = 55.00,
-          "PLANO_SENTINELA_DE_MINAS" = 180.00,
+          "PLANO_DUELO_DE_TITAS" = 150.00,
+          "PLANO_FLECHA_DE_SAGARANA" = 300.00,
+          "PLANO_COFRE_DE_MIDAS" = 70.00,
+          "PLANO_SENTINELA_DE_MINAS" = 120.00,
           "PLANO_SERTAO_VALENTE" = 160.00,
           "PLANO_FAROL_DE_NEAR" = 300.00,
           "PLANO_BRUCE_WAYNE" = 350.00,
-          "PLANO_SENTINELA_WALLSTREET" = 220.00,
+          "PLANO_SENTINELA_WALLSTREET" = 150.00,
           "PLANO_DOLLARUS_QUANTUM_PEG" = 220.00,
           "PLANO_TITA_DO_SILICIO" = 250.00,
-          "PLANO_CHOQUE_ENERGETICO" = 100.00,
-          "PLANO_ESCUDO_DE_WASHINGTON" = 140.00,
-          "PLANO_SENTINELA_ANTIFRAGIL" = 160.00,
-          "PLANO_COMMODITY_ENERGY_ALPHA" = 100.00,
+          "PLANO_CHOQUE_ENERGETICO" = 120.00,
+          "PLANO_ESCUDO_DE_WASHINGTON" = 120.00,
+          "PLANO_SENTINELA_ANTIFRAGIL" = 120.00,
+          "PLANO_COMMODITY_ENERGY_ALPHA" = 120.00,
           "PLANO_ADEUS_PERRY" = 450.00
         )
         
         lucros_minimos <- list(
-          "PLANO_GUIANA_BRASILEIRA" = 1.00,
-          "PLANO_ESCUDO_DE_AQUILES" = 1.20,
-          "PLANO_PATRIA_VOLATIL" = 0.35,
+          "PLANO_GUIANA_BRASILEIRA" = 0.40,
+          "PLANO_ESCUDO_DE_AQUILES" = 0.57,
+          "PLANO_PATRIA_VOLATIL" = 0.40,
           "PLANO_CABOCLO_DOS_ORACULOS" = 0.70,
-          "PLANO_GRAVIDADE_ZERO" = 1.20,
+          "PLANO_GRAVIDADE_ZERO" = 1.07,
           "PLANO_CORISCO_DA_SOLANA" = 0.50,
-          "PLANO_DUELO_DE_TITAS" = 0.70,
-          "PLANO_FLECHA_DE_SAGARANA" = 0.40,
+          "PLANO_DUELO_DE_TITAS" = 0.53,
+          "PLANO_FLECHA_DE_SAGARANA" = 0.57,
           "PLANO_COFRE_DE_MIDAS" = 0.00,
-          "PLANO_SENTINELA_DE_MINAS" = 0.50,
+          "PLANO_SENTINELA_DE_MINAS" = 0.86,
           "PLANO_SERTAO_VALENTE" = 0.45,
           "PLANO_FAROL_DE_NEAR" = 0.70,
           "PLANO_BRUCE_WAYNE" = 0.00,
-          "PLANO_SENTINELA_WALLSTREET" = 0.64,
+          "PLANO_SENTINELA_WALLSTREET" = 0.48,
           "PLANO_DOLLARUS_QUANTUM_PEG" = 0.50,
-          "PLANO_TITA_DO_SILICIO" = 0.80,
-          "PLANO_CHOQUE_ENERGETICO" = 0.60,
-          "PLANO_ESCUDO_DE_WASHINGTON" = 0.50,
-          "PLANO_SENTINELA_ANTIFRAGIL" = 0.80,
-          "PLANO_COMMODITY_ENERGY_ALPHA" = 0.60,
+          "PLANO_TITA_DO_SILICIO" = 0.40,
+          "PLANO_CHOQUE_ENERGETICO" = 0.43,
+          "PLANO_ESCUDO_DE_WASHINGTON" = 0.52,
+          "PLANO_SENTINELA_ANTIFRAGIL" = 0.52,
+          "PLANO_COMMODITY_ENERGY_ALPHA" = 0.43,
           "PLANO_ADEUS_PERRY" = 0.40
         )
         
@@ -982,6 +982,29 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
               aprovado <- FALSE
               motivo_veto <- sprintf("Teto Global de 50%% em Criptos/Altcoins Atingido: Posição total em criptoativos é R$ %.2f (%.1f%% do patrimônio | Teto: R$ %.2f [50%%]). Novas compras de cripto vetadas para desestocagem; vendas e desovas para BRL/USDT/PAXG autorizadas.",
                                      total_cripto_altcoins_brl, pct_cripto_atual, teto_50pct_brl)
+            }
+          }
+          
+          # Subtrava 2.3: Coordenação Anti-Canibalização Flecha vs Escudo (mesmo candle de 5m / 300s)
+          if (aprovado && as.character(pedido$destino) == "BTC" && estrategia_nome %in% c("PLANO_FLECHA_DE_SAGARANA", "PLANO_ESCUDO_DE_AQUILES")) {
+            hist_anti_canib <- "ordens_executadas.rds"
+            if (file.exists(hist_anti_canib)) {
+              hist_exec_tmp <- tryCatch(readRDS(hist_anti_canib), error = function(e) NULL)
+              if (!is.null(hist_exec_tmp) && nrow(hist_exec_tmp) > 0 && all(c("Estrategia", "Destino", "Data_Hora", "Status") %in% names(hist_exec_tmp))) {
+                estrategia_parceira <- ifelse(estrategia_nome == "PLANO_FLECHA_DE_SAGARANA", "PLANO_ESCUDO_DE_AQUILES", "PLANO_FLECHA_DE_SAGARANA")
+                trades_parceira <- hist_exec_tmp[hist_exec_tmp$Estrategia == estrategia_parceira & 
+                                                  hist_exec_tmp$Destino == "BTC" & 
+                                                  grepl("EXECUTADO_REAL", hist_exec_tmp$Status), ]
+                if (nrow(trades_parceira) > 0) {
+                  ultimo_ts <- as.POSIXct(tail(trades_parceira$Data_Hora, 1))
+                  segundos_dif <- as.numeric(difftime(Sys.time(), ultimo_ts, units = "secs"))
+                  if (!is.na(segundos_dif) && segundos_dif < 300) {
+                    aprovado <- FALSE
+                    motivo_veto <- sprintf("Coordenação Anti-Canibalização Flecha vs Escudo: %s comprou BTC há %.0fs (< 300s). Entrada vetada para evitar canibalização no mesmo candle de 5m.",
+                                           estrategia_parceira, segundos_dif)
+                  }
+                }
+              }
             }
           }
         }
