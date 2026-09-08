@@ -140,7 +140,12 @@
   </div>
 
   <!-- SCRIPTS OFICIAIS (IDÊNTICOS AO HARMONICUS SX) -->
-  <script src="data/charts_data.js?v=20260831_v14_perf"></script>
-  <script src="charts-kinetics.js?v=20260831_v14_perf"></script>
+  <script src="https://eng-guilsm.github.io/harmonicus-sx/data/charts_data.js"></script>
+  <script>
+    if (!window.ASSETS_KINETICS_DATA) {
+      document.write('<script src="data/charts_data.js"><\/script>');
+    }
+  </script>
+  <script src="charts-kinetics.js?v=20260908_v18_live"></script>
 </body>
 </html>

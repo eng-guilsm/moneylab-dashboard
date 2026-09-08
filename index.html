@@ -140,7 +140,12 @@
   </div>
 
   <!-- SCRIPTS PÚBLICOS EXCLUSIVOS DO RADAR CINÉTICO (PÁGINA 3 ABERTA) -->
-  <script src="data/charts_data.js?v=20260903_v17_live"></script>
-  <script src="charts-kinetics.js?v=20260903_v17_live"></script>
+  <script src="https://eng-guilsm.github.io/harmonicus-sx/data/charts_data.js"></script>
+  <script>
+    if (!window.ASSETS_KINETICS_DATA) {
+      document.write('<script src="data/charts_data.js"><\/script>');
+    }
+  </script>
+  <script src="charts-kinetics.js?v=20260908_v18_live"></script>
 </body>
 </html>
