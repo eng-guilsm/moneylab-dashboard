@@ -49,17 +49,26 @@ user_env <<- new.env(hash = TRUE)
 # BLOCO 3: MOTOR DE FUNÇÕES (OBSERVADOR DO PASSADO RECENTE)
 # ------------------------------------------------------------------------------
 cotacao_rapida <- function() {
-  log_analyst("Interrogando o banco de dados local...")
+  log_analyst("Interrogando cotação em tempo real...")
   
   con <- tryCatch(dbConnect(RSQLite::SQLite(), DB_FILE), error = function(e) NULL)
   if(is.null(con)) return("⚠️ Erro: Singularidade no Banco de Dados (Offline).")
   on.exit(tryCatch(dbDisconnect(con), error = function(e) NULL))
   
-  # Puxa exclusivamente BTCBRL e USD_BRL de forma 100% isolada e imune a alterações em outras colunas
+  # Puxa exclusivamente BTCBRL e USD_BRL do banco local
   df_b <- tryCatch(dbGetQuery(con, "SELECT Data_Hora, BTCBRL FROM Historico_binance WHERE BTCBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 1"), error = function(e) NULL)
   df_r <- tryCatch(dbGetQuery(con, "SELECT Data_Hora, USD_BRL FROM Historico_rapido WHERE USD_BRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 1"), error = function(e) NULL)
   
   if(is.null(df_b) || nrow(df_b) == 0 || is.null(df_r) || nrow(df_r) == 0) return("⚠️ Horizonte de eventos vazio (Sem dados no DB).")
+  
+  # Captura instantânea direta da Binance Spot API (SSOT ao vivo)
+  p_live_btc <- tryCatch({
+    d <- jsonlite::fromJSON("https://api.binance.com/api/v3/ticker/price?symbol=BTCBRL")
+    as.numeric(d$price)
+  }, error = function(e) NULL)
+  
+  p_btc_final <- if (!is.null(p_live_btc) && !is.na(p_live_btc) && p_live_btc > 0) p_live_btc else df_b$BTCBRL[1]
+  tag_fonte <- if (!is.null(p_live_btc) && !is.na(p_live_btc) && p_live_btc > 0) "Spot Live" else "DB Snapshot"
   
   # Cálculo de latência temporal em relação à captura do banco
   ts_captura <- as.POSIXct(df_b$Data_Hora[1])
@@ -70,16 +79,16 @@ cotacao_rapida <- function() {
     formatC(as.numeric(x), format="f", big.mark=".", decimal.mark=",", digits=2)
   }
   
-  # Construção da Mensagem Canônica (Exclusiva Bitcoin e Dólar)
-  msg <- paste0("<b>💰 MERCADO LOCAL (DB)</b>\n\n",
-                "🪙 <b>BTC:</b> R$ ", fmt(df_b$BTCBRL), "\n",
-                "💵 <b>USD:</b> R$ ", fmt(df_r$USD_BRL), "\n\n",
-                "🕒 <b>Captura DB:</b> ", format(ts_captura, "%H:%M:%S"), "\n",
-                "⏱️ <b>Latência:</b> ", latencia, "s atrás\n",
-                "📱 <b>Agora:</b> ", format(Sys.time(), "%H:%M:%S"))
+  # Construção da Mensagem Canônica (Sem R$, conforme Regra 2 Anti-Corrupção de Markdown)
+  msg <- paste0("<b>💰 MERCADO EM TEMPO REAL</b>\n\n",
+                "🪙 <b>BTC:</b> ", fmt(p_btc_final), " reais (", tag_fonte, ")\n",
+                "💵 <b>USD:</b> ", fmt(df_r$USD_BRL), " reais\n\n",
+                "🕒 <b>Captura DB:</b> ", format(ts_captura, "%H:%M:%S"), " (", latencia, "s atrás)\n",
+                "📱 <b>Consulta:</b> ", format(Sys.time(), "%H:%M:%S"))
   
   return(msg)
 }
+
 
 verificar_acesso <- function(bot, update) {
   user_id <- as.character(update$message$from$id)

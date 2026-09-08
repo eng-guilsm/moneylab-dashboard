@@ -851,6 +851,9 @@ function startLiveBinancePoller() {
     }
   };
 
+  // Chamada imediata ao carregar a página (zero latência percebida)
+  fetchLive();
   // Atualização leve a cada 5 segundos apenas para o ticker spot (sem travar a UI)
   kineticsPollerTimer = setInterval(fetchLive, 5000);
 }
+
