@@ -26,20 +26,20 @@ Cada um dos 15 motores opera sob isolamento estatístico, governado pelo Gatekee
 
 | # | Estratégia | Par / Ativo | Alocação Base | Racional Quantitativo Intradiário (Calibração G500) | Status em Produção |
 | :-: | :--- | :---: | :---: | :--- | :--- |
-| **1** | **Plano Guiana Brasileira** | `PAXG <-> BTC` | 150 reais | Arbitragem de spread adaptativo. Período 60, Z <= -1,00 / Z >= +0,95, Trava 6 >= +0,40%. Lucro: **4,35 reais/mês** (Posse: 123,3h). | Ativo (Calibrado G500) |
+| **1** | **Plano Guiana Brasileira** | `PAXG <-> BTC` | 150 reais | Arbitragem de spread adaptativo desengasgada (piso BTC 30 reais). Período 60, Z <= -1,00 / Z >= +0,95, Trava 6 >= +0,40%. Lucro: **4,35 reais/mês** (Posse: 123,3h). | Ativo (Desengasgado) |
 | **2** | ⭐ **Plano Escudo de Aquiles** | `BRL -> BTC` | 200 reais | Compra anti-pânico com VIX >= 21 ou Z <= -0,60, d2Z >= +0,014, Trava 6 >= +0,57%. Lucro: **1,74 reais/mês** (Posse: 176,0h). | Ativo (Calibrado G500) |
 | **3** | **Plano Pátria Volátil** | `BRL <-> USDT` | 280 reais | Colchão no Simple Earn (6,88% a.a.) e Desova Escalonada de excedente cambial (Não-Cripto/FX). | Ativo (Gestão Passiva) |
-| **4** | 🇺🇸 ⭐ **Plano Titã do Silício** | `USDT <-> NVDAB` | 100 reais | Tech Alpha intradiário Spot em NVDAB. Período 60, Z <= -1,06, Trava 6 >= +0,40%. Lucro: **1,78 reais/mês** (Posse: 51,0h, CV 0,6%). | Ativo (Calibrado G500) |
+| **4** | 🇺🇸 ⭐ **Plano Titã do Silício** | `USDT <-> NVDAB` | 100 reais | Tech Alpha intradiário Spot em NVDAB. Período 60, Z <= -1,06, d2Z >= +0,015, Trava 6 >= +0,40%. Lucro: **1,78 reais/mês** (Posse: 51,0h, CV 0,6%). | Ativo (Recalibrado) |
 | **5** | **Plano Gravidade Zero** | `BTC -> SOL -> BRL` | 180 reais | Dual-Scale Fourier ratio SOL/BTC com giro dinâmico de BTC (Modelo A: Hub de Alta Velocidade) e realização para BRL. Período 12, Z <= -0,90, Trava 6 >= +1,07%. Lucro: **3,43 reais/mês** (Posse: 18,1h). | Ativo (Calibrado G500) |
 | **6** | 🇺🇸 🛡️ **Plano Choque Energético** | `USDT <-> XLE` | 90 reais | Hedge de Petróleo/Energia (Corr: -0,35 vs BTC). Período 60, Z <= -1,17, Trava 6 >= +0,43%. Lucro: **1,48 reais/mês** (Posse: 475,5h). | Ativo (Calibrado G500) |
 | **7** | ⭐ **Plano Duelo de Titãs** | `BTC -> ETH -> BRL` | 65 reais | Cointegração do ratio ETH/BTC com giro dinâmico de BTC (Modelo A: Hub de Alta Velocidade) e realização BRL. Período 12, Z <= -1,10, Trava 6 >= +0,53%. Lucro: **1,30 reais/mês** (Posse: 310,0h). | Ativo (Calibrado G500) |
 | **8** | ⭐ **Plano Flecha de Sagarana** | `BRL <-> BTC` | 220 reais | Dip hunter intradiário em BTC. Período 48, Z <= -0,60, d2Z >= +0,014, Trava 6 >= +0,57%. Lucro: **1,91 reais/mês** (Posse: 176,0h). | Ativo (Calibrado G500) |
-| **9** | **Plano Cofre de Midas** | `BRL -> USDT -> PAXG`| 50 reais | Acumulação passiva de ouro via DCA a cada 5 dias. Ineficiência comprovada em candles 5m (-26,25 reais/mês; Simple Earn 0,01% a.a.). Ouro concentrado no Plano 1. | ⏸️ **Desativado pela Governança** |
+| **9** | ⭐ **Plano Sentinela do Sol** | `BRL <-> SOL` | 60 reais | Mean-reversion 3h em Solana Spot (sigma 0,257%/5m). Z <= -1,15, d2Z >= +0,012, Trava 6 >= +0,75%. Lucro: **2,10 a 18,22 reais/mês** (Posse: 42,7h). Elimina ociosidade do caixa BRL. | Ativo (Calibrado G500) |
 | **10** | ⭐ **Plano Sentinela de Minas** | `BRL <-> BNB` | 90 reais | Mean-reversion 15m e economia de 25% em taxas Binance. Período 36, Z <= -1,15, Trava 6 >= +0,86%. Lucro: **1,86 reais/mês**. | Ativo (Calibrado G500) |
-| **11** | 🇺🇸 🛡️ **Plano Escudo de Washington** | `USDT <-> TLT` | 80 reais | T-Bonds Soberanos de 20 anos. Flight to safety contra bear market cripto. Período 60, Trava 6 >= +0,52%. Lucro: **0,23 reais/mês**. | Ativo (Calibrado G500) |
-| **12** | 🇺🇸 🐻 **Plano Sentinela Antifrágil** | `USDT <-> SQQQB`| 90 reais | ProShares UltraPro Short QQQ Spot. Período 12, Z <= -0,95, Trava 6 >= +0,52%. Lucro: **0,14 reais/mês** (Posse: 4,9h). | Ativo (Calibrado G500) |
+| **11** | 🇺🇸 🛡️ **Plano Escudo de Washington** | `USDT <-> TLT` | 80 reais | T-Bonds Soberanos de 20 anos. Flight to safety contra bear market cripto. Período 60, d2Z >= +0,015, Trava 6 >= +0,52%. Lucro: **0,23 reais/mês**. | Ativo (Recalibrado) |
+| **12** | 🇺🇸 🐻 **Plano Sentinela Antifrágil** | `USDT <-> SQQQB`| 90 reais | ProShares UltraPro Short QQQ Spot. Período 12, choque ret_btc_5m <= -0,35%, Trava 6 >= +0,52%. Lucro: **0,14 reais/mês** (Posse: 4,9h). | Ativo (Recalibrado) |
 | **13** | 🦇 **Plano Bruce Wayne** | `Altcoins -> BRL` | 300 reais | Circuit breaker com Quarentena de 12h, janela macro 30d e VWAP. | ⏸️ **Desativado Temporariamente** |
-| **14** | 🇺🇸 **Plano Sentinela Wall Street**| `USDT <-> SPYB` | 100 reais | S&P 500 ETF Trust em SPYBUSDT Spot. Período 12, Z <= -0,95, Trava 6 >= +0,48%. Lucro: **0,25 reais/mês** (Posse: 174,7h). | Ativo (Calibrado G500) |
+| **14** | 🇺🇸 **Plano Sentinela Wall Street**| `USDT <-> SPYB` | 100 reais | S&P 500 ETF Trust em SPYBUSDT Spot. Período 12, Z <= -0,95, d2Z >= +0,015, Trava 6 >= +0,48%. Lucro: **0,25 reais/mês** (Posse: 174,7h). | Ativo (Recalibrado) |
 | **15** | 🎩 🚪 **Plano Adeus, Perry** | `Legados -> BRL/USDT`| Custódia Total | Desova e liquidação cirúrgica de ativos legados (LINK, ADA, NEAR, AVAX) sob a Trava 6. | ⏸️ **Desativado Temporariamente** |
 
 ---
