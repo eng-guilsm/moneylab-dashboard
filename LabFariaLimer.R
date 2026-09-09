@@ -61,7 +61,8 @@ db_safe_append <- function(table_name, data) {
 # [PARÂMETROS E FUNÇÕES AUXILIARES]
 TIMER_RAPIDO <- 300; TIMER_BINANCE <- 60; TIMER_MACRO <- 14400
 ORDEM_ATIVOS <- c("BTCBRL", "ETHBRL", "USDTBRL", "BNBBRL", "SOLBRL", 
-                  "ADABRL", "LINKBRL", "NEARBRL", "AVAXBRL", "POLBRL", "RENDERBRL", "LTCBRL", "DOGEBRL")
+                  "ADABRL", "LINKBRL", "NEARBRL", "AVAXBRL", "POLBRL", "RENDERBRL", "LTCBRL", "DOGEBRL",
+                  "PAXGBRL", "PAXGUSDT", "NVDABUSDT", "SPYBUSDT", "TSLABUSDT", "SQQQBUSDT", "QQQBUSDT")
 
 last_run_binance <- Sys.time() - hours(10)
 last_run_rapido  <- Sys.time() - hours(10)

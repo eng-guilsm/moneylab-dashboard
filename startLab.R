@@ -143,27 +143,31 @@ repeat {
       }, error = function(e) NULL)
     }
     
-    # 4. Outros índices e commodities
-    quotes <- get_safe_quote(c("^BVSP", "^GSPC", "EWZ", "QQQ", "CL=F"))
+    # 4. Outros índices, commodities e Ativos de Hedge US (NVDA, XLE, TLT, BITI)
+    quotes <- get_safe_quote(c("^BVSP", "^GSPC", "EWZ", "QQQ", "CL=F", "NVDA", "XLE", "TLT", "BITI"))
     
     tryCatch({
       df_rapido <- data.frame(
-        Data_Hora = format(agora, "%Y-%m-%d %H:%M:%S"),
-        BTC_BRL   = btc_val,
-        ETH_BRL   = eth_val,
-        USD_BRL   = usd_val,
-        EUR_BRL   = eur_val,
-        IBOV_Pts  = if(!is.null(quotes)) quotes["^BVSP", "Last"] else NA,
-        SP500_Pts = if(!is.null(quotes)) quotes["^GSPC", "Last"] else NA,
-        EWZ_Bolsa = if(!is.null(quotes)) quotes["EWZ", "Last"] else NA,
-        QQQ_Tech  = if(!is.null(quotes)) quotes["QQQ", "Last"] else NA,
-        WTI_Oil   = if(!is.null(quotes)) quotes["CL=F", "Last"] else NA
+        Data_Hora   = format(agora, "%Y-%m-%d %H:%M:%S"),
+        BTC_BRL     = btc_val,
+        ETH_BRL     = eth_val,
+        USD_BRL     = usd_val,
+        EUR_BRL     = eur_val,
+        IBOV_Pts    = if(!is.null(quotes) && "^BVSP" %in% rownames(quotes)) quotes["^BVSP", "Last"] else NA,
+        SP500_Pts   = if(!is.null(quotes) && "^GSPC" %in% rownames(quotes)) quotes["^GSPC", "Last"] else NA,
+        EWZ_Bolsa   = if(!is.null(quotes) && "EWZ" %in% rownames(quotes)) quotes["EWZ", "Last"] else NA,
+        QQQ_Tech    = if(!is.null(quotes) && "QQQ" %in% rownames(quotes)) quotes["QQQ", "Last"] else NA,
+        WTI_Oil     = if(!is.null(quotes) && "CL=F" %in% rownames(quotes)) quotes["CL=F", "Last"] else NA,
+        NVDA_Stock  = if(!is.null(quotes) && "NVDA" %in% rownames(quotes)) quotes["NVDA", "Last"] else NA,
+        XLE_Energy  = if(!is.null(quotes) && "XLE" %in% rownames(quotes)) quotes["XLE", "Last"] else NA,
+        TLT_Bond    = if(!is.null(quotes) && "TLT" %in% rownames(quotes)) quotes["TLT", "Last"] else NA,
+        BITI_Short  = if(!is.null(quotes) && "BITI" %in% rownames(quotes)) quotes["BITI", "Last"] else NA
       )
       df_rapido$Origem_Dado <- "TICK_REAL_FARIALIMER"
       
       if(!is.na(df_rapido$BTC_BRL) && !is.na(df_rapido$USD_BRL)) {
         db_safe_append("Historico_rapido", df_rapido)
-        cat("    ✅ DB: Rápido OK (Tag: TICK_REAL_FARIALIMER).\n")
+        cat("    ✅ DB: Rápido OK (Tag: TICK_REAL_FARIALIMER | Hedge US Ingerido).\n")
       }
     }, error = function(e) cat("    ❌ Erro no Bloco Rápido:", conditionMessage(e), "\n"))
     
