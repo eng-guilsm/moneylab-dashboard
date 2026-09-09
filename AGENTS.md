@@ -75,7 +75,7 @@ Sempre que o usuário solicitar uma tarefa ou o assistente for interagir com o s
 | **6** | 🇺🇸 🛡️ **Plano Choque Energético** | USDT <-> XLE | 90 reais | Hedge de Petróleo/Energia com correlação negativa comprovada de -0,35 contra o Bitcoin. | Ativo (Hedge Macro) |
 | **7** | ⭐ **Plano Duelo de Titãs** | BTC -> ETH -> BRL | 65 reais | Cointegração do ratio ETH/BTC com giro dinâmico de BTC (Modelo A: Hub de Alta Velocidade) e realização BRL. | Ativo (Calibrado G500) |
 | **8** | ⭐ **Plano Flecha de Sagarana** | BRL <-> BTC | 220 reais | Dip hunter com Z <= -1,18 sigma e aceleração d2Z >= 0. DAS Fundo: 68,7%. | Ativo (+8,32 reais em 10 dias) |
-| **9** | **Plano Cofre de Midas** | BRL -> USDT -> PAXG| 50 reais | Acumulação passiva de ouro via DCA a cada 5 dias. Ineficiência comprovada em candles 5m (-26,25 reais/mês; Simple Earn 0,01% a.a.). Ouro concentrado no Plano 1. | ⏸️ **Desativado pela Governança** |
+| **9** | ⭐ **Plano Sentinela do Sol** | BRL <-> SOL | 60 reais | Mean-reversion 3h em Solana Spot (sigma 0,257%/5m). Z <= -1,15, d2Z >= +0,012, Trava 6 >= +0,75%. Lucro: +2,10 a 18,22 reais/mês (Posse: 42,7h). Elimina ociosidade do caixa BRL. | Ativo (Calibrado G500) |
 | **10** | ⭐ **Plano Sentinela de Minas** | BRL <-> BNB | 90 reais | Mean-reversion 15m e economia perpétua de 25% em taxas Binance. | Ativo (+13,97 reais / DAS 79,5%) |
 | **11** | 🇺🇸 🛡️ **Plano Escudo de Washington** | USDT <-> TLT | 80 reais | T-Bonds Soberanos de 20 anos. Flight to safety contra bear market cripto (Corr: -0,35). | Ativo (Hedge Soberano) |
 | **12** | 🇺🇸 🐻 **Plano Sentinela Antifrágil** | USDT <-> SQQQB| 90 reais | ProShares UltraPro Short QQQ Spot. Lucro direto na queda dos mercados (Corr: -0,78). | Ativo (Binance Backed Inverse ETF) |

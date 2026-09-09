@@ -23,7 +23,7 @@ VALOR_GRAVIDADE_BRL  <- 180.0  # R$ 180 - Plano 5: Gravidade Zero (BTC -> SOL ->
 VALOR_CHOQUE_BRL     <- 90.0   # R$ 90 (18 USDT) - Plano 6: Choque Energético (XLE Hedge 5h | Posse 475.5h)
 VALOR_TITAS_BRL      <- 100.0  # R$ 100 - Plano 7: Duelo de Titãs (BTC -> ETH -> BRL 1h | Posse 310.0h | Modelo A: Alta Velocidade)
 VALOR_SAGARANA_BRL   <- 220.0  # R$ 220 - Plano 8: Flecha de Sagarana (BRL <-> BTC 4h | Posse 176.0h | CV 5.9%)
-VALOR_MIDAS_BRL      <- 50.0   # R$ 50  - Plano 9: Cofre de Midas (DCA 5 Dias Simple Earn Ouro)
+VALOR_SOL_SENTINELA_BRL <- 60.0 # R$ 60  - Plano 9: Sentinela do Sol (BRL <-> SOL 3h | Posse 42.7h | CV Otimizado)
 VALOR_BNB_BRL        <- 90.0   # R$ 90  - Plano 10: Sentinela de Minas (BRL <-> BNB 3h | Posse 177.9h | CV 7.4%)
 VALOR_TLT_BRL        <- 80.0   # R$ 80 (16 USDT) - Plano 11: Escudo de Washington (TLT T-Bonds 5h | Posse 331.9h)
 VALOR_SQQQB_BRL      <- 90.0   # R$ 90 (18 USDT) - Plano 12: Sentinela Antifrágil (SQQQB 1h | Posse 4.9h)
@@ -748,10 +748,10 @@ executar_radar_labtrader <- function() {
   dsp_guiana   <- if (!is.null(stats_guiana$dsp)) stats_guiana$dsp else list(theta = 0, d2Z = 0)
   
   # Ponta A: Bitcoin eufórico / Ouro com desconto -> Vende BTC e compra PAXG
-  can_sell_btc_guiana <- saldo_btc_brl >= 65.0 && saldo_paxg_brl < 800.0
+  can_sell_btc_guiana <- saldo_btc_brl >= 43.0 && saldo_paxg_brl < 850.0
   if (z_guiana <= -1.00 && dsp_guiana$d2Z >= -0.015 && can_sell_btc_guiana) {
-    lote_g <- min(75.0 * fator_lote, max(60.0, saldo_btc_brl * 0.45))
-    if (lote_g >= 60.0) {
+    lote_g <- min(75.0 * fator_lote, max(43.0, saldo_btc_brl * 0.95))
+    if (lote_g >= 43.0 && lote_g <= saldo_btc_brl) {
       pedido <- list(
         estrategia = "PLANO_GUIANA_BRASILEIRA",
         origem = "BTC", destino = "PAXG",
@@ -761,9 +761,9 @@ executar_radar_labtrader <- function() {
   } else if (z_guiana >= 0.95) {
     # Ponta B: Ouro valorizado / Bitcoin em dip -> Vende PAXG e compra BTC (preservando piso de Ouro em R$ 500)
     folga_ouro <- saldo_paxg_brl - 505.0
-    if (folga_ouro >= 65.0) {
+    if (folga_ouro >= 30.0) {
       lote_g <- min(90.0 * fator_lote, folga_ouro)
-      if (lote_g >= 60.0) {
+      if (lote_g >= 25.0) {
         pedido <- list(
           estrategia = "PLANO_GUIANA_BRASILEIRA",
           origem = "PAXG", destino = "BTC",
@@ -843,7 +843,8 @@ executar_radar_labtrader <- function() {
         df_nv <- dbGetQuery(con_nv, "SELECT NVDABUSDT FROM Historico_binance WHERE NVDABUSDT IS NOT NULL ORDER BY Data_Hora DESC LIMIT 300;")
         if (nrow(df_nv) >= 30) {
           r_nv <- rev(df_nv$NVDABUSDT)
-          r_nv[seq(1, length(r_nv), by = 5)]
+          idx_5m <- rev(seq(length(r_nv), 1, by = -5))
+          r_nv[idx_5m]
         } else {
           rep(224.0, 16)
         }
@@ -855,8 +856,8 @@ executar_radar_labtrader <- function() {
       if (is.na(s_nvda) || s_nvda <= 0) s_nvda <- 1.5
       z_nvda <- (tail(nvda_serie, 1) - m_nvda) / s_nvda
       
-      # Calibração G500: Z <= -1.06 com aceleração d2Z >= 0.074
-      if (z_nvda <= -1.06 && dsp_nvda$d2Z >= 0.074) {
+      # Calibração G500: Z <= -1.06 com aceleração d2Z >= 0.015
+      if (z_nvda <= -1.06 && dsp_nvda$d2Z >= 0.015) {
         lote_usdt_nv <- min(40.0 * fator_lote, usdt_livre_rotacao)
         lote_brl_nv <- lote_usdt_nv * p_usdt_brl
         pedido <- list(
@@ -1024,36 +1025,39 @@ executar_radar_labtrader <- function() {
   
   
   # ----------------------------------------------------------------------------
-  # MOTOR 9: PLANO COFRE DE MIDAS (BRL -> PAXG | Acumulação Passiva de Ouro)
-  # [DESATIVADO PELA GOVERNANÇA: Ineficiência Estrutural Comprovada (-26,25 reais/mês)]
-  # Simple Earn PAXG de 0,01% a.a. inviabiliza retorno passivo. Ouro alocado via Plano 1.
+  # MOTOR 9: PLANO SENTINELA DO SOL (BRL <-> SOL | Calibrado G500 - 36p / 3h)
+  # Metricas G500: +2,10 a +18,22 reais/m | Posse: 42,7h | Platô CV Otimizado
+  # Substitui o ineficiente Cofre de Midas para eliminar a ociosidade do Caixa BRL
+  # Teto Máximo em Solana: R$ 180,00 | Subtrava 2.2 Preservada (Cripto < 80%)
   # ----------------------------------------------------------------------------
-  PLANO_COFRE_DE_MIDAS_ATIVO <- FALSE
-  if (is.null(pedido) && PLANO_COFRE_DE_MIDAS_ATIVO) {
-    hist_exec_file <- "ordens_executadas.rds"
-    horas_desde_midas <- 999.0
-    if (file.exists(hist_exec_file)) {
-      hist_exec_tmp <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
-      if (!is.null(hist_exec_tmp) && nrow(hist_exec_tmp) > 0 && "Estrategia" %in% names(hist_exec_tmp)) {
-        hist_midas <- hist_exec_tmp[hist_exec_tmp$Estrategia == "PLANO_COFRE_DE_MIDAS", ]
-        if (nrow(hist_midas) > 0) {
-          ultimo_midas_ts <- as.POSIXct(tail(hist_midas$Data_Hora, 1))
-          horas_desde_midas <- as.numeric(difftime(Sys.time(), ultimo_midas_ts, units = "hours"))
+  if (is.null(pedido) && !is.null(p_sol_brl) && ste_atual >= -0.02 && pc1_atual < 0.75 && w_energy < 55.0) {
+    if (!is.null(stats_sol_15m) && !is.null(stats_sol_15m$media) && stats_sol_15m$sd > 0) {
+      z_sol_36p <- (p_sol_brl - stats_sol_15m$media) / stats_sol_15m$sd
+      dsp_sol   <- obter_dsp_ativo(stats_sol_15m$serie)
+      
+      # Calibração G500: Z <= -1.15 com aceleração d2Z >= 0.012
+      cond_compra_sol <- (z_sol_36p <= -1.15) && (dsp_sol$d2Z >= 0.012) && (saldo_caixa_brl >= 55.0) && (saldo_sol_brl < 180.0)
+      
+      if (cond_compra_sol) {
+        lote_sol <- min(VALOR_SOL_SENTINELA_BRL * fator_lote, max(45.0, saldo_caixa_brl * 0.40))
+        pedido <- list(
+          estrategia = "PLANO_SENTINELA_DO_SOL",
+          origem = "BRL", destino = "SOL",
+          valor_brl = lote_sol,
+          lucro_esperado_pct = 0.75, timestamp = agora_ts
+        )
+      } else if (saldo_sol_brl >= 25.0) {
+        # Saída sob Trava 6 com Z >= 0.60
+        em_cooldown_sol9 <- verificar_cooldown_veto("PLANO_SENTINELA_DO_SOL", timeout_seg = 300)
+        if (z_sol_36p >= 0.60 && !em_cooldown_sol9) {
+          pedido <- list(
+            estrategia = "PLANO_SENTINELA_DO_SOL",
+            origem = "SOL", destino = "BRL",
+            valor_brl = min(saldo_sol_brl, VALOR_SOL_SENTINELA_BRL * fator_lote),
+            lucro_esperado_pct = 0.75, timestamp = agora_ts
+          )
         }
       }
-    }
-    
-    # Condição DCA Ressonante: 5 dias completos (120h) + Caixa livre >= R$ 120 + Cooldown 1h
-    # Ouro alocado entra diretamente no Simple Earn Flexível e eleva o Piso Ratchet Inviolável
-    em_cooldown_midas <- verificar_cooldown_veto("PLANO_COFRE_DE_MIDAS", timeout_seg = 3600)
-    if (!em_cooldown_midas && horas_desde_midas >= 120.0 && saldo_caixa_brl >= 120.0 && w_energy < 55.0) {
-      pedido <- list(
-        estrategia = "PLANO_COFRE_DE_MIDAS",
-        origem = "BRL", destino = "PAXG",
-        valor_brl = VALOR_MIDAS_BRL, # R$ 60,00 fixo (garante >= 10.50 USDT para filtro Binance)
-        lucro_esperado_pct = 3.50,   # Rendimento passivo Simple Earn Flexible
-        timestamp = agora_ts
-      )
     }
   }
   
@@ -1125,8 +1129,8 @@ executar_radar_labtrader <- function() {
       if (is.na(s_tlt) || s_tlt <= 0) s_tlt <- 1.2
       z_tlt <- (tail(tlt_serie, 1) - m_tlt) / s_tlt
       
-      # Calibração G500: Z <= -1.11 com aceleração d2Z >= 0.074
-      if (z_tlt <= -1.11 && dsp_tlt$d2Z >= 0.074) {
+      # Calibração G500: Z <= -1.11 com aceleração d2Z >= 0.015
+      if (z_tlt <= -1.11 && dsp_tlt$d2Z >= 0.015) {
         lote_usdt_tlt <- min(16.0 * fator_lote, usdt_livre_rotacao)
         pedido <- list(
           estrategia = "PLANO_ESCUDO_DE_WASHINGTON",
@@ -1160,8 +1164,8 @@ executar_radar_labtrader <- function() {
         }
       }
     } else if (usdt_livre_rotacao >= 18.0) {
-      # Calibração G500: Entrada com ret_btc_5m <= -0.0060 (queda rápida)
-      if (!is.null(ret_btc_5m) && ret_btc_5m <= -0.0060) {
+      # Calibração G500: Entrada com ret_btc_5m <= -0.0035 (queda intradiária de BTC)
+      if (!is.null(ret_btc_5m) && ret_btc_5m <= -0.0035) {
         lote_usdt_anti <- min(18.0 * fator_lote, usdt_livre_rotacao)
         pedido <- list(
           estrategia = "PLANO_SENTINELA_ANTIFRAGIL",
@@ -1209,7 +1213,8 @@ executar_radar_labtrader <- function() {
         df_sp <- dbGetQuery(con_sp, "SELECT SPYBUSDT FROM Historico_binance WHERE SPYBUSDT IS NOT NULL ORDER BY Data_Hora DESC LIMIT 60;")
         if (nrow(df_sp) >= 12) {
           r_sp <- rev(df_sp$SPYBUSDT)
-          r_sp[seq(1, length(r_sp), by = 5)]
+          idx_5m <- rev(seq(length(r_sp), 1, by = -5))
+          r_sp[idx_5m]
         } else rep(765.0, 12)
       }, error = function(e) rep(765.0, 12))
       
@@ -1219,8 +1224,8 @@ executar_radar_labtrader <- function() {
       if (is.na(s_sp) || s_sp <= 0) s_sp <- 2.0
       z_sp <- (tail(sp500_serie, 1) - m_sp) / s_sp
       
-      # Calibração G500: Z <= -0.95 com d2Z >= 0.026
-      if (z_sp <= -0.95 && dsp_sp500$d2Z >= 0.026) {
+      # Calibração G500: Z <= -0.95 com d2Z >= 0.015
+      if (z_sp <= -0.95 && dsp_sp500$d2Z >= 0.015) {
         lote_usdt_ws <- min(20.0 * fator_lote, usdt_livre_rotacao)
         pedido <- list(
           estrategia = "PLANO_SENTINELA_WALLSTREET",

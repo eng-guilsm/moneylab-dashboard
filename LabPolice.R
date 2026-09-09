@@ -408,11 +408,11 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
     p_paxg_brl_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT"), "parsed")$price) * as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) NULL)
     if (is.null(p_paxg_brl_tmp) || p_paxg_brl_tmp <= 0) p_paxg_brl_tmp <- 23777.0
     
-    # 🛡️ Blindagem Notional Mínimo Binance (0.00010000 BTC ~ R$ 45,00)
+    # 🛡️ Blindagem Notional Mínimo Binance (0.00010000 BTC ~ R$ 42,00)
     p_btc_brl_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=BTCBRL"), "parsed")$price), error = function(e) 416000.0)
-    if (valor_brl < 60.0 || (valor_brl / p_btc_brl_tmp) < 0.00012) {
-      cat(sprintf("⚠️ [GATEKEEPER NOTIONAL VETO] Ordem PAXGBTC de R$ %.2f abaixo do NOTIONAL mínimo da Binance (0.0001 BTC). Requer no mínimo R$ 60.00.\n", valor_brl))
-      return(list(sucesso = FALSE, msg = sprintf("Ordem PAXGBTC de R$ %.2f abaixo do Notional mínimo de 0.0001 BTC da Binance. Requer no mínimo R$ 60.00.", valor_brl)))
+    if (valor_brl < 42.0 || (valor_brl / p_btc_brl_tmp) < 0.000100) {
+      cat(sprintf("⚠️ [GATEKEEPER NOTIONAL VETO] Ordem PAXGBTC de R$ %.2f abaixo do NOTIONAL mínimo da Binance (0.0001 BTC ~ R$ 42,00).\n", valor_brl))
+      return(list(sucesso = FALSE, msg = sprintf("Ordem PAXGBTC de R$ %.2f abaixo do Notional mínimo de 0.0001 BTC da Binance (~R$ 42,00).", valor_brl)))
     }
     
     symbol <- "PAXGBTC"
@@ -736,6 +736,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_DUELO_DE_TITAS",
           "PLANO_FLECHA_DE_SAGARANA",
           "PLANO_COFRE_DE_MIDAS",
+          "PLANO_SENTINELA_DO_SOL",
           "PLANO_SENTINELA_DE_MINAS",
           "PLANO_SERTAO_VALENTE",
           "PLANO_FAROL_DE_NEAR",
@@ -760,6 +761,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_DUELO_DE_TITAS" = 150.00,
           "PLANO_FLECHA_DE_SAGARANA" = 300.00,
           "PLANO_COFRE_DE_MIDAS" = 70.00,
+          "PLANO_SENTINELA_DO_SOL" = 180.00,
           "PLANO_SENTINELA_DE_MINAS" = 120.00,
           "PLANO_SERTAO_VALENTE" = 160.00,
           "PLANO_FAROL_DE_NEAR" = 300.00,
@@ -784,6 +786,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_DUELO_DE_TITAS" = 0.53,
           "PLANO_FLECHA_DE_SAGARANA" = 0.57,
           "PLANO_COFRE_DE_MIDAS" = 0.00,
+          "PLANO_SENTINELA_DO_SOL" = 0.75,
           "PLANO_SENTINELA_DE_MINAS" = 0.86,
           "PLANO_SERTAO_VALENTE" = 0.45,
           "PLANO_FAROL_DE_NEAR" = 0.70,
@@ -1061,7 +1064,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                               ifelse(estrategia_nome == "PLANO_BRUCE_WAYNE", 24.0,
                               ifelse(estrategia_nome == "PLANO_SENTINELA_WALLSTREET", 0.50,
                               ifelse(estrategia_nome == "PLANO_DOLLARUS_QUANTUM_PEG", 0.25,
-                              ifelse(estrategia_nome %in% c("PLANO_CORISCO_DA_SOLANA", "PLANO_SENTINELA_DE_MINAS"), 0.16, 
+                              ifelse(estrategia_nome %in% c("PLANO_CORISCO_DA_SOLANA", "PLANO_SENTINELA_DE_MINAS", "PLANO_SENTINELA_DO_SOL"), 0.16, 
                               ifelse(estrategia_nome == "PLANO_FLECHA_DE_SAGARANA", 0.13,
                               ifelse(estrategia_nome == "PLANO_CABOCLO_DOS_ORACULOS", 0.20,
                               ifelse(estrategia_nome == "PLANO_SERTAO_VALENTE", 0.25,
