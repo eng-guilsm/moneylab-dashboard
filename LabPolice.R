@@ -404,33 +404,39 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
       }
     }
   } else if (origem == "BTC" && destino == "PAXG") {
-    # Guiana Ponta A: Compra PAXG com BTC usando par direto PAXGBTC
+    # Guiana Ponta A: Compra PAXG com BTC usando par direto PAXGBTC ou Smart Routing via BRL/USDT
     p_paxg_brl_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT"), "parsed")$price) * as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) NULL)
     if (is.null(p_paxg_brl_tmp) || p_paxg_brl_tmp <= 0) p_paxg_brl_tmp <- 23777.0
-    
-    # 🛡️ Blindagem Notional Mínimo Binance (0.00010000 BTC ~ R$ 42,00)
     p_btc_brl_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=BTCBRL"), "parsed")$price), error = function(e) 416000.0)
-    if (valor_brl < 42.0 || (valor_brl / p_btc_brl_tmp) < 0.000100) {
-      cat(sprintf("⚠️ [GATEKEEPER NOTIONAL VETO] Ordem PAXGBTC de R$ %.2f abaixo do NOTIONAL mínimo da Binance (0.0001 BTC ~ R$ 42,00).\n", valor_brl))
-      return(list(sucesso = FALSE, msg = sprintf("Ordem PAXGBTC de R$ %.2f abaixo do Notional mínimo de 0.0001 BTC da Binance (~R$ 42,00).", valor_brl)))
-    }
     
-    symbol <- "PAXGBTC"
-    side <- "BUY"
-    p_paxg_btc <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGBTC"), "parsed")$price), error = function(e) 0.055)
-    calc_qty <- ceiling((valor_brl / p_paxg_brl_tmp) * 10000) / 10000
-    if (calc_qty * p_paxg_btc < 0.000105) {
-      calc_qty <- ceiling((0.000105 / p_paxg_btc) * 10000) / 10000
+    # Se volume for >= R$ 48,00 (>= 0.000105 BTC), usa par direto PAXGBTC
+    if (valor_brl >= 48.0 && (valor_brl / p_btc_brl_tmp) >= 0.000105) {
+      symbol <- "PAXGBTC"
+      side <- "BUY"
+      p_paxg_btc <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGBTC"), "parsed")$price), error = function(e) 0.055)
+      calc_qty <- ceiling((valor_brl / p_paxg_brl_tmp) * 10000) / 10000
+      if (calc_qty * p_paxg_btc < 0.000105) {
+        calc_qty <- ceiling((0.000105 / p_paxg_btc) * 10000) / 10000
+      }
+      quantity <- sprintf("%.4f", calc_qty)
+    } else {
+      # 🌉 SMART ROUTING: Se volume abaixo do notional de PAXGBTC (mín 0.0001 BTC ~ R$ 42), executa ponte inteligente BTC -> BRL -> PAXG
+      cat(sprintf("🌉 [SMART ROUTING] Volume de R$ %.2f abaixo do notional de PAXGBTC (mín R$ 48). Executando ponte inteligente BTC -> BRL -> PAXG...\n", valor_brl))
+      r1 <- enviar_ordem_binance_market("BTC", "BRL", valor_brl)
+      if (r1$sucesso) {
+        return(enviar_ordem_binance_market("BRL", "PAXG", valor_brl))
+      } else {
+        return(r1)
+      }
     }
-    quantity <- sprintf("%.4f", calc_qty)
   } else if (origem == "BRL" && destino == "PAXG") {
     # Midas DCA: Compra USDT com BRL e em seguida compra PAXG com USDT (par PAXGUSDT)
     p_usdt_b <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) 5.18)
     if (is.null(p_usdt_b) || is.na(p_usdt_b) || p_usdt_b <= 0) p_usdt_b <- 5.18
     val_estimado_usdt <- valor_brl / p_usdt_b
-    if (val_estimado_usdt < 10.50) {
-      cat(sprintf("⚠️ [SMART ROUTING VETO] R$ %.2f (~%.2f USDT) abaixo do Notional mínimo da Binance (10.00 USDT). Requer no mínimo R$ 60.00.\n", valor_brl, val_estimado_usdt))
-      return(list(sucesso = FALSE, msg = sprintf("Valor de R$ %.2f abaixo do Notional mínimo de 10.00 USDT da Binance para PAXG. Requer no mínimo R$ 60.00.", valor_brl)))
+    if (val_estimado_usdt < 5.20 || valor_brl < 28.0) {
+      cat(sprintf("⚠️ [SMART ROUTING VETO] R$ %.2f (~%.2f USDT) abaixo do Notional mínimo da Binance (5.00 USDT). Requer no mínimo R$ 28.00.\n", valor_brl, val_estimado_usdt))
+      return(list(sucesso = FALSE, msg = sprintf("Valor de R$ %.2f abaixo do Notional mínimo de 5.00 USDT da Binance para PAXG. Requer no mínimo R$ 28.00.", valor_brl)))
     }
     
     cat(sprintf("🌉 [SMART ROUTING] Comprando PAXG via ponte BRL -> USDT -> PAXG (R$ %.2f)...\n", valor_brl))
@@ -496,36 +502,47 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
       quantity <- sprintf("%.4f", as.numeric(quantity))
     }
   } else if (origem == "PAXG" && destino == "BTC") {
-    # Guiana Ponta B: Vende PAXG por BTC usando par direto PAXGBTC
+    # Guiana Ponta B: Vende PAXG por BTC usando par direto PAXGBTC ou Smart Routing via BRL
     p_paxg_brl_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT"), "parsed")$price) * as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) NULL)
     if (is.null(p_paxg_brl_tmp) || p_paxg_brl_tmp <= 0) p_paxg_brl_tmp <- 23777.0
-    
-    # 🛡️ Blindagem Notional Mínimo Binance (0.00010000 BTC ~ R$ 45,00)
     p_btc_brl_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=BTCBRL"), "parsed")$price), error = function(e) 416000.0)
-    if (valor_brl < 60.0 || (valor_brl / p_btc_brl_tmp) < 0.00012) {
-      cat(sprintf("⚠️ [GATEKEEPER NOTIONAL VETO] Ordem PAXGBTC de R$ %.2f abaixo do NOTIONAL mínimo da Binance (0.0001 BTC). Requer no mínimo R$ 60.00.\n", valor_brl))
-      return(list(sucesso = FALSE, msg = sprintf("Ordem PAXGBTC de R$ %.2f abaixo do Notional mínimo de 0.0001 BTC da Binance. Requer no mínimo R$ 60.00.", valor_brl)))
-    }
     
-    # Resgata do Simple Earn se estiver no Earn flexível
+    # Resgata do Simple Earn se estiver no Earn flexivel
     resgatar_simple_earn_paxg()
     
-    df_w <- tryCatch(carteira(silent = TRUE), error = function(e) NULL)
-    saldo_paxg_real <- 0
-    if (!is.null(df_w) && is.data.frame(df_w)) {
-      row_p <- df_w[df_w$asset %in% c("PAXG", "LDPAXG"), ]
-      if (nrow(row_p) > 0) saldo_paxg_real <- sum(row_p$free, na.rm = TRUE)
+    # Se volume for >= R$ 48,00 (>= 0.000105 BTC), usa par direto PAXGBTC
+    if (valor_brl >= 48.0 && (valor_brl / p_btc_brl_tmp) >= 0.000105) {
+      df_w <- tryCatch(carteira(silent = TRUE), error = function(e) NULL)
+      saldo_paxg_real <- 0
+      if (!is.null(df_w) && is.data.frame(df_w)) {
+        row_p <- df_w[df_w$asset %in% c("PAXG", "LDPAXG"), ]
+        if (nrow(row_p) > 0) saldo_paxg_real <- sum(row_p$free, na.rm = TRUE)
+      }
+      symbol <- "PAXGBTC"
+      side <- "SELL"
+      p_paxg_btc <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGBTC"), "parsed")$price), error = function(e) 0.055)
+      calc_qty <- floor((valor_brl / p_paxg_brl_tmp) * 10000) / 10000
+      quantity_num <- if (saldo_paxg_real > 0) min(calc_qty, floor(saldo_paxg_real * 10000) / 10000) else calc_qty
+      if (quantity_num * p_paxg_btc < 0.000105) {
+        cat(sprintf("⚠️ [GATEKEEPER NOTIONAL VETO] Quantidade PAXGBTC (%.4f PAXG ~ %.8f BTC) abaixo do Notional mínimo de 0.0001 BTC. Alternando para Smart Routing...\n", quantity_num, quantity_num * p_paxg_btc))
+        r1 <- enviar_ordem_binance_market("PAXG", "BRL", valor_brl)
+        if (r1$sucesso) {
+          return(enviar_ordem_binance_market("BRL", "BTC", valor_brl))
+        } else {
+          return(r1)
+        }
+      }
+      quantity <- sprintf("%.4f", quantity_num)
+    } else {
+      # 🌉 SMART ROUTING: Se volume abaixo do notional direto de PAXGBTC (min 0.0001 BTC ~ R$ 42), executa ponte inteligente PAXG -> BRL -> BTC
+      cat(sprintf("🌉 [SMART ROUTING] Volume de R$ %.2f abaixo do notional direto de PAXGBTC (mín R$ 48). Executando ponte inteligente PAXG -> BRL -> BTC...\n", valor_brl))
+      r1 <- enviar_ordem_binance_market("PAXG", "BRL", valor_brl)
+      if (r1$sucesso) {
+        return(enviar_ordem_binance_market("BRL", "BTC", valor_brl))
+      } else {
+        return(r1)
+      }
     }
-    symbol <- "PAXGBTC"
-    side <- "SELL"
-    p_paxg_btc <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGBTC"), "parsed")$price), error = function(e) 0.055)
-    calc_qty <- floor((valor_brl / p_paxg_brl_tmp) * 10000) / 10000
-    quantity_num <- if (saldo_paxg_real > 0) min(calc_qty, floor(saldo_paxg_real * 10000) / 10000) else calc_qty
-    if (quantity_num * p_paxg_btc < 0.000105) {
-      cat(sprintf("⚠️ [GATEKEEPER NOTIONAL VETO] Quantidade PAXGBTC (%.4f PAXG ~ %.8f BTC) abaixo do Notional mínimo de 0.0001 BTC.\n", quantity_num, quantity_num * p_paxg_btc))
-      return(list(sucesso = FALSE, msg = "Quantidade PAXGBTC abaixo do Notional mínimo de 0.0001 BTC da Binance."))
-    }
-    quantity <- sprintf("%.4f", quantity_num)
   } else if (as.character(destino) %in% c("NVDAB", "NVDA", "SPYB", "SP500", "SQQQB", "BITI", "TSLAB", "TSLA", "QQQB", "AAPLB", "MSFTB")) {
     # 🇺🇸 Backed Equities Spot da Binance (NVDABUSDT, SPYBUSDT, SQQQBUSDT, TSLABUSDT, QQQBUSDT)
     alvo_sym <- as.character(destino)
