@@ -760,8 +760,9 @@ executar_radar_labtrader <- function() {
     }
   } else if (z_guiana >= 0.95) {
     # Ponta B: Ouro valorizado / Bitcoin em dip -> Vende PAXG e compra BTC (preservando piso de Ouro em R$ 500)
+    cooldown_veto_guiana <- verificar_cooldown_veto("PLANO_GUIANA_BRASILEIRA", timeout_seg = 300)
     folga_ouro <- saldo_paxg_brl - 505.0
-    if (folga_ouro >= 28.0) {
+    if (!cooldown_veto_guiana && folga_ouro >= 28.0) {
       lote_g <- min(90.0 * fator_lote, folga_ouro)
       if (lote_g >= 28.0) {
         pedido <- list(
@@ -824,7 +825,8 @@ executar_radar_labtrader <- function() {
       p_nvda_live <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=NVDABUSDT"), "parsed")$price), error = function(e) NULL)
       pm_nvda <- obter_vwap_ativo("NVDAB")
       if (!is.null(p_nvda_live) && p_nvda_live > 0 && pm_nvda > 0) {
-        ret_nvda <- (p_nvda_live / pm_nvda) - 1.0
+        p_nvda_live_brl <- p_nvda_live * p_usdt_brl
+        ret_nvda <- (p_nvda_live_brl / pm_nvda) - 1.0
         if (ret_nvda >= 0.0040) {
           val_venda_brl <- saldo_nvdab_usd * p_nvda_live * p_usdt_brl
           pedido <- list(
@@ -1102,7 +1104,8 @@ executar_radar_labtrader <- function() {
       pm_tlt <- obter_vwap_ativo("TLT")
       p_tlt_live <- tryCatch(as.numeric(tail(getQuote("TLT")$Last, 1)), error = function(e) 95.0)
       if (pm_tlt > 0 && p_tlt_live > 0) {
-        ret_tlt <- (p_tlt_live / pm_tlt) - 1.0
+        p_tlt_live_brl <- p_tlt_live * p_usdt_brl
+        ret_tlt <- (p_tlt_live_brl / pm_tlt) - 1.0
         if (ret_tlt >= 0.0052) {
           pedido <- list(
             estrategia = "PLANO_ESCUDO_DE_WASHINGTON",
@@ -1152,7 +1155,8 @@ executar_radar_labtrader <- function() {
       p_sqqq_live <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=SQQQBUSDT"), "parsed")$price), error = function(e) NULL)
       pm_sqqq <- obter_vwap_ativo("SQQQB")
       if (!is.null(p_sqqq_live) && p_sqqq_live > 0 && pm_sqqq > 0) {
-        ret_sqqq <- (p_sqqq_live / pm_sqqq) - 1.0
+        p_sqqq_live_brl <- p_sqqq_live * p_usdt_brl
+        ret_sqqq <- (p_sqqq_live_brl / pm_sqqq) - 1.0
         if (ret_sqqq >= 0.0052) {
           val_venda_brl <- saldo_sqqqb_usd * p_sqqq_live * p_usdt_brl
           pedido <- list(
@@ -1194,7 +1198,8 @@ executar_radar_labtrader <- function() {
       p_spy_live <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=SPYBUSDT"), "parsed")$price), error = function(e) NULL)
       pm_spy <- obter_vwap_ativo("SPYB")
       if (!is.null(p_spy_live) && p_spy_live > 0 && pm_spy > 0) {
-        ret_spy <- (p_spy_live / pm_spy) - 1.0
+        p_spy_live_brl <- p_spy_live * p_usdt_brl
+        ret_spy <- (p_spy_live_brl / pm_spy) - 1.0
         if (ret_spy >= 0.0048) {
           val_venda_brl <- saldo_spyb_usd * p_spy_live * p_usdt_brl
           pedido <- list(
