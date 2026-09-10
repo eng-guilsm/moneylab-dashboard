@@ -629,8 +629,9 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
     symbol <- spot_symbol
     side <- "SELL"
     if (!is.null(p_eq_u) && p_eq_u > 0) {
-      calc_q <- floor(((valor_brl / p_usdt_b) / p_eq_u) * 1000) / 1000
-      quantity <- if (saldo_eq_real > 0) min(calc_q, floor(saldo_eq_real * 1000) / 1000) else calc_q
+      calc_q <- floor(((valor_brl / p_usdt_b) / p_eq_u) * 100) / 100
+      quantity_num <- if (saldo_eq_real > 0) min(calc_q, floor(saldo_eq_real * 100) / 100) else calc_q
+      quantity <- sprintf("%.2f", quantity_num)
     }
     
     if (destino == "BRL") {
@@ -839,6 +840,11 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
               p_paxg_u <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT"), "parsed")$price), error = function(e) 2650.0)
               p_usdt_b <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) 5.18)
               preco_unit <- ifelse(!is.null(p_paxg_u) && !is.null(p_usdt_b), p_paxg_u * p_usdt_b, 24000.0)
+            } else if (origem_asset %in% c("SQQQB", "SQQQ", "NVDAB", "NVDA", "SPYB", "SP500", "TSLAB", "TSLA", "QQQB", "AAPLB", "MSFTB", "TLT", "TLTB")) {
+              eq_sym <- if (origem_asset %in% c("SQQQ", "BITI")) "SQQQB" else if (origem_asset %in% c("NVDA")) "NVDAB" else if (origem_asset %in% c("SP500")) "SPYB" else if (origem_asset %in% c("TSLA")) "TSLAB" else origem_asset
+              p_eq_u <- tryCatch(as.numeric(content(GET(paste0("https://api.binance.com/api/v3/ticker/price?symbol=", eq_sym, "USDT")), "parsed")$price), error = function(e) NULL)
+              p_usdt_b <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) 5.18)
+              preco_unit <- ifelse(!is.null(p_eq_u) && !is.null(p_usdt_b), p_eq_u * p_usdt_b, 200.0)
             } else {
               sym_check <- paste0(origem_asset, "BRL")
               p_tmp <- tryCatch(as.numeric(content(GET(paste0("https://api.binance.com/api/v3/ticker/price?symbol=", sym_check)), "parsed")$price), error = function(e) NULL)
