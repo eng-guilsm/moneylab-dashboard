@@ -70,8 +70,8 @@ Sempre que o usuário solicitar uma tarefa ou o assistente for interagir com o s
 | **1** | **Plano Guiana Brasileira** | PAXG <-> BTC | 150 reais | Arbitragem intradiária de spread adaptativo PAXG/BTC com Z <= -0,50. | Ativo (Recalibrado) |
 | **2** | ⭐ **Plano Escudo de Aquiles** | BRL -> BTC | 200 reais | Compra anti-pânico quando VIX >= 21 ou Z <= -1,8. DAS Fundo: 90,6%. | Ativo (+18,76 reais / DAS 90,6%) |
 | **3** | **Plano Pátria Volátil** | BRL <-> USDT | 280 reais | Colchão no Simple Earn (6,88% a.a.) e Desova Escalonada de excedente (Não-Cripto/FX). | Ativo (Piso 280 reais / 0% Cripto) |
-| **4** | 🇺🇸 ⭐ **Plano Titã do Silício** | USDT <-> NVDAB | 100 reais | Tech Alpha intradiário com Hilbert Wave em NVDABUSDT real Spot. | Ativo (Binance Backed Equity) |
-| **5** | **Plano Gravidade Zero** | BTC -> SOL -> BRL | 180 reais | Dual-Scale Fourier ratio SOL/BTC com giro dinâmico de BTC (Modelo A: Hub de Alta Velocidade) e Teto SOL de 180 reais. | Ativo (Calibrado G500) |
+| **4** | 🇺🇸 ⭐ **Plano Titã do Silício** | USDT <-> NVDAB | 180 reais | Tech Alpha intradiário com Duplo Z (Dip 35 USDT / Crash 55 USDT) e Trava 6 >= +0,60%. Lucro: **+26,93 reais/mês (+1,33%/m)**. | Ativo (Duplo Z Homologado) |
+| **5** | ⭐ **Plano Ouro Líquido** | USDT <-> PAXG | 155 reais | Arbitragem intradiária de spread adaptativo PAXG/USDT (Lote 30 USDT / Trava 6 >= +0,60%). Lucro: **+4,57 reais/mês (+0,225%/m)**. | Ativo (Homologado) |
 | **6** | 🇺🇸 🛡️ **Plano Choque Energético** | USDT <-> XLE | 90 reais | Hedge de Petróleo/Energia com correlação negativa comprovada de -0,35 contra o Bitcoin. | Ativo (Hedge Macro) |
 | **7** | ⭐ **Plano Duelo de Titãs** | BTC -> ETH -> BRL | 65 reais | Cointegração do ratio ETH/BTC com giro dinâmico de BTC (Modelo A: Hub de Alta Velocidade) e realização BRL. | Ativo (Calibrado G500) |
 | **8** | ⭐ **Plano Flecha de Sagarana** | BRL <-> BTC | 220 reais | Dip hunter com Z <= -1,18 sigma e aceleração d2Z >= 0. DAS Fundo: 68,7%. | Ativo (+8,32 reais em 10 dias) |
@@ -80,7 +80,7 @@ Sempre que o usuário solicitar uma tarefa ou o assistente for interagir com o s
 | **11** | 🇺🇸 🛡️ **Plano Escudo de Washington** | USDT <-> TLT | 80 reais | T-Bonds Soberanos de 20 anos. Flight to safety contra bear market cripto (Corr: -0,35). | Ativo (Hedge Soberano) |
 | **12** | 🇺🇸 🐻 **Plano Sentinela Antifrágil** | USDT <-> SQQQB| 90 reais | ProShares UltraPro Short QQQ Spot. Lucro direto na queda dos mercados (Corr: -0,78). | Ativo (Binance Backed Inverse ETF) |
 | **13** | 🦇 **Plano Bruce Wayne** | Altcoins -> BRL | 300 reais | Circuit breaker com Quarentena de 12h, janela macro 30d e VWAP. | ⏸️ **Desativado Temporariamente** |
-| **14** | 🇺🇸 **Plano Sentinela Wall Street**| USDT <-> SPYB | 100 reais | S&P 500 ETF Trust em SPYBUSDT real Spot na Binance. | Ativo (Binance Backed S&P 500) |
+| **14** | 🇺🇸 **Plano Sentinela Wall Street**| USDT <-> SPYB | 180 reais | S&P 500 ETF Trust em SPYBUSDT Spot com Duplo Z (Dip 35 USDT / Crash 55 USDT) e Trava 6 >= +0,60%. Lucro: **+4,74 reais/mês (+0,23%/m)**. | Ativo (Duplo Z Homologado) |
 | **15** | 🎩 🚪 **Plano Adeus, Perry** | Legados -> BRL/USDT | Custódia Total | Desova e liquidação cirúrgica de ativos legados (LINK, ADA, NEAR, AVAX) sob a Trava 6. | ⏸️ **Desativado Temporariamente** |
 
 ---

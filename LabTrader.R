@@ -18,8 +18,9 @@ VALOR_GUIANA_BRL     <- 150.0  # R$ 150 - Plano 1: Guiana Brasileira (PAXG <-> B
 VALOR_ESCUDO_BRL     <- 200.0  # R$ 200 - Plano 2: Escudo de Aquiles (BRL -> BTC 4h | Posse 176.0h | CV 26.5%)
 VALOR_VIX_BRL        <- 200.0  # R$ 200 - Alias para Escudo de Aquiles
 VALOR_PATRIA_BRL     <- 280.0  # R$ 280 - Plano 3: Pátria Volátil (Reserva Passiva Simple Earn 6,88% a.a.)
-VALOR_TITA_BRL       <- 205.0  # R$ 205 (40 USDT) - Plano 4: Titã do Silício (NVDABUSDT 5h | Posse 51.0h | CV 0.6%)
-VALOR_GRAVIDADE_BRL  <- 180.0  # R$ 180 - Plano 5: Gravidade Zero (BTC -> SOL -> BRL 1h | Posse 18.1h | Modelo A: Alta Velocidade)
+VALOR_TITA_USDT_DIP   <- 35.0   # 35 USDT (~R$ 180) - Plano 4: Titã do Silício Dip Moderado (Z <= -0.50)
+VALOR_TITA_USDT_CRASH <- 55.0   # 55 USDT (~R$ 283) - Plano 4: Titã do Silício Forte Queda (Z <= -1.25)
+VALOR_OURO_LIQUIDO_USDT <- 30.0 # 30 USDT (~R$ 155) - Plano 5: Ouro Líquido (PAXG <-> USDT 4h | Trava 6 >= +0.60%)
 VALOR_CHOQUE_BRL     <- 90.0   # R$ 90 (18 USDT) - Plano 6: Choque Energético (XLE Hedge 5h | Posse 475.5h)
 VALOR_TITAS_BRL      <- 100.0  # R$ 100 - Plano 7: Duelo de Titãs (BTC -> ETH -> BRL 1h | Posse 310.0h | Modelo A: Alta Velocidade)
 VALOR_SAGARANA_BRL   <- 220.0  # R$ 220 - Plano 8: Flecha de Sagarana (BRL <-> BTC 4h | Posse 176.0h | CV 5.9%)
@@ -28,7 +29,8 @@ VALOR_BNB_BRL        <- 90.0   # R$ 90  - Plano 10: Sentinela de Minas (BRL <-> 
 VALOR_TLT_BRL        <- 80.0   # R$ 80 (16 USDT) - Plano 11: Escudo de Washington (TLT T-Bonds 5h | Posse 331.9h)
 VALOR_SQQQB_BRL      <- 90.0   # R$ 90 (18 USDT) - Plano 12: Sentinela Antifrágil (SQQQB 1h | Posse 4.9h)
 VALOR_BRUCE_BRL      <- 300.0  # R$ 300 - Plano 13: Bruce Wayne (Desativado Temporariamente)
-VALOR_WALLSTREET_BRL <- 100.0  # R$ 100 (20 USDT) - Plano 14: Sentinela Wall Street (SPYBUSDT 1h | Posse 174.7h)
+VALOR_WALLSTREET_USDT_DIP   <- 35.0 # 35 USDT (~R$ 180) - Plano 14: Sentinela Wall Street Dip Moderado (Z <= -0.40)
+VALOR_WALLSTREET_USDT_CRASH <- 55.0 # 55 USDT (~R$ 283) - Plano 14: Sentinela Wall Street Forte Queda (Z <= -1.80)
 VALOR_PERRY_BRL      <- 150.0  # R$ 150 - Plano 15: Adeus, Perry (Desativado Temporariamente)
 
 obter_stats_macro_btc_30d <- function() {
@@ -187,6 +189,26 @@ obter_stats_guiana_72h <- function(p_gold = 4639.0) {
     }
   }, error = function(e) NULL)
   return(list(media = 0.05920, sd = 0.00350, serie = rep(0.05920, 16), dsp = list(theta = 0, d2Z = 0)))
+}
+
+obter_stats_paxg_usdt_4h <- function() {
+  db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
+  tryCatch({
+    con <- dbConnect(SQLite(), db_path)
+    on.exit(dbDisconnect(con))
+    df <- dbGetQuery(con, "SELECT PAXGUSDT FROM Historico_binance WHERE PAXGUSDT IS NOT NULL ORDER BY Data_Hora DESC LIMIT 300;")
+    if (nrow(df) >= 48) {
+      p_rec <- rev(df$PAXGUSDT)
+      step_5m <- seq(1, length(p_rec), by = 5)
+      p_5m <- p_rec[step_5m]
+      p_sub <- tail(p_5m, min(48, length(p_5m)))
+      m_val <- mean(p_sub, na.rm = TRUE)
+      s_val <- max(0.50, sd(p_sub, na.rm = TRUE))
+      dsp   <- obter_dsp_ativo(p_sub)
+      return(list(media = m_val, sd = s_val, serie = p_sub, dsp = dsp))
+    }
+  }, error = function(e) NULL)
+  return(list(media = 4350.0, sd = 10.0, serie = rep(4350.0, 16), dsp = list(theta = 0, d2Z = 0)))
 }
 
 obter_stats_link_dual_scale <- function() {
@@ -815,30 +837,29 @@ executar_radar_labtrader <- function() {
   # Scalping intradiário inativo: pedido permanece NULL para este motor.
   
   # ----------------------------------------------------------------------------
-  # MOTOR 4: PLANO TITÃ DO SILÍCIO (USDT <-> NVDAB | Calibrado G500 - 60p / 5h)
-  # Metricas G500: +1,78 reais/m | Posse: 51,0h (~2,1 dias) | Platô CV: 0,6% (Ultra-Estável)
-  # Binance Backed Equity Spot: NVDABUSDT | Lote 40 USDT (~R$ 205)
+  # MOTOR 4: PLANO TITÃ DO SILÍCIO (USDT <-> NVDAB | Duplo Z: Dip 35U / Crash 55U)
+  # Metricas: +26,93 reais/m (+1,33%/m) | Posse: 71,8h | Trava 6 FIFO >= +0.60%
+  # Binance Backed Equity Spot: NVDABUSDT | Lote 35 a 55 USDT
   # ----------------------------------------------------------------------------
   if (is.null(pedido)) {
-    # 1. REALIZAÇÃO DE LUCRO: Venda NVDAB -> USDT sob Trava 6 (>= +0.40% e Z >= +0.84)
-    if (saldo_nvdab_usd > 0.01) {
-      p_nvda_live <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=NVDABUSDT"), "parsed")$price), error = function(e) NULL)
-      pm_nvda <- obter_vwap_ativo("NVDAB")
-      if (!is.null(p_nvda_live) && p_nvda_live > 0 && pm_nvda > 0) {
-        p_nvda_live_brl <- p_nvda_live * p_usdt_brl
-        ret_nvda <- (p_nvda_live_brl / pm_nvda) - 1.0
-        if (ret_nvda >= 0.0040) {
-          val_venda_brl <- saldo_nvdab_usd * p_nvda_live * p_usdt_brl
-          pedido <- list(
-            estrategia = "PLANO_TITA_DO_SILICIO",
-            origem = "NVDAB", destino = "USDT",
-            valor_brl = val_venda_brl,
-            lucro_esperado_pct = round(ret_nvda * 100, 2), timestamp = agora_ts
-          )
-        }
+    p_nvda_live <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=NVDABUSDT"), "parsed")$price), error = function(e) NULL)
+    pm_nvda <- obter_vwap_ativo("NVDAB")
+    
+    # 1. REALIZAÇÃO DE LUCRO: Venda NVDAB -> USDT sob Trava 6 FIFO (>= +0.60% líquido)
+    if (saldo_nvdab_usd > 0.01 && !is.null(p_nvda_live) && p_nvda_live > 0 && pm_nvda > 0) {
+      p_nvda_live_brl <- p_nvda_live * p_usdt_brl
+      ret_nvda <- (p_nvda_live_brl / pm_nvda) - 1.0
+      if (ret_nvda >= 0.0060) {
+        val_venda_brl <- saldo_nvdab_usd * p_nvda_live * p_usdt_brl
+        pedido <- list(
+          estrategia = "PLANO_TITA_DO_SILICIO",
+          origem = "NVDAB", destino = "USDT",
+          valor_brl = val_venda_brl,
+          lucro_esperado_pct = round(ret_nvda * 100, 2), timestamp = agora_ts
+        )
       }
-    } else if (usdt_livre_rotacao >= 20.0) {
-      # 2. ENTRADA EM DIP: Compra USDT -> NVDAB (Lote 40.00 USDT / ~R$ 205)
+    } else if (usdt_livre_rotacao >= 18.0) {
+      # 2. ENTRADA EM DIP MODERADO VS CRASH COM MODULAÇÃO HARMONICUS
       nvda_serie <- tryCatch({
         con_nv <- dbConnect(SQLite(), db_path)
         on.exit(dbDisconnect(con_nv))
@@ -852,62 +873,73 @@ executar_radar_labtrader <- function() {
         }
       }, error = function(e) rep(224.0, 16))
       
-      dsp_nvda <- obter_dsp_ativo(nvda_serie)
       m_nvda <- mean(nvda_serie, na.rm = TRUE)
       s_nvda <- sd(nvda_serie, na.rm = TRUE)
       if (is.na(s_nvda) || s_nvda <= 0) s_nvda <- 1.5
       z_nvda <- (tail(nvda_serie, 1) - m_nvda) / s_nvda
       
-      # Calibração G500: Z <= -1.06 com aceleração d2Z >= 0.015
-      if (z_nvda <= -1.06 && dsp_nvda$d2Z >= 0.015) {
-        lote_usdt_nv <- min(40.0 * fator_lote, usdt_livre_rotacao)
-        lote_brl_nv <- lote_usdt_nv * p_usdt_brl
-        pedido <- list(
-          estrategia = "PLANO_TITA_DO_SILICIO",
-          origem = "USDT", destino = "NVDAB",
-          valor_brl = lote_brl_nv,
-          lucro_esperado_pct = 0.40, timestamp = agora_ts
-        )
+      lote_base_nvda <- 0.0
+      regime_nvda <- NULL
+      if (z_nvda <= -1.25) {
+        lote_base_nvda <- VALOR_TITA_USDT_CRASH  # Regime 2: Crash (55 USDT)
+        regime_nvda <- "CRASH"
+      } else if (z_nvda <= -0.50 && saldo_nvdab_usd <= 0.01) {
+        lote_base_nvda <- VALOR_TITA_USDT_DIP    # Regime 1: Correção Moderada (35 USDT)
+        regime_nvda <- "DIP"
+      }
+      
+      if (lote_base_nvda > 0.0) {
+        lote_usdt_nv <- min(lote_base_nvda * fator_lote, usdt_livre_rotacao)
+        if (lote_usdt_nv >= 15.0) {
+          pedido <- list(
+            estrategia = "PLANO_TITA_DO_SILICIO",
+            origem = "USDT", destino = "NVDAB",
+            valor_brl = lote_usdt_nv * p_usdt_brl,
+            lucro_esperado_pct = 0.60, timestamp = agora_ts,
+            regime = regime_nvda
+          )
+        }
       }
     }
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 5: PLANO GRAVIDADE ZERO (BTC -> SOL -> BRL | Calibrado G500 - 12p / 1h)
-  # Metricas G500: +3,43 reais/m (+309%) | Posse: 18,1h (-24,4%) | Platô Otimizado
-  # Modelo A: Hub de Alta Velocidade - Giro dinâmico de BTC para SOL e realização para BRL
-  # Teto Máximo de SOL de 180 reais
+  # MOTOR 5: PLANO OURO LÍQUIDO (PAXG <-> USDT | Calibrado 48p / 4h Spot)
+  # Metricas: +4,57 reais/m (+0,23%/m) | Posse: 98,5h | Trava 6 FIFO >= +0.60%
+  # Preserva Piso de Ouro (R$ 500) | Lote 30 USDT base (~R$ 155), escalável para 40.5 USDT
   # ----------------------------------------------------------------------------
-  stats_sol_btc <- obter_stats_sol_btc_dual_scale()
-  if (is.null(pedido) && !is.null(p_sol_brl) && !is.null(p_btc_brl) && pc1_atual < 0.75) {
-    ratio_sol_btc <- p_sol_brl / p_btc_brl
-    z_sol_btc     <- (ratio_sol_btc - stats_sol_btc$media_fast) / stats_sol_btc$sd_fast
-    dsp_sol_btc   <- stats_sol_btc$dsp_fast
-    acc_r         <- dsp_sol_btc$d2Z
+  stats_paxg_usdt <- obter_stats_paxg_usdt_4h()
+  if (is.null(pedido) && !is.null(p_paxg_usdt) && !is.null(p_usdt_brl)) {
+    z_paxg_usdt <- (p_paxg_usdt - stats_paxg_usdt$media) / stats_paxg_usdt$sd
+    dsp_paxg    <- stats_paxg_usdt$dsp
     
-    can_trade_btc <- saldo_btc_brl >= 30.0
-    can_add_sol   <- saldo_sol_brl < 180.0
+    lote_ouro_liq <- obter_lote_aberto_estrategia("PLANO_OURO_LIQUIDO", "PAXG")
     
-    # Calibração G500: Z <= -0.90 com aceleração d2Z >= 0.070
-    if (z_sol_btc <= -0.90 && acc_r >= 0.070 && can_trade_btc && can_add_sol) {
-      lote_g <- min(50.0, max(25.0, saldo_btc_brl * 0.45))
-      pedido <- list(
-        estrategia = "PLANO_GRAVIDADE_ZERO",
-        origem = "BTC", destino = "SOL",
-        valor_brl = lote_g,
-        lucro_esperado_pct = 1.07, timestamp = agora_ts
-      )
-    } else if (saldo_sol_brl >= 25.0) {
-      # Ponta B: Realização de topo de Solana para BRL sob Trava 6 (>= +1.07% e Z >= 0.99)
-      lote_grav <- obter_lote_aberto_estrategia("PLANO_GRAVIDADE_ZERO", "SOL")
-      if (lote_grav$tem_lote) {
-        em_cooldown_grav <- verificar_cooldown_veto("PLANO_GRAVIDADE_ZERO", timeout_seg = 300)
-        if (z_sol_btc >= 0.99 && lote_grav$minutos_posse >= 15.0 && !em_cooldown_grav) {
+    if (!lote_ouro_liq$tem_lote && usdt_livre_rotacao >= 28.0) {
+      # Gatilho de Entrada: Dip em PAXG/USDT (Z <= -0.50 com aceleração d2Z >= 0.010)
+      if (z_paxg_usdt <= -0.50 && dsp_paxg$d2Z >= 0.010) {
+        lote_u <- min(ifelse(ste_atual >= 0.02 && pc1_atual <= 0.40, 40.5, VALOR_OURO_LIQUIDO_USDT), usdt_livre_rotacao)
+        pedido <- list(
+          estrategia = "PLANO_OURO_LIQUIDO",
+          origem = "USDT", destino = "PAXG",
+          valor_brl = lote_u * p_usdt_brl,
+          lucro_esperado_pct = 0.60, timestamp = agora_ts
+        )
+      }
+    } else if (lote_ouro_liq$tem_lote) {
+      # Gatilho de Saída: Mean Reversion Z >= +0.40 sob Trava 6 Breakeven FIFO (>= +0.60% líquido)
+      pm_paxg <- lote_ouro_liq$preco_compra
+      if (!is.null(pm_paxg) && pm_paxg > 0) {
+        ret_paxg <- (p_paxg_usdt / pm_paxg) - 1.0 - 0.0015
+        em_cooldown_ouro <- verificar_cooldown_veto("PLANO_OURO_LIQUIDO", timeout_seg = 300)
+        folga_ouro <- saldo_paxg_brl - 505.0
+        if (z_paxg_usdt >= 0.40 && ret_paxg >= 0.0060 && !em_cooldown_ouro && folga_ouro >= 20.0) {
+          val_desova_brl <- min(lote_ouro_liq$valor_compra * (1.0 + ret_paxg), folga_ouro)
           pedido <- list(
-            estrategia = "PLANO_GRAVIDADE_ZERO",
-            origem = "SOL", destino = "BRL",
-            valor_brl = min(saldo_sol_brl, VALOR_GRAVIDADE_BRL * fator_lote),
-            lucro_esperado_pct = 1.07, timestamp = agora_ts
+            estrategia = "PLANO_OURO_LIQUIDO",
+            origem = "PAXG", destino = "USDT",
+            valor_brl = val_desova_brl,
+            lucro_esperado_pct = round(ret_paxg * 100, 2), timestamp = agora_ts
           )
         }
       }
@@ -1189,18 +1221,19 @@ executar_radar_labtrader <- function() {
   
   # ----------------------------------------------------------------------------
   # MOTOR 14: PLANO SENTINELA DE WALL STREET (SPYB / USDT - S&P 500 Trust)
-  # Metricas G500: +0,25 reais/m (+54,3%) | Posse: 174,7h (-47,6%) | Platô CV: 0,0%
-  # Binance Backed Equity Spot: SPYBUSDT | Lote 20 USDT (~R$ 100)
+  # Calibracao Duplo Z (5m): Z_dip <= -0.40 (35 USDT) | Z_crash <= -1.80 (55 USDT)
+  # Lucro Homologado: +4,74 reais/m (+0,23%/m) | Posse: 33,6h | Ocio: 1,8h
+  # Binance Backed Equity Spot: SPYBUSDT
   # ----------------------------------------------------------------------------
   if (is.null(pedido)) {
-    # 1. REALIZAÇÃO DE LUCRO: Venda SPYB -> USDT sob a Trava 6 (>= +0.48%)
+    # 1. REALIZACAO DE LUCRO: Venda SPYB -> USDT sob a Trava 6 (>= +0.60%)
     if (saldo_spyb_usd > 0.01) {
       p_spy_live <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=SPYBUSDT"), "parsed")$price), error = function(e) NULL)
       pm_spy <- obter_vwap_ativo("SPYB")
       if (!is.null(p_spy_live) && p_spy_live > 0 && pm_spy > 0) {
         p_spy_live_brl <- p_spy_live * p_usdt_brl
         ret_spy <- (p_spy_live_brl / pm_spy) - 1.0
-        if (ret_spy >= 0.0048) {
+        if (ret_spy >= 0.0060) {
           val_venda_brl <- saldo_spyb_usd * p_spy_live * p_usdt_brl
           pedido <- list(
             estrategia = "PLANO_SENTINELA_WALLSTREET",
@@ -1210,8 +1243,8 @@ executar_radar_labtrader <- function() {
           )
         }
       }
-    } else if (usdt_livre_rotacao >= 20.0) {
-      # 2. ENTRADA EM DIP: Compra USDT -> SPYB (Lote 20.00 USDT / ~R$ 100)
+    } else if (usdt_livre_rotacao >= VALOR_WALLSTREET_USDT_DIP) {
+      # 2. ENTRADA EM DUPLO Z (1h / 12 periodos de 5m): Dip (-0.40) vs Crash (-1.80)
       sp500_serie <- tryCatch({
         con_sp <- dbConnect(SQLite(), db_path)
         on.exit(dbDisconnect(con_sp))
@@ -1229,14 +1262,20 @@ executar_radar_labtrader <- function() {
       if (is.na(s_sp) || s_sp <= 0) s_sp <- 2.0
       z_sp <- (tail(sp500_serie, 1) - m_sp) / s_sp
       
-      # Calibração G500: Z <= -0.95 com d2Z >= 0.015
-      if (z_sp <= -0.95 && dsp_sp500$d2Z >= 0.015) {
-        lote_usdt_ws <- min(20.0 * fator_lote, usdt_livre_rotacao)
+      lote_base_spy <- NULL
+      if (z_sp <= -1.80 && usdt_livre_rotacao >= VALOR_WALLSTREET_USDT_CRASH) {
+        lote_base_spy <- VALOR_WALLSTREET_USDT_CRASH
+      } else if (z_sp <= -0.40 && usdt_livre_rotacao >= VALOR_WALLSTREET_USDT_DIP) {
+        lote_base_spy <- VALOR_WALLSTREET_USDT_DIP
+      }
+      
+      if (!is.null(lote_base_spy)) {
+        lote_usdt_ws <- min(lote_base_spy * fator_lote, usdt_livre_rotacao)
         pedido <- list(
           estrategia = "PLANO_SENTINELA_WALLSTREET",
           origem = "USDT", destino = "SPYB",
           valor_brl = lote_usdt_ws * p_usdt_brl,
-          lucro_esperado_pct = 0.48, timestamp = agora_ts
+          lucro_esperado_pct = 0.60, timestamp = agora_ts
         )
       }
     }

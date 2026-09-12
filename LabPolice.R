@@ -750,6 +750,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_PATRIA_VOLATIL",
           "PLANO_CABOCLO_DOS_ORACULOS",
           "PLANO_GRAVIDADE_ZERO",
+          "PLANO_OURO_LIQUIDO",
           "PLANO_CORISCO_DA_SOLANA",
           "PLANO_DUELO_DE_TITAS",
           "PLANO_FLECHA_DE_SAGARANA",
@@ -775,6 +776,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_PATRIA_VOLATIL" = 350.00,
           "PLANO_CABOCLO_DOS_ORACULOS" = 480.00,
           "PLANO_GRAVIDADE_ZERO" = 220.00,
+          "PLANO_OURO_LIQUIDO" = 250.00,
           "PLANO_CORISCO_DA_SOLANA" = 220.00,
           "PLANO_DUELO_DE_TITAS" = 150.00,
           "PLANO_FLECHA_DE_SAGARANA" = 300.00,
@@ -784,9 +786,9 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_SERTAO_VALENTE" = 160.00,
           "PLANO_FAROL_DE_NEAR" = 300.00,
           "PLANO_BRUCE_WAYNE" = 350.00,
-          "PLANO_SENTINELA_WALLSTREET" = 150.00,
+          "PLANO_SENTINELA_WALLSTREET" = 300.00,
           "PLANO_DOLLARUS_QUANTUM_PEG" = 220.00,
-          "PLANO_TITA_DO_SILICIO" = 250.00,
+          "PLANO_TITA_DO_SILICIO" = 300.00,
           "PLANO_CHOQUE_ENERGETICO" = 120.00,
           "PLANO_ESCUDO_DE_WASHINGTON" = 120.00,
           "PLANO_SENTINELA_ANTIFRAGIL" = 120.00,
@@ -800,6 +802,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_PATRIA_VOLATIL" = 0.40,
           "PLANO_CABOCLO_DOS_ORACULOS" = 0.70,
           "PLANO_GRAVIDADE_ZERO" = 1.07,
+          "PLANO_OURO_LIQUIDO" = 0.60,
           "PLANO_CORISCO_DA_SOLANA" = 0.50,
           "PLANO_DUELO_DE_TITAS" = 0.53,
           "PLANO_FLECHA_DE_SAGARANA" = 0.57,
@@ -1086,6 +1089,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
               cooldown_req <- ifelse(estrategia_nome == "PLANO_COFRE_DE_MIDAS", 120.0, # 5 dias
                               ifelse(estrategia_nome == "PLANO_BRUCE_WAYNE", 24.0,
                               ifelse(estrategia_nome == "PLANO_SENTINELA_WALLSTREET", 0.50,
+                              ifelse(estrategia_nome %in% c("PLANO_TITA_DO_SILICIO", "PLANO_OURO_LIQUIDO"), 0.25,
                               ifelse(estrategia_nome == "PLANO_DOLLARUS_QUANTUM_PEG", 0.25,
                               ifelse(estrategia_nome %in% c("PLANO_CORISCO_DA_SOLANA", "PLANO_SENTINELA_DE_MINAS", "PLANO_SENTINELA_DO_SOL"), 0.16, 
                               ifelse(estrategia_nome == "PLANO_FLECHA_DE_SAGARANA", 0.13,
@@ -1093,7 +1097,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                               ifelse(estrategia_nome == "PLANO_SERTAO_VALENTE", 0.25,
                               ifelse(estrategia_nome == "PLANO_FAROL_DE_NEAR", 1.0,
                               ifelse(estrategia_nome == "PLANO_DUELO_DE_TITAS", 1.5,
-                              ifelse(grepl("GRAVIDADE", estrategia_nome), 0.16, 1.0)))))))))))
+                              ifelse(grepl("GRAVIDADE", estrategia_nome), 0.16, 1.0))))))))))))
               
               # Se for realização de lucro / rotação oposta, zera o cooldown
               ultimo_reg <- tail(hist_est, 1)
