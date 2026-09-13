@@ -308,6 +308,87 @@ disp$add_handler(CommandHandler("dash", function(bot, update) {
   }
 }))
 
+# 1.58 Comando: /report (Central de Relatos, Bugs e Sugestões)
+disp$add_handler(CommandHandler("report", function(bot, update) {
+  if(!verificar_acesso(bot, update)) return()
+  
+  chat_id <- update$message$chat_id
+  raw_text <- update$message$text
+  
+  # Validar se o input é estritamente texto
+  if (is.null(raw_text) || !is.character(raw_text)) {
+    bot$sendMessage(chat_id, "⚠️ <b>Aviso:</b> Apenas mensagens em formato de texto são aceitas.", parse_mode = "HTML")
+    return()
+  }
+  
+  # Extrair conteúdo após o comando /report (suporta /report ou /report@bot)
+  texto_report <- sub("^/report(@[a-zA-Z0-9_]+)?\\s*", "", raw_text)
+  texto_report <- trimws(texto_report)
+  
+  escape_html <- function(s) gsub("&", "&amp;", gsub("<", "&lt;", gsub(">", "&gt;", s)))
+  
+  if (nchar(texto_report) < 3) {
+    msg_instrucao <- paste0(
+      "📝 <b>MONEYLAB // CENTRAL DE RELATOS & FEEDBACK</b>\n",
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n",
+      "Envie sua sugestão de melhoria ou reporte um bug utilizando o formato:\n\n",
+      "<code>/report [seu texto explicativo aqui]</code>\n\n",
+      "📌 <i>Exemplo:</i>\n",
+      "<code>/report O gráfico do dólar no /dash está estático no fim de semana.</code>\n\n",
+      "🔒 <i>Nota de Governança: Somente mensagens em texto puro são aceitas. Mídias e anexos são rejeitados.</i>"
+    )
+    bot$sendMessage(chat_id, msg_instrucao, parse_mode = "HTML")
+    return()
+  }
+  
+  # Gerar protocolo único
+  ts_agora <- Sys.time()
+  protocolo_id <- format(ts_agora, "REP-%Y%m%d-%H%M%S")
+  
+  # Dados do usuário remetente
+  usuario <- update$message$from
+  user_id <- usuario$id
+  username <- if (!is.null(usuario$username) && !is.na(usuario$username)) usuario$username else "sem_username"
+  nome <- paste(if (!is.null(usuario$first_name)) usuario$first_name else "",
+                if (!is.null(usuario$last_name)) usuario$last_name else "")
+  nome <- trimws(nome)
+  if (nchar(nome) == 0) nome <- "Usuário"
+  
+  # Registrar em arquivo de log somente texto
+  log_file <- "reports_usuarios.log"
+  bloco_report <- paste0(
+    "================================================================================\n",
+    sprintf("ID: %s\n", protocolo_id),
+    sprintf("DATA: %s\n", format(ts_agora, "%Y-%m-%d %H:%M:%S")),
+    sprintf("USUARIO: %s (@%s | ID: %s | CHAT_ID: %s)\n", nome, username, user_id, chat_id),
+    "STATUS: em análise\n",
+    "PARECER: Aguardando avaliação do administrador\n",
+    "NOTIFICADO: NAO\n",
+    "MENSAGEM:\n",
+    texto_report, "\n",
+    "================================================================================\n\n"
+  )
+  
+  tryCatch({
+    cat(bloco_report, file = log_file, append = TRUE)
+  }, error = function(e) {
+    cat(sprintf("[REPORT ERROR] Falha ao escrever em %s: %s\n", log_file, e$message))
+  })
+  
+  # Resposta de confirmação ao usuário
+  msg_resp <- paste0(
+    "✅ <b>Relato Registrado com Sucesso!</b>\n\n",
+    "🆔 <b>Protocolo:</b> <code>#", protocolo_id, "</code>\n",
+    "📊 <b>Status:</b> <code>em análise</code>\n",
+    "📝 <b>Mensagem:</b> <i>\"", escape_html(texto_report), "\"</i>\n\n",
+    "Agradecemos o seu feedback! Nossa equipe quantitativa irá avaliar o relato. ",
+    "Você receberá uma notificação aqui quando ele for avaliado."
+  )
+  
+  bot$sendMessage(chat_id, msg_resp, parse_mode = "HTML")
+  registrar_log_interacao(update, "COMANDO /report", raw_text, paste("Registrado protocolo", protocolo_id))
+}))
+
 # 1.6 Comando: /ajuda
 disp$add_handler(CommandHandler("ajuda", function(bot, update) {
   if(verificar_acesso(bot, update)) {
@@ -317,6 +398,7 @@ disp$add_handler(CommandHandler("ajuda", function(bot, update) {
                   "🔹 /risco - Abre o menu do oráculo quantitativo para previsão de volatilidade (MLP+Langevin/GARCH).\n",
                   "🔹 /minigame - Inicia o simulador HFT Dollarus com limites percentuais de trade no navegador.\n",
                   "🔹 /musica - Abre o Harmonicus: visualizador espectral e grafo dinâmico multiativo (Fourier + MST).\n",
+                  "🔹 /report [texto] - Envia sugestões de melhoria ou relata bugs para a equipe quantitativa.\n",
                   "🔹 /ajuda - Exibe este menu de comandos.\n\n",
                   "💡 <i>Você também pode simplesmente digitar qualquer pergunta livremente no chat para falar com o analista quantitativo.</i>")
     
