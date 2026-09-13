@@ -58,6 +58,8 @@ Cada um dos 15 motores opera sob isolamento estatístico, governado pelo Gatekee
    * O Bruce Wayne só pode estancar perdas se o prejuízo calculado via VWAP estiver entre **-1,5% e -4,5%** e houver estresse macro comprovado (VIX >= 24 ou PC1 >= 0,40). Se a perda já for maior que **-5,0%**, a venda é vetada para evitar torrar dinheiro no fundo do poço.
 6. **Regra SSOT de Deduplicação de Simple Earn & Valuation Dinâmico:**
    * O endpoint `/api/v3/account` lista Simple Earn sob o prefixo `LD*` (`LDUSDT`, `LDPAXG`, `LDLINK`). É terminantemente proibido somar `/sapi/v1/simple-earn` sem expurgar o saldo duplicado. O patrimônio consolidado é apurado dinamicamente em tempo real via API somando todas as carteiras.
+7. **Realidade do Simple Earn: Dólar USDT (6,88% a.a.) vs Ouro PAXG (0,01% a.a. - Carrego Nulo):**
+   * O único motor de renda passiva relevante via Simple Earn é o Dólar USDT (com taxa bonificada de 6,18% a 6,88% a.a.). O Ouro PAXG rende míseros 0,01% a.a. (apenas 0,008 reais acumulados em semanas), sendo proibido tratar Simple Earn de PAXG como mitigador de risco ou fonte de yield. Ouro gera custo de oportunidade quando retido em excesso.
 7. **Auto-Resgate e Auto-Subscrição em USDT e Criptos:**
    * O sentinela `LabPolice.R` executa auto-resgate transparente antes de vendas para Reais e mantém o capital defensivo em USDT rendendo **6,88% a.a.** no Simple Earn Flexível (`USDT001`).
 
