@@ -60,6 +60,10 @@ Sempre que o usuário solicitar uma tarefa ou o assistente for interagir com o s
    * É obrigatório manter no mínimo **30% do saldo total de USDT em custódia retido no Simple Earn Flexível** como colchão defensivo de rendimento passivo (6,88% a.a.).
    * Os **70% restantes do saldo de USDT circulam livremente** entre os ativos não-cripto com lotes maximizados calibrados pelo LabAnalyst (NVDAB: 40 USDT, SPYB: 35 USDT, SQQQB: 25 USDT, TLT: 20 USDT).
    * **Garantia Anti-Bloqueio pelo Simple Earn:** O Simple Earn NUNCA deve impedir qualquer transação autorizada dentro do limite de 70%. O Gatekeeper `LabPolice` executa auto-resgate instantâneo para a conta Spot antes do envio de ordens de compra e auto-subscrição imediata após a realização de lucros sob a Trava 6.
+5. **Realidade Empírica do Simple Earn & Proibição da Falácia do Yield em Ouro (PAXG):**
+   * **Diferenciação Mandatória de Yield:** O único ativo com rendimento passivo defensivo relevante no Simple Earn Flexível da Binance é o Dólar (**`USDT`, com taxa em camadas de 6,18% a 6,88% a.a.** até o teto da faixa). Em contrapartida, o Ouro (**`PAXG` rende irrisórios 0,01% a.a.**, correspondendo a poeira contábil de 0,008 reais ao longo de semanas).
+   * **Proibição da Falácia do Carrego em Ouro:** É **TERMINANTEMENTE PROIBIDO** justificar, atenuar ou defender posições compradas ou presas em drawdown de PAXG alegando "compensação por rendimento passivo do Simple Earn". O carrego de PAXG é empiricamente nulo.
+   * **Custo de Oportunidade do Ouro:** Como o PAXG não gera renda de carrego e possui spread intradiário mais largo com baixa rotação, manter parcelas elevadas da carteira (> 20%) imobilizadas em Ouro drena a liquidez operacional do bot e gera severo custo de oportunidade frente ao caixa em USDT (que rende juros reais e irriga planos de alto giro). Ouro deve ser tratado puramente como reserva macro de longo prazo ou arbitragem de spread cirúrgica, jamais como fonte de yield.
 
 ---
 
