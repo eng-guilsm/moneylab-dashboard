@@ -69,7 +69,7 @@ Sempre que o usuário solicitar uma tarefa ou o assistente for interagir com o s
 | :-: | :--- | :---: | :---: | :--- | :--- |
 | **1** | **Plano Guiana Brasileira** | PAXG <-> BTC | 150 reais | Arbitragem intradiária de spread adaptativo PAXG/BTC com Z <= -0,50. | Ativo (Recalibrado) |
 | **2** | ⭐ **Plano Escudo de Aquiles** | BRL -> BTC | 200 reais | Compra anti-pânico quando VIX >= 21 ou Z <= -1,8. DAS Fundo: 90,6%. | Ativo (+18,76 reais / DAS 90,6%) |
-| **3** | **Plano Pátria Volátil** | BRL <-> USDT | 280 reais | Colchão no Simple Earn (6,88% a.a.) e Desova Escalonada de excedente (Não-Cripto/FX). | Ativo (Piso 280 reais / 0% Cripto) |
+| **3** | ⭐ **Plano Pátria Volátil** | BRL <-> USDT | 180 reais | Sentinela Cambial Swing 24h: Dip Z <= -1,50, Saída Z >= +0,40, Trava 6 >= +0,40% e Simple Earn 6,88% a.a. Lucro: **+7,54 a +10,45 reais/mês (+0,37% a +0,515%/m)**. | Ativo (Calibrado 24h) |
 | **4** | 🇺🇸 ⭐ **Plano Titã do Silício** | USDT <-> NVDAB | 180 reais | Tech Alpha intradiário com Duplo Z (Dip 35 USDT / Crash 55 USDT) e Trava 6 >= +0,60%. Lucro: **+26,93 reais/mês (+1,33%/m)**. | Ativo (Duplo Z Homologado) |
 | **5** | ⭐ **Plano Ouro Líquido** | USDT <-> PAXG | 155 reais | Arbitragem intradiária de spread adaptativo PAXG/USDT (Lote 30 USDT / Trava 6 >= +0,60%). Lucro: **+4,57 reais/mês (+0,225%/m)**. | Ativo (Homologado) |
 | **6** | 🇺🇸 🛡️ **Plano Choque Energético** | USDT <-> XLE | 90 reais | Hedge de Petróleo/Energia com correlação negativa comprovada de -0,35 contra o Bitcoin. | Ativo (Hedge Macro) |

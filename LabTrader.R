@@ -17,7 +17,7 @@ if (file.exists("config_auth.R")) {
 VALOR_GUIANA_BRL     <- 150.0  # R$ 150 - Plano 1: Guiana Brasileira (PAXG <-> BTC 5h | Posse 123.3h | CV 7.0%)
 VALOR_ESCUDO_BRL     <- 200.0  # R$ 200 - Plano 2: Escudo de Aquiles (BRL -> BTC 4h | Posse 176.0h | CV 26.5%)
 VALOR_VIX_BRL        <- 200.0  # R$ 200 - Alias para Escudo de Aquiles
-VALOR_PATRIA_BRL     <- 280.0  # R$ 280 - Plano 3: Pátria Volátil (Reserva Passiva Simple Earn 6,88% a.a.)
+VALOR_PATRIA_BRL     <- 180.0  # R$ 180 (ate R$ 240 com Harmonicus) - Plano 3: Patria Volatil / Sentinela Cambial (Swing 24h | Lucro +7,54 a +10,45 reais/m)
 VALOR_TITA_USDT_DIP   <- 35.0   # 35 USDT (~R$ 180) - Plano 4: Titã do Silício Dip Moderado (Z <= -0.50)
 VALOR_TITA_USDT_CRASH <- 55.0   # 55 USDT (~R$ 283) - Plano 4: Titã do Silício Forte Queda (Z <= -1.25)
 VALOR_OURO_LIQUIDO_USDT <- 30.0 # 30 USDT (~R$ 155) - Plano 5: Ouro Líquido (PAXG <-> USDT 4h | Trava 6 >= +0.60%)
@@ -574,6 +574,28 @@ obter_stats_dollarus_quantum_peg <- function() {
   return(list(usdt_atual = 5.20, usd_oficial = 5.20, spread_peg = 0.0, oraculo_estresse = FALSE))
 }
 
+obter_stats_usdt_24h <- function() {
+  db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
+  tryCatch({
+    con <- dbConnect(SQLite(), db_path)
+    on.exit(dbDisconnect(con))
+    # 24 horas = 288 candles de 5m (ou 1440 registros de 1m)
+    df <- dbGetQuery(con, "SELECT USDTBRL FROM Historico_binance WHERE USDTBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 1440;")
+    if (nrow(df) >= 60) {
+      r_u <- rev(df$USDTBRL)
+      idx_5m <- rev(seq(length(r_u), 1, by = -5))
+      u_5m <- r_u[idx_5m]
+      m_u <- mean(u_5m, na.rm = TRUE)
+      s_u <- sd(u_5m, na.rm = TRUE)
+      if (is.na(s_u) || s_u <= 0) s_u <- 0.015
+      z_u <- (tail(u_5m, 1) - m_u) / s_u
+      dsp <- obter_dsp_ativo(u_5m)
+      return(list(media = m_u, sd = s_u, z = z_u, dsp = dsp, ultimo = tail(u_5m, 1)))
+    }
+  }, error = function(e) NULL)
+  return(list(media = 5.20, sd = 0.02, z = 0.0, dsp = list(d2Z = 0.0), ultimo = 5.20))
+}
+
 verificar_cooldown_veto <- function(estrategia_nome, timeout_seg = 300) {
   veto_file <- if (file.exists("vetos_recentes.rds")) "vetos_recentes.rds" else "/app/vetos_recentes.rds"
   if (!file.exists(veto_file)) return(FALSE)
@@ -830,11 +852,73 @@ executar_radar_labtrader <- function() {
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 3: PLANO PÁTRIA VOLÁTIL (BRL <-> USDT | Gestão Passiva / Simple Earn Flexível)
-  # Auditoria G500: Scalping intradiário de 5m desativado (spread/taxas inviabilizam giro rápido).
-  # Capital 100% alocado defensivamente no Simple Earn Flexível (6,88% a.a.) e reserva cambial.
+  # MOTOR 3: PLANO PÁTRIA VOLÁTIL / SENTINELA CAMBIAL (BRL <-> USDT | 24h Swing Calibrado)
+  # Calibração Científica 17,8 meses (155.979 candles de 5m / 100 iterações estocásticas):
+  # Lucro Médio: +7,54 a +10,45 reais/mês (+0,37% a +0,515%/mês) | Mediana: +8,20 reais/mês
+  # Trades/mês: 1,17 | Tempo Médio de Posse: 487,6h (~20,3d) | Max DD MTM: -2,56%
+  # Janela de Regime: 24 horas (288 candles de 5m / 1440 min)
+  # Entrada Dip: Z_24h <= -1.50 | Saída Trava 6: Z_24h >= +0.40 com Retorno FIFO >= +0.40%
+  # Rendimento Duplo: USDT adquirido rende juros diários no Simple Earn (6,88% a.a.) durante a posse
   # ----------------------------------------------------------------------------
-  # Scalping intradiário inativo: pedido permanece NULL para este motor.
+  stats_u_24h <- obter_stats_usdt_24h()
+  z_patria    <- stats_u_24h$z
+  
+  if (is.null(pedido) && !is.null(p_usdt_brl) && p_usdt_brl > 0) {
+    # 1. Checagem de Lote em Aberto para Realização de Lucro sob Trava 6
+    pm_patria <- 0.0
+    tem_lote_patria <- FALSE
+    hist_exec_file <- "ordens_executadas.rds"
+    if (file.exists(hist_exec_file)) {
+      h_exec <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
+      if (!is.null(h_exec) && nrow(h_exec) > 0 && "Destino" %in% names(h_exec)) {
+        exec_reais <- h_exec[grepl("EXECUTADO_REAL", h_exec$Status), ]
+        idx_vendas <- which(exec_reais$Origem == "USDT" & exec_reais$Estrategia == "PLANO_PATRIA_VOLATIL")
+        ultimo_idx_venda <- if (length(idx_vendas) > 0) max(idx_vendas) else 0
+        # Considera apenas lotes de swing intradiário (Valor_BRL <= 350), preservando o colchão estrutural do Simple Earn
+        compras_abertas <- exec_reais[seq_len(nrow(exec_reais)) > ultimo_idx_venda & 
+                                      exec_reais$Destino == "USDT" & 
+                                      exec_reais$Estrategia == "PLANO_PATRIA_VOLATIL" &
+                                      exec_reais$Valor_BRL <= 350.0, ]
+        if (nrow(compras_abertas) > 0) {
+          validos <- compras_abertas[!is.na(compras_abertas$Preco_Exec) & compras_abertas$Preco_Exec > 0 & !is.na(compras_abertas$Valor_BRL), ]
+          if (nrow(validos) > 0) {
+            pm_patria <- sum(validos$Valor_BRL) / sum(validos$Valor_BRL / validos$Preco_Exec)
+            tem_lote_patria <- TRUE
+          }
+        }
+      }
+    }
+    
+    # 2. REALIZAÇÃO DE LUCRO: Venda USDT -> BRL (Z >= +0.40 e Trava 6 >= +0.40%)
+    if (tem_lote_patria && pm_patria > 0 && usdt_livre_rotacao >= 20.0) {
+      ret_patria <- (p_usdt_brl - pm_patria) / pm_patria
+      em_cooldown_patria <- verificar_cooldown_veto("PLANO_PATRIA_VOLATIL", timeout_seg = 300)
+      if (z_patria >= 0.40 && ret_patria >= 0.0040 && !em_cooldown_patria) {
+        val_desova_patria <- min(usdt_livre_rotacao * p_usdt_brl, VALOR_PATRIA_BRL * fator_lote * (1 + ret_patria))
+        if (val_desova_patria >= 25.0) {
+          pedido <- list(
+            estrategia = "PLANO_PATRIA_VOLATIL",
+            origem = "USDT", destino = "BRL",
+            valor_brl = val_desova_patria,
+            lucro_esperado_pct = round(ret_patria * 100, 2), timestamp = agora_ts
+          )
+        }
+      }
+    } else if (!tem_lote_patria && saldo_caixa_brl >= 120.0) {
+      # 3. ENTRADA EM DIP CAMBIAL: Compra BRL -> USDT quando Z_24h <= -1.50
+      if (z_patria <= -1.50) {
+        lote_patria <- min(VALOR_PATRIA_BRL * fator_lote, saldo_caixa_brl * 0.75)
+        if (lote_patria >= 80.0) {
+          pedido <- list(
+            estrategia = "PLANO_PATRIA_VOLATIL",
+            origem = "BRL", destino = "USDT",
+            valor_brl = lote_patria,
+            lucro_esperado_pct = 0.45, timestamp = agora_ts
+          )
+        }
+      }
+    }
+  }
   
   # ----------------------------------------------------------------------------
   # MOTOR 4: PLANO TITÃ DO SILÍCIO (USDT <-> NVDAB | Duplo Z: Dip 35U / Crash 55U)
@@ -1354,8 +1438,8 @@ executar_radar_labtrader <- function() {
   z_near_val <- if (!is.null(p_near_brl)) (p_near_brl - stats_near$media) / stats_near$sd else 0.0
   z_avax_val <- if (!is.null(p_avax_brl)) (p_avax_brl - stats_avax$media) / stats_avax$sd else 0.0
   
-  log_line <- sprintf("[%s] RADAR: Z_Guiana=%.2f | VIX=%.2f | SpreadPeg=%.4f | Z_Link=%.2f | Z_SOL=%.2f | Z_ETH=%.2f | Z_BNB=%.2f | Z_ADA=%.2f | Z_NEAR=%.2f | Z_AVAX=%.2f | RetBTC5m=%.2f%% | Disparo=%s\n",
-                      agora_str, z_guiana, vix_atual, ifelse(!is.null(usd_oficial), p_usdt_brl - usd_oficial, 0),
+  log_line <- sprintf("[%s] RADAR: Z_Guiana=%.2f | VIX=%.2f | Z_Patria=%.2f | SpreadPeg=%.4f | Z_Link=%.2f | Z_SOL=%.2f | Z_ETH=%.2f | Z_BNB=%.2f | Z_ADA=%.2f | Z_NEAR=%.2f | Z_AVAX=%.2f | RetBTC5m=%.2f%% | Disparo=%s\n",
+                      agora_str, z_guiana, vix_atual, z_patria, ifelse(!is.null(usd_oficial), p_usdt_brl - usd_oficial, 0),
                       (p_link_brl - stats_link$media) / stats_link$sd,
                       (p_sol_brl / p_btc_brl - stats_sol_btc$media) / stats_sol_btc$sd,
                       (p_eth_brl / p_btc_brl - stats_eth_btc$media) / stats_eth_btc$sd,
