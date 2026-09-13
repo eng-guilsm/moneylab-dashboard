@@ -958,7 +958,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                                      saldo_btc_brl, pct_btc_atual, teto_btc_20pct)
             }
           } else if (aprovado && pedido$origem == "BRL" && pedido$destino %in% c("SOL", "LINK", "ETH", "USDT", "PAXG", "BNB", "ADA", "NEAR")) {
-            teto_custodia_map <- list(SOL = 540.0, LINK = 720.0, ETH = 500.0, USDT = 500.0, PAXG = 800.0, BNB = 180.0, ADA = 160.0, NEAR = 450.0)
+            teto_custodia_map <- list(SOL = 540.0, LINK = 720.0, ETH = 500.0, USDT = 1200.0, PAXG = 1200.0, BNB = 180.0, ADA = 160.0, NEAR = 450.0)
             teto_custodia <- ifelse(!is.null(teto_custodia_map[[pedido$destino]]), teto_custodia_map[[pedido$destino]], 250.0)
             
             saldo_ativo_brl <- 0.0
@@ -1149,9 +1149,12 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                 ultimo_idx_venda <- if (length(idx_vendas) > 0) max(idx_vendas) else 0
                 
                 # Compras em aberto: apenas compras DESTA ESTRATÉGIA que ocorreram APÓS a sua última venda
+                # Para PLANO_PATRIA_VOLATIL, considera apenas lotes de swing intradiário (Valor_BRL <= 350)
+                filtro_patria <- if (estrategia_nome == "PLANO_PATRIA_VOLATIL") exec_reais$Valor_BRL <= 350.0 else TRUE
                 compras_abertas <- exec_reais[seq_len(nrow(exec_reais)) > ultimo_idx_venda & 
                                               exec_reais$Destino == as.character(pedido$origem) & 
-                                              exec_reais$Estrategia == estrategia_nome, ]
+                                              exec_reais$Estrategia == estrategia_nome &
+                                              filtro_patria, ]
               }
               
               # Fallback auditado de preço de aquisição na Binance para ativos legados (ADA, LINK, NEAR, AVAX):
@@ -1355,6 +1358,12 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
               qtd_paxg_exec <- as.numeric(resultado_binance$executedQty)
               if (!is.na(qtd_paxg_exec) && qtd_paxg_exec > 0.0001) {
                 subscrever_simple_earn_paxg(qtd_paxg_exec)
+              }
+            } else if (pedido$destino == "USDT") {
+              # Auto-Alocação no Simple Earn Flexível USDT para render juros diários (6,88% a.a.)
+              qtd_usdt_exec <- as.numeric(resultado_binance$executedQty)
+              if (!is.na(qtd_usdt_exec) && qtd_usdt_exec > 0.1) {
+                subscrever_simple_earn_usdt(qtd_usdt_exec)
               }
             }
           }
