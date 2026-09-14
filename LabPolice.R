@@ -292,16 +292,30 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
       }
     }
     
-    # Se origem for USDT e estiver no Simple Earn, resgata automaticamente antes da venda
+    # Se origem for USDT e estiver no Simple Earn, resgata cirurgicamente apenas o déficit se o saldo Spot for insuficiente
     if (origem == "USDT") {
       df_w_check <- tryCatch(carteira(silent = TRUE), error = function(e) NULL)
+      spot_free_u <- 0.0
+      earn_u <- 0.0
       if (!is.null(df_w_check) && is.data.frame(df_w_check)) {
+        row_u <- df_w_check[df_w_check$asset == "USDT", ]
+        if (nrow(row_u) > 0) spot_free_u <- sum(row_u$free, na.rm = TRUE)
         row_ld <- df_w_check[df_w_check$asset == "LDUSDT", ]
-        if (nrow(row_ld) > 0 && sum(row_ld$free, na.rm = TRUE) > 0.5) {
-          cat("🔓 [SIMPLE EARN] Detectado USDT em Simple Earn. Executando resgate automático antes da venda...\n")
-          resgatar_simple_earn_usdt()
-          Sys.sleep(1)
-        }
+        if (nrow(row_ld) > 0) earn_u <- sum(row_ld$free, na.rm = TRUE)
+      }
+      
+      p_u_b <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) 5.17)
+      if (is.null(p_u_b) || is.na(p_u_b) || p_u_b <= 0) p_u_b <- 5.17
+      qtd_u_necessaria <- valor_brl / p_u_b
+      
+      # Só resgata se o saldo Spot livre for insuficiente para cobrir a ordem!
+      if (spot_free_u < qtd_u_necessaria && earn_u > 0) {
+        deficit_u <- qtd_u_necessaria - spot_free_u + 0.50
+        resgate_u <- min(earn_u, deficit_u)
+        cat(sprintf("🔓 [SIMPLE EARN] Resgate cirúrgico de %.2f USDT para cobrir ordem (Spot Livre: %.2f | Necessário: %.2f)...\n", 
+                    resgate_u, spot_free_u, qtd_u_necessaria))
+        resgatar_simple_earn_usdt(resgate_u)
+        Sys.sleep(1)
       }
     }
     
@@ -1120,8 +1134,61 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           
           if (saldo_remanescente_ouro < piso_ouro_dinamico) {
             aprovado <- FALSE
-            motivo_veto <- sprintf("Piso Estrutural de Ouro (10%%)\nReserva após venda: R$ %.2f\nPiso mínimo dinâmico (10%%): R$ %.2f",
+            motivo_veto <- sprintf("Piso Estrutural de Ouro (10%%)\nReserva após venda: %.2f reais\nPiso mínimo dinâmico (10%%): %.2f reais",
                                    saldo_remanescente_ouro, piso_ouro_dinamico)
+          }
+        }
+        
+        # Trava 2.7: Corredor Dinâmico de Dólar USDT (Piso de 30% e Teto de 60% do Patrimônio Consolidado)
+        # Garante que o valor em dólares NUNCA zera e rende 6,88% a.a. passivamente no Simple Earn
+        if (aprovado) {
+          piso_usdt_dinamico <- max(500.0, patrimonio_total_brl * 0.30)
+          teto_usdt_dinamico <- max(1200.0, patrimonio_total_brl * 0.60)
+          
+          # Saldo total atual de USDT (Spot + Simple Earn)
+          saldo_usdt_total_usd <- 0.0
+          if (exists("df_wallet") && !is.null(df_wallet) && is.data.frame(df_wallet) && nrow(df_wallet) > 0) {
+            row_u <- df_wallet[df_wallet$asset %in% c("USDT", "LDUSDT"), ]
+            if (nrow(row_u) > 0) saldo_usdt_total_usd <- sum(row_u$total, na.rm = TRUE)
+          }
+          p_u_tmp <- if (exists("cotacoes") && !is.null(cotacoes[["USDT"]])) cotacoes[["USDT"]] else 5.175
+          saldo_usdt_total_brl <- saldo_usdt_total_usd * p_u_tmp
+          
+          # Piso: Vendas de USDT para BRL não podem furar o piso de 30%
+          if (pedido$origem == "USDT" && pedido$destino == "BRL") {
+            saldo_remanescente_usdt_brl <- saldo_usdt_total_brl - as.numeric(pedido$valor_brl)
+            if (saldo_remanescente_usdt_brl < piso_usdt_dinamico) {
+              aprovado <- FALSE
+              motivo_veto <- sprintf("Piso Estrutural de Dólar (30%%)\nSaldo após venda: %.2f reais (%.1f%%)\nPiso mínimo exigido (30%%): %.2f reais",
+                                     saldo_remanescente_usdt_brl, (saldo_remanescente_usdt_brl / patrimonio_total_brl) * 100, piso_usdt_dinamico)
+            }
+          }
+          
+          # Teto: Compras de USDT com BRL não podem ultrapassar 60%
+          if (pedido$origem == "BRL" && pedido$destino == "USDT") {
+            if ((saldo_usdt_total_brl + as.numeric(pedido$valor_brl)) > teto_usdt_dinamico) {
+              aprovado <- FALSE
+              motivo_veto <- sprintf("Teto de Dólar USDT (60%%)\nSaldo projetado: %.2f reais (%.1f%%)\nTeto máximo permitido: %.2f reais",
+                                     saldo_usdt_total_brl + as.numeric(pedido$valor_brl),
+                                     ((saldo_usdt_total_brl + as.numeric(pedido$valor_brl)) / patrimonio_total_brl) * 100, teto_usdt_dinamico)
+            }
+          }
+        }
+        
+        # Trava 2.8: Corredor Dinâmico de Caixa Fiduciário BRL (Piso de 10% e Teto de 25%)
+        # Preserva liquidez em reais para pescar dips de BTC, SOL, BNB e LINK
+        if (aprovado && pedido$origem == "BRL") {
+          piso_brl_dinamico <- max(200.0, patrimonio_total_brl * 0.10)
+          saldo_brl_atual <- 0.0
+          if (exists("df_wallet") && !is.null(df_wallet) && is.data.frame(df_wallet) && nrow(df_wallet) > 0) {
+            row_b <- df_wallet[df_wallet$asset == "BRL", ]
+            if (nrow(row_b) > 0) saldo_brl_atual <- sum(row_b$free, na.rm = TRUE)
+          }
+          saldo_remanescente_brl <- saldo_brl_atual - as.numeric(pedido$valor_brl)
+          if (saldo_remanescente_brl < piso_brl_dinamico) {
+            aprovado <- FALSE
+            motivo_veto <- sprintf("Piso de Caixa BRL (10%%)\nCaixa após compra: %.2f reais\nPiso mínimo de oportunidade (10%%): %.2f reais",
+                                   saldo_remanescente_brl, piso_brl_dinamico)
           }
         }
         
@@ -1509,6 +1576,24 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                                 ifelse(!is.null(resultado_binance$executedQty), resultado_binance$executedQty, "--"), ativo_qtd_label,
                                 str_lucro_proj, str_lucro_obt, resultado_binance$orderId, ts_str)
               notificar_telegram_trade(msg_tg)
+              
+              # 🔒 Auto-Subscrição de USDT no Simple Earn Flexível para Maximizar Carrego (6,88% a.a.)
+              if (as.character(pedido$destino) == "USDT" || as.character(pedido$origem) == "USDT") {
+                tryCatch({
+                  Sys.sleep(1.5)
+                  df_w_sub <- carteira(silent = TRUE)
+                  if (!is.null(df_w_sub) && is.data.frame(df_w_sub)) {
+                    u_free <- sum(df_w_sub$free[df_w_sub$asset == "USDT"], na.rm = TRUE)
+                    if (u_free >= 10.0) {
+                      val_sub <- floor((u_free - 2.0) * 10) / 10
+                      if (val_sub >= 1.0) {
+                        cat(sprintf("🔒 [AUTO-SUBSCRICAO SIMPLE EARN] Aplicando %.2f USDT no Simple Earn Flexível (6,88%% a.a.)...\n", val_sub))
+                        subscrever_simple_earn_usdt(val_sub)
+                      }
+                    }
+                  }
+                }, error = function(e) NULL)
+              }
             } else {
               # Falha na execução da Binance: registrar veto com cooldown de 5 min (300s) e throttle no Telegram de 15 min
               veto_registry_file <- "vetos_recentes.rds"
@@ -1630,6 +1715,30 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
         # Limpa a mesa para liberar o LabTrader para o próximo ciclo
         unlink("solicitacao.rds")
         cat("🧹 Mesa limpa. Solicitação arquivada.\n")
+      }
+    } else {
+      # Varredura periódica de auto-subscrição de USDT ocioso na Spot (preserva 2 USDT de colchão e aplica o resto no Simple Earn a 6,88% a.a.)
+      last_sweep_file <- "last_usdt_sweep.rds"
+      deve_varrer <- TRUE
+      if (file.exists(last_sweep_file)) {
+        t_last <- tryCatch(readRDS(last_sweep_file), error = function(e) as.POSIXct("2000-01-01"))
+        if (!is.na(t_last) && as.numeric(difftime(Sys.time(), t_last, units = "mins")) < 10) deve_varrer <- FALSE
+      }
+      if (deve_varrer) {
+        tryCatch({
+          df_w_sw <- carteira(silent = TRUE)
+          if (!is.null(df_w_sw) && is.data.frame(df_w_sw)) {
+            u_free <- sum(df_w_sw$free[df_w_sw$asset == "USDT"], na.rm = TRUE)
+            if (!is.na(u_free) && u_free >= 10.0) {
+              val_sub <- floor((u_free - 2.0) * 10) / 10
+              if (val_sub >= 1.0) {
+                cat(sprintf("🔒 [SWEEP SIMPLE EARN] Detectado %.2f USDT ocioso na Spot. Aplicando %.2f USDT no Simple Earn Flexível (6,88%% a.a.)...\n", u_free, val_sub))
+                subscrever_simple_earn_usdt(val_sub)
+              }
+            }
+          }
+          saveRDS(Sys.time(), last_sweep_file)
+        }, error = function(e) NULL)
       }
     }
   }
