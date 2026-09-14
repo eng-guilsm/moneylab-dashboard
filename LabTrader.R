@@ -663,11 +663,15 @@ obter_lote_aberto_estrategia <- function(estrategia_nome, ativo) {
 }
 
 obter_vwap_ativo <- function(ativo_sym) {
-  hist_exec_file <- "ordens_executadas.rds"
+  hist_exec_file <- if (file.exists("ordens_executadas.rds")) "ordens_executadas.rds" else "/app/ordens_executadas.rds"
   if (file.exists(hist_exec_file)) {
     h_exec <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
-    if (!is.null(h_exec) && nrow(h_exec) > 0 && "Destino" %in% names(h_exec)) {
-      compras <- h_exec[h_exec$Destino == ativo_sym & grepl("EXECUTADO_REAL", h_exec$Status), ]
+    if (!is.null(h_exec) && nrow(h_exec) > 0 && all(c("Destino", "Origem", "Status") %in% names(h_exec))) {
+      exec_reais <- h_exec[grepl("EXECUTADO_REAL", h_exec$Status), ]
+      # Identifica o índice da última venda deste ativo para isolar estritamente o lote aberto (FIFO)
+      idx_vendas <- which(exec_reais$Origem == ativo_sym)
+      ultimo_idx_venda <- if (length(idx_vendas) > 0) max(idx_vendas) else 0
+      compras <- exec_reais[seq_len(nrow(exec_reais)) > ultimo_idx_venda & exec_reais$Destino == ativo_sym, ]
       if (nrow(compras) > 0) {
         tot_qtd <- sum(compras$Valor_BRL / compras$Preco_Exec, na.rm = TRUE)
         tot_val <- sum(compras$Valor_BRL, na.rm = TRUE)
@@ -776,9 +780,18 @@ executar_radar_labtrader <- function() {
     if (any(df_w$asset %in% c("SPYB", "SP500"))) saldo_spyb_usd  <- sum(df_w$free[df_w$asset %in% c("SPYB", "SP500")], na.rm = TRUE)
     if (any(df_w$asset %in% c("SQQQB", "BITI"))) saldo_sqqqb_usd <- sum(df_w$free[df_w$asset %in% c("SQQQB", "BITI")], na.rm = TRUE)
     if (any(df_w$asset %in% c("TLT", "TLTB")))   saldo_tlt_usd   <- sum(df_w$free[df_w$asset %in% c("TLT", "TLTB")], na.rm = TRUE)
+    p_nv_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=NVDABUSDT"), "parsed")$price), error = function(e) 178.0)
+    p_sp_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=SPYBUSDT"), "parsed")$price), error = function(e) 658.0)
+    p_sq_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=SQQQBUSDT"), "parsed")$price), error = function(e) 40.5)
+    p_tl_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=TLTUSDT"), "parsed")$price), error = function(e) 95.0)
+    val_eq_usd <- (saldo_nvdab_usd * ifelse(!is.null(p_nv_tmp) && p_nv_tmp > 0, p_nv_tmp, 178.0) +
+                   saldo_spyb_usd  * ifelse(!is.null(p_sp_tmp) && p_sp_tmp > 0, p_sp_tmp, 658.0) +
+                   saldo_sqqqb_usd * ifelse(!is.null(p_sq_tmp) && p_sq_tmp > 0, p_sq_tmp, 40.5) +
+                   saldo_tlt_usd   * ifelse(!is.null(p_tl_tmp) && p_tl_tmp > 0, p_tl_tmp, 95.0))
+    val_eq_brl <- val_eq_usd * p_usdt_brl
   }
   
-  total_patrimonio_est <- saldo_caixa_brl + saldo_btc_brl + saldo_paxg_brl + saldo_sol_brl + saldo_eth_brl + saldo_link_brl + saldo_bnb_brl + saldo_ada_brl + saldo_near_brl + saldo_avax_brl + saldo_usdt_brl + (saldo_nvdab_usd + saldo_spyb_usd + saldo_sqqqb_usd + saldo_tlt_usd) * p_usdt_brl
+  total_patrimonio_est <- saldo_caixa_brl + saldo_btc_brl + saldo_paxg_brl + saldo_sol_brl + saldo_eth_brl + saldo_link_brl + saldo_bnb_brl + saldo_ada_brl + saldo_near_brl + saldo_avax_brl + saldo_usdt_brl + val_eq_brl
   peso_btc <- ifelse(total_patrimonio_est > 0, saldo_btc_brl / total_patrimonio_est, 0.35)
   
   # 💵 Corredor Dinâmico de Dólar USDT: Piso de 30% no Simple Earn (Intocável) e Teto de 60%
@@ -944,13 +957,15 @@ executar_radar_labtrader <- function() {
   # ----------------------------------------------------------------------------
   if (is.null(pedido)) {
     p_nvda_live <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=NVDABUSDT"), "parsed")$price), error = function(e) NULL)
-    pm_nvda <- obter_vwap_ativo("NVDAB")
+    lote_nvda <- obter_lote_aberto_estrategia("PLANO_TITA_DO_SILICIO", "NVDAB")
+    pm_nvda <- if (lote_nvda$tem_lote && !is.null(lote_nvda$preco_compra) && lote_nvda$preco_compra > 0) lote_nvda$preco_compra else obter_vwap_ativo("NVDAB")
     
     # 1. REALIZAÇÃO DE LUCRO: Venda NVDAB -> USDT sob Trava 6 FIFO (>= +0.60% líquido)
     if (saldo_nvdab_usd > 0.01 && !is.null(p_nvda_live) && p_nvda_live > 0 && pm_nvda > 0) {
       p_nvda_live_brl <- p_nvda_live * p_usdt_brl
       ret_nvda <- (p_nvda_live_brl / pm_nvda) - 1.0
-      if (ret_nvda >= 0.0060) {
+      tempo_ok <- !lote_nvda$tem_lote || lote_nvda$minutos_posse >= 15.0 || ret_nvda >= 0.015
+      if (ret_nvda >= 0.0060 && tempo_ok) {
         val_venda_brl <- saldo_nvdab_usd * p_nvda_live * p_usdt_brl
         pedido <- list(
           estrategia = "PLANO_TITA_DO_SILICIO",
@@ -1233,13 +1248,15 @@ executar_radar_labtrader <- function() {
   # Renda Fixa Soberana Americana (T-Bonds 20Y) | Lote 16 USDT (~R$ 80)
   # ----------------------------------------------------------------------------
   if (is.null(pedido)) {
+    lote_tlt <- obter_lote_aberto_estrategia("PLANO_ESCUDO_DE_WASHINGTON", "TLT")
     if (saldo_tlt_usd > 0.01) {
-      pm_tlt <- obter_vwap_ativo("TLT")
+      pm_tlt <- if (lote_tlt$tem_lote && !is.null(lote_tlt$preco_compra) && lote_tlt$preco_compra > 0) lote_tlt$preco_compra else obter_vwap_ativo("TLT")
       p_tlt_live <- tryCatch(as.numeric(tail(getQuote("TLT")$Last, 1)), error = function(e) 95.0)
       if (pm_tlt > 0 && p_tlt_live > 0) {
         p_tlt_live_brl <- p_tlt_live * p_usdt_brl
         ret_tlt <- (p_tlt_live_brl / pm_tlt) - 1.0
-        if (ret_tlt >= 0.0052) {
+        tempo_ok <- !lote_tlt$tem_lote || lote_tlt$minutos_posse >= 15.0 || ret_tlt >= 0.015
+        if (ret_tlt >= 0.0052 && tempo_ok) {
           pedido <- list(
             estrategia = "PLANO_ESCUDO_DE_WASHINGTON",
             origem = "TLT", destino = "USDT",
@@ -1284,13 +1301,15 @@ executar_radar_labtrader <- function() {
   # ProShares UltraPro Short QQQ Spot Binance | Lote 18 USDT (~R$ 90)
   # ----------------------------------------------------------------------------
   if (is.null(pedido)) {
+    lote_anti <- obter_lote_aberto_estrategia("PLANO_SENTINELA_ANTIFRAGIL", "SQQQB")
     if (saldo_sqqqb_usd > 0.01) {
       p_sqqq_live <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=SQQQBUSDT"), "parsed")$price), error = function(e) NULL)
-      pm_sqqq <- obter_vwap_ativo("SQQQB")
+      pm_sqqq <- if (lote_anti$tem_lote && !is.null(lote_anti$preco_compra) && lote_anti$preco_compra > 0) lote_anti$preco_compra else obter_vwap_ativo("SQQQB")
       if (!is.null(p_sqqq_live) && p_sqqq_live > 0 && pm_sqqq > 0) {
         p_sqqq_live_brl <- p_sqqq_live * p_usdt_brl
         ret_sqqq <- (p_sqqq_live_brl / pm_sqqq) - 1.0
-        if (ret_sqqq >= 0.0052) {
+        tempo_ok <- !lote_anti$tem_lote || lote_anti$minutos_posse >= 15.0 || ret_sqqq >= 0.015
+        if (ret_sqqq >= 0.0052 && tempo_ok) {
           val_venda_brl <- saldo_sqqqb_usd * p_sqqq_live * p_usdt_brl
           pedido <- list(
             estrategia = "PLANO_SENTINELA_ANTIFRAGIL",
@@ -1328,13 +1347,15 @@ executar_radar_labtrader <- function() {
   # ----------------------------------------------------------------------------
   if (is.null(pedido)) {
     # 1. REALIZACAO DE LUCRO: Venda SPYB -> USDT sob a Trava 6 (>= +0.60%)
+    lote_spy <- obter_lote_aberto_estrategia("PLANO_SENTINELA_WALLSTREET", "SPYB")
     if (saldo_spyb_usd > 0.01) {
       p_spy_live <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=SPYBUSDT"), "parsed")$price), error = function(e) NULL)
-      pm_spy <- obter_vwap_ativo("SPYB")
+      pm_spy <- if (lote_spy$tem_lote && !is.null(lote_spy$preco_compra) && lote_spy$preco_compra > 0) lote_spy$preco_compra else obter_vwap_ativo("SPYB")
       if (!is.null(p_spy_live) && p_spy_live > 0 && pm_spy > 0) {
         p_spy_live_brl <- p_spy_live * p_usdt_brl
         ret_spy <- (p_spy_live_brl / pm_spy) - 1.0
-        if (ret_spy >= 0.0060) {
+        tempo_ok <- !lote_spy$tem_lote || lote_spy$minutos_posse >= 15.0 || ret_spy >= 0.015
+        if (ret_spy >= 0.0060 && tempo_ok) {
           val_venda_brl <- saldo_spyb_usd * p_spy_live * p_usdt_brl
           pedido <- list(
             estrategia = "PLANO_SENTINELA_WALLSTREET",

@@ -1446,28 +1446,65 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
               }
             }
           }
-        } else if (aprovado && pedido$destino == "USDT" && pedido$origem %in% c("PAXG", "BTC", "ETH")) {
-          # === SUB-TRAVA 6.2: ROTAÇÕES PARA DÓLAR USDT ===
+        } else if (aprovado && pedido$destino == "USDT" && pedido$origem %in% c("PAXG", "BTC", "ETH", "SQQQB", "NVDAB", "SPYB", "TLT", "TSLAB", "QQQB", "AAPLB", "MSFTB")) {
+          # === SUB-TRAVA 6.2: ROTAÇÕES PARA DÓLAR USDT (CRIPTO + BACKED EQUITIES SPOT) ===
           p_usdt_b <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) 5.20)
-          p_origem_u_live <- tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%sUSDT", pedido$origem)), "parsed")$price), error = function(e) 0.0)
+          orig_sym_check <- as.character(pedido$origem)
+          if (orig_sym_check == "TLT") orig_sym_check <- "TLTB"
+          p_origem_u_live <- tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%sUSDT", orig_sym_check)), "parsed")$price), error = function(e) 0.0)
+          if ((is.null(p_origem_u_live) || is.na(p_origem_u_live) || p_origem_u_live <= 0) && orig_sym_check %in% c("TLT", "TLTB")) {
+            p_origem_u_live <- 95.0
+          }
           
-          if (p_origem_u_live > 0 && file.exists(hist_exec_file)) {
+          if (!is.null(p_origem_u_live) && p_origem_u_live > 0 && file.exists(hist_exec_file)) {
             hist_all <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
-            if (!is.null(hist_all) && nrow(hist_all) > 0) {
+            if (!is.null(hist_all) && nrow(hist_all) > 0 && "Destino" %in% names(hist_all)) {
               exec_reais <- hist_all[grepl("EXECUTADO_REAL", hist_all$Status), ]
-              compras_abertas <- tail(exec_reais[exec_reais$Destino == as.character(pedido$origem), ], 1)
-              p_entrada_exec <- if (nrow(compras_abertas) > 0 && !is.na(compras_abertas$Preco_Exec) && compras_abertas$Preco_Exec > 0) compras_abertas$Preco_Exec else NA
-              # Fallback auditado SSOT na Binance para Ouro PAXG:
-              if (is.na(p_entrada_exec) && pedido$origem == "PAXG") p_entrada_exec <- 23576.0
               
-              if (!is.na(p_entrada_exec) && p_entrada_exec > 0) {
-                p_entrada_usdt <- p_entrada_exec / p_usdt_b
-                ret_usdt <- ((p_origem_u_live - p_entrada_usdt) / p_entrada_usdt) * 100
-                ret_obtido_real <- ret_usdt
-                if (ret_usdt < 0.40) {
-                  aprovado <- FALSE
-                  motivo_veto <- sprintf("Trava Dólar FIFO\nPreço atual de %s: US$ %.2f\nLote em aberto: US$ %.2f\nRetorno: %+.2f%% | Exige >= +0.40%%",
-                                         pedido$origem, p_origem_u_live, p_entrada_usdt, ret_usdt)
+              # Identifica a última venda deste ativo para ESTA ESTRATÉGIA (FIFO estrito)
+              idx_vendas <- which(exec_reais$Origem == as.character(pedido$origem) & exec_reais$Estrategia == estrategia_nome)
+              ultimo_idx_venda <- if (length(idx_vendas) > 0) max(idx_vendas) else 0
+              compras_abertas <- exec_reais[seq_len(nrow(exec_reais)) > ultimo_idx_venda & 
+                                            exec_reais$Destino == as.character(pedido$origem) & 
+                                            exec_reais$Estrategia == estrategia_nome, ]
+              
+              if (nrow(compras_abertas) == 0 && estrategia_nome %in% c("PLANO_ADEUS_PERRY", "PLANO_BRUCE_WAYNE")) {
+                compras_abertas <- tail(exec_reais[exec_reais$Destino == as.character(pedido$origem), ], 1)
+              }
+              
+              if (nrow(compras_abertas) == 0) {
+                aprovado <- FALSE
+                motivo_veto <- sprintf("Segregação de Custódia\n%s não possui lote de compra aberto para %s",
+                                       estrategia_nome, pedido$origem)
+              } else {
+                validos <- compras_abertas[!is.na(compras_abertas$Preco_Exec) & compras_abertas$Preco_Exec > 0 & !is.na(compras_abertas$Valor_BRL), ]
+                p_entrada_exec <- if (nrow(validos) > 0) {
+                  sum(validos$Valor_BRL) / sum(validos$Valor_BRL / validos$Preco_Exec)
+                } else NA
+                
+                # Fallback auditado SSOT na Binance para Ouro PAXG:
+                if (is.na(p_entrada_exec) && pedido$origem == "PAXG") p_entrada_exec <- 23576.0
+                
+                if (!is.na(p_entrada_exec) && p_entrada_exec > 0) {
+                  p_entrada_usdt <- p_entrada_exec / p_usdt_b
+                  ret_usdt <- ((p_origem_u_live - p_entrada_usdt) / p_entrada_usdt) * 100
+                  ret_obtido_real <- ret_usdt
+                  
+                  # Validação de Holding Time Mínimo (15 minutos para maturação de onda espectral)
+                  ultima_compra_ts <- as.POSIXct(tail(validos$Data_Hora, 1))
+                  tempo_posse_min <- as.numeric(difftime(Sys.time(), ultima_compra_ts, units = "mins"))
+                  
+                  min_lucro_exigido <- ifelse(!is.null(lucros_minimos[[estrategia_nome]]), lucros_minimos[[estrategia_nome]], 0.40)
+                  
+                  if (tempo_posse_min < 15.0 && ret_usdt < 1.50) {
+                    aprovado <- FALSE
+                    motivo_veto <- sprintf("Holding Time Mínimo (15m)\nTempo de posse: %.1f min\nTempo exigido: >= 15.0 min",
+                                           tempo_posse_min)
+                  } else if (ret_usdt < min_lucro_exigido) {
+                    aprovado <- FALSE
+                    motivo_veto <- sprintf("Trava Dólar FIFO\nPreço atual de %s: US$ %.2f\nLote em aberto: US$ %.2f\nRetorno: %+.2f%% | Exige >= +%.2f%%",
+                                           pedido$origem, p_origem_u_live, p_entrada_usdt, ret_usdt, min_lucro_exigido)
+                  }
                 }
               }
             }
