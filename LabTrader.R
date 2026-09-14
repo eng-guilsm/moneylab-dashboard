@@ -760,6 +760,7 @@ executar_radar_labtrader <- function() {
   saldo_spyb_usd  <- 0
   saldo_sqqqb_usd <- 0
   saldo_tlt_usd   <- 0
+  val_eq_brl      <- 0.0
   
   if (!is.null(df_w) && is.data.frame(df_w) && nrow(df_w) > 0) {
     if (any(df_w$asset %in% c("BTC", "LDBTC"))) saldo_btc_brl   <- sum(df_w$free[df_w$asset %in% c("BTC", "LDBTC")], na.rm = TRUE) * p_btc_brl
@@ -780,18 +781,31 @@ executar_radar_labtrader <- function() {
     if (any(df_w$asset %in% c("SPYB", "SP500"))) saldo_spyb_usd  <- sum(df_w$free[df_w$asset %in% c("SPYB", "SP500")], na.rm = TRUE)
     if (any(df_w$asset %in% c("SQQQB", "BITI"))) saldo_sqqqb_usd <- sum(df_w$free[df_w$asset %in% c("SQQQB", "BITI")], na.rm = TRUE)
     if (any(df_w$asset %in% c("TLT", "TLTB")))   saldo_tlt_usd   <- sum(df_w$free[df_w$asset %in% c("TLT", "TLTB")], na.rm = TRUE)
-    p_nv_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=NVDABUSDT"), "parsed")$price), error = function(e) 178.0)
-    p_sp_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=SPYBUSDT"), "parsed")$price), error = function(e) 658.0)
-    p_sq_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=SQQQBUSDT"), "parsed")$price), error = function(e) 40.5)
-    p_tl_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=TLTUSDT"), "parsed")$price), error = function(e) 95.0)
-    val_eq_usd <- (saldo_nvdab_usd * ifelse(!is.null(p_nv_tmp) && p_nv_tmp > 0, p_nv_tmp, 178.0) +
-                   saldo_spyb_usd  * ifelse(!is.null(p_sp_tmp) && p_sp_tmp > 0, p_sp_tmp, 658.0) +
-                   saldo_sqqqb_usd * ifelse(!is.null(p_sq_tmp) && p_sq_tmp > 0, p_sq_tmp, 40.5) +
-                   saldo_tlt_usd   * ifelse(!is.null(p_tl_tmp) && p_tl_tmp > 0, p_tl_tmp, 95.0))
+    
+    obter_px_eq <- function(sym, fallback) {
+      px <- tryCatch({
+        r <- content(GET(paste0("https://api.binance.com/api/v3/ticker/price?symbol=", sym, "USDT")), "parsed")
+        if (!is.null(r$price)) as.numeric(r$price) else fallback
+      }, error = function(e) fallback)
+      if (is.null(px) || length(px) == 0 || is.na(px) || px <= 0) px <- fallback
+      return(px)
+    }
+    
+    p_nv_tmp <- obter_px_eq("NVDAB", 178.0)
+    p_sp_tmp <- obter_px_eq("SPYB", 658.0)
+    p_sq_tmp <- obter_px_eq("SQQQB", 40.5)
+    p_tl_tmp <- 95.0
+    
+    val_eq_usd <- (saldo_nvdab_usd * p_nv_tmp) +
+                  (saldo_spyb_usd  * p_sp_tmp) +
+                  (saldo_sqqqb_usd * p_sq_tmp) +
+                  (saldo_tlt_usd   * p_tl_tmp)
+    if (is.na(val_eq_usd) || length(val_eq_usd) == 0) val_eq_usd <- 0.0
     val_eq_brl <- val_eq_usd * p_usdt_brl
   }
   
   total_patrimonio_est <- saldo_caixa_brl + saldo_btc_brl + saldo_paxg_brl + saldo_sol_brl + saldo_eth_brl + saldo_link_brl + saldo_bnb_brl + saldo_ada_brl + saldo_near_brl + saldo_avax_brl + saldo_usdt_brl + val_eq_brl
+  if (is.na(total_patrimonio_est) || length(total_patrimonio_est) == 0 || total_patrimonio_est <= 0) total_patrimonio_est <- 2187.0
   peso_btc <- ifelse(total_patrimonio_est > 0, saldo_btc_brl / total_patrimonio_est, 0.35)
   
   # 💵 Corredor Dinâmico de Dólar USDT: Piso de 30% no Simple Earn (Intocável) e Teto de 60%
