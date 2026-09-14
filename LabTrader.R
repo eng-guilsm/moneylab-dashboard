@@ -32,6 +32,7 @@ VALOR_BRUCE_BRL      <- 300.0  # R$ 300 - Plano 13: Bruce Wayne (Desativado Temp
 VALOR_WALLSTREET_USDT_DIP   <- 35.0 # 35 USDT (~R$ 180) - Plano 14: Sentinela Wall Street Dip Moderado (Z <= -0.40)
 VALOR_WALLSTREET_USDT_CRASH <- 55.0 # 55 USDT (~R$ 283) - Plano 14: Sentinela Wall Street Forte Queda (Z <= -1.80)
 VALOR_PERRY_BRL      <- 150.0  # R$ 150 - Plano 15: Adeus, Perry (Desativado Temporariamente)
+VALOR_CABOCLO_BRL    <- 180.0  # R$ 180 - Plano 16: Caboclo dos Oráculos (Simulado G500 Sagarana 10h | Lucro +3,49 reais/m | Posse 13,5h)
 
 obter_stats_macro_btc_30d <- function() {
   db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
@@ -666,14 +667,18 @@ obter_vwap_ativo <- function(ativo_sym) {
   if (file.exists(hist_exec_file)) {
     h_exec <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
     if (!is.null(h_exec) && nrow(h_exec) > 0 && "Destino" %in% names(h_exec)) {
-      compras <- h_exec[h_exec$Destino == ativo_sym & h_exec$Status == "EXECUTADO_REAL_BINANCE", ]
+      compras <- h_exec[h_exec$Destino == ativo_sym & grepl("EXECUTADO_REAL", h_exec$Status), ]
       if (nrow(compras) > 0) {
         tot_qtd <- sum(compras$Valor_BRL / compras$Preco_Exec, na.rm = TRUE)
         tot_val <- sum(compras$Valor_BRL, na.rm = TRUE)
-        return(if (tot_qtd > 0) tot_val / tot_qtd else as.numeric(tail(compras$Preco_Exec, 1)))
+        vwap_calc <- if (tot_qtd > 0) tot_val / tot_qtd else as.numeric(tail(compras$Preco_Exec, 1))
+        if (!is.na(vwap_calc) && vwap_calc > 0) return(vwap_calc)
       }
     }
   }
+  # Fallbacks auditados de custo de aquisição na Binance (SSOT):
+  fallbacks_vwap <- list(PAXG = 23576.0, ADA = 1.083, LINK = 59.00, NEAR = 22.50, AVAX = 135.0)
+  if (!is.null(fallbacks_vwap[[ativo_sym]])) return(fallbacks_vwap[[ativo_sym]])
   return(0.0)
 }
 
@@ -780,19 +785,23 @@ executar_radar_labtrader <- function() {
   total_patrimonio_est <- saldo_caixa_brl + saldo_btc_brl + saldo_paxg_brl + saldo_sol_brl + saldo_eth_brl + saldo_link_brl + saldo_bnb_brl + saldo_ada_brl + saldo_near_brl + saldo_avax_brl + saldo_usdt_brl + (saldo_nvdab_usd + saldo_spyb_usd + saldo_sqqqb_usd + saldo_tlt_usd) * p_usdt_brl
   peso_btc <- ifelse(total_patrimonio_est > 0, saldo_btc_brl / total_patrimonio_est, 0.35)
   
+  # 🥇 Governança Dinâmica de Ouro: Piso Estrutural de 10% (Intocável) e Teto Operacional de 20%
+  piso_ouro_dinamico <- max(200.0, total_patrimonio_est * 0.10)
+  teto_ouro_dinamico <- max(400.0, total_patrimonio_est * 0.20)
+  
   pedido <- NULL
   
   # ----------------------------------------------------------------------------
   # MOTOR 1: PLANO GUIANA BRASILEIRA (PAXG <-> BTC | Calibrado G500 - 60p / 5h)
   # Metricas G500: +4,35 reais/m | Posse: 123,3h | Platô CV: 7,0%
-  # Desengasgo 1 & 2: Lote Ouro calibrado na folga do piso de R$ 500 e giro livre de BTC
+  # Desengasgo 1 & 2: Lote Ouro calibrado na folga do piso dinâmico (10%) e teto dinâmico (20%)
   # ----------------------------------------------------------------------------
   ratio_guiana <- p_paxg_brl / p_btc_brl
   z_guiana     <- (ratio_guiana - stats_guiana$media) / stats_guiana$sd
   dsp_guiana   <- if (!is.null(stats_guiana$dsp)) stats_guiana$dsp else list(theta = 0, d2Z = 0)
   
-  # Ponta A: Bitcoin eufórico / Ouro com desconto -> Vende BTC e compra PAXG
-  can_sell_btc_guiana <- saldo_btc_brl >= 28.0 && saldo_paxg_brl < 850.0
+  # Ponta A: Bitcoin eufórico / Ouro com desconto -> Vende BTC e compra PAXG (respeitando teto de 20%)
+  can_sell_btc_guiana <- saldo_btc_brl >= 28.0 && saldo_paxg_brl < teto_ouro_dinamico
   if (z_guiana <= -1.00 && dsp_guiana$d2Z >= -0.015 && can_sell_btc_guiana) {
     lote_g <- min(75.0 * fator_lote, max(28.0, saldo_btc_brl * 0.95))
     if (lote_g >= 28.0 && lote_g <= saldo_btc_brl) {
@@ -803,9 +812,9 @@ executar_radar_labtrader <- function() {
       )
     }
   } else if (z_guiana >= 0.95) {
-    # Ponta B: Ouro valorizado / Bitcoin em dip -> Vende PAXG e compra BTC (preservando piso de Ouro em R$ 500)
+    # Ponta B: Ouro valorizado / Bitcoin em dip -> Vende PAXG e compra BTC (preservando piso estrutural de 10%)
     cooldown_veto_guiana <- verificar_cooldown_veto("PLANO_GUIANA_BRASILEIRA", timeout_seg = 300)
-    folga_ouro <- saldo_paxg_brl - 505.0
+    folga_ouro <- saldo_paxg_brl - piso_ouro_dinamico
     if (!cooldown_veto_guiana && folga_ouro >= 28.0) {
       lote_g <- min(90.0 * fator_lote, folga_ouro)
       if (lote_g >= 28.0) {
@@ -990,7 +999,7 @@ executar_radar_labtrader <- function() {
   # ----------------------------------------------------------------------------
   # MOTOR 5: PLANO OURO LÍQUIDO (PAXG <-> USDT | Calibrado 48p / 4h Spot)
   # Metricas: +4,57 reais/m (+0,23%/m) | Posse: 98,5h | Trava 6 FIFO >= +0.60%
-  # Preserva Piso de Ouro (R$ 500) | Lote 30 USDT base (~R$ 155), escalável para 40.5 USDT
+  # Preserva Corredor de Ouro (Piso 10% / Teto 20%) | Lote 30 USDT base (~R$ 155), escalável para 40.5 USDT
   # ----------------------------------------------------------------------------
   stats_paxg_usdt <- obter_stats_paxg_usdt_4h()
   if (is.null(pedido) && !is.null(p_paxg_usdt) && !is.null(p_usdt_brl)) {
@@ -999,7 +1008,7 @@ executar_radar_labtrader <- function() {
     
     lote_ouro_liq <- obter_lote_aberto_estrategia("PLANO_OURO_LIQUIDO", "PAXG")
     
-    if (!lote_ouro_liq$tem_lote && usdt_livre_rotacao >= 28.0) {
+    if (!lote_ouro_liq$tem_lote && usdt_livre_rotacao >= 28.0 && saldo_paxg_brl < teto_ouro_dinamico) {
       # Gatilho de Entrada: Dip em PAXG/USDT (Z <= -0.50 com aceleração d2Z >= 0.010)
       if (z_paxg_usdt <= -0.50 && dsp_paxg$d2Z >= 0.010) {
         lote_u <- min(ifelse(ste_atual >= 0.02 && pc1_atual <= 0.40, 40.5, VALOR_OURO_LIQUIDO_USDT), usdt_livre_rotacao)
@@ -1016,7 +1025,7 @@ executar_radar_labtrader <- function() {
       if (!is.null(pm_paxg) && pm_paxg > 0) {
         ret_paxg <- (p_paxg_usdt / pm_paxg) - 1.0 - 0.0015
         em_cooldown_ouro <- verificar_cooldown_veto("PLANO_OURO_LIQUIDO", timeout_seg = 300)
-        folga_ouro <- saldo_paxg_brl - 505.0
+        folga_ouro <- saldo_paxg_brl - piso_ouro_dinamico
         if (z_paxg_usdt >= 0.40 && ret_paxg >= 0.0060 && !em_cooldown_ouro && folga_ouro >= 20.0) {
           val_desova_brl <- min(lote_ouro_liq$valor_compra * (1.0 + ret_paxg), folga_ouro)
           pedido <- list(
@@ -1366,68 +1375,118 @@ executar_radar_labtrader <- function() {
   }
 
   # ----------------------------------------------------------------------------
-  # MOTOR 15: PLANO ADEUS, PERRY (Desova e Liquidação Cirúrgica de Ativos Legados)
-  # [DESATIVADO TEMPORARIAMENTE CONFORME DIRETRIZ DE GOVERNANÇA]
+  # MOTOR 15: PLANO ADEUS, PERRY (Desova de Excesso de Ouro PAXG & Ativos Legados)
+  # [ATIVO: Poda Cirúrgica de Ouro acima de 20% do Patrimônio Total sob Trava 6]
+  # Calibração 17,8 meses (156.356 candles 5m): Tranche 35 USDT (~R$ 180) -> USDT (Simple Earn 6,88%)
+  # Condição Indispensável: Execução SOMENTE COM LUCRO (FIFO >= +0.40% sobre VWAP de aquisição)
   # ----------------------------------------------------------------------------
-  PLANO_ADEUS_PERRY_ATIVO <- FALSE
+  PLANO_ADEUS_PERRY_ATIVO <- TRUE
   if (is.null(pedido) && PLANO_ADEUS_PERRY_ATIVO) {
     em_cooldown_perry <- verificar_cooldown_veto("PLANO_ADEUS_PERRY", timeout_seg = 300)
     if (!em_cooldown_perry) {
-      saldo_legados <- list(
-        LINK = saldo_link_brl,
-        ADA  = saldo_ada_brl,
-        NEAR = saldo_near_brl,
-        AVAX = saldo_avax_brl
-      )
-      
-      for (ast_leg in names(saldo_legados)) {
-        if (!is.null(pedido)) break
-        val_leg <- saldo_legados[[ast_leg]]
-        if (!is.null(val_leg) && !is.na(val_leg) && val_leg >= 15.0) {
-          # Consulta lote em aberto e VWAP
-          pm_leg <- 0.0
-          hist_exec_file <- "ordens_executadas.rds"
-          if (file.exists(hist_exec_file)) {
-            h_exec <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
-            if (!is.null(h_exec) && nrow(h_exec) > 0 && "Destino" %in% names(h_exec)) {
-              compras_leg <- h_exec[h_exec$Destino == ast_leg & h_exec$Status == "EXECUTADO_REAL_BINANCE", ]
-              if (nrow(compras_leg) > 0) {
-                tot_qtd <- sum(compras_leg$Valor_BRL / compras_leg$Preco_Exec, na.rm = TRUE)
-                tot_val <- sum(compras_leg$Valor_BRL, na.rm = TRUE)
-                pm_leg <- if (tot_qtd > 0) tot_val / tot_qtd else as.numeric(tail(compras_leg$Preco_Exec, 1))
-              }
+      # 1. PRIORIDADE MÁXIMA: Desova Cirúrgica de Excesso de Ouro PAXG (> 20% do Patrimônio)
+      if (saldo_paxg_brl > teto_ouro_dinamico) {
+        pm_paxg <- obter_vwap_ativo("PAXG")
+        if (pm_paxg <= 0) pm_paxg <- 23576.0 # Fallback VWAP histórico auditado na Binance
+        
+        if (!is.null(p_paxg_brl) && p_paxg_brl > 0 && pm_paxg > 0) {
+          ret_paxg <- (p_paxg_brl / pm_paxg) - 1.0
+          
+          # Executa estritamente se houver lucro sob a Trava 6 Breakeven FIFO (>= +0.40%)
+          if (ret_paxg >= 0.0040) {
+            excesso_ouro_brl <- saldo_paxg_brl - teto_ouro_dinamico
+            # Tranche otimizada em 35 USDT (~180 reais), limitada ao excesso e preservando o piso de 10%
+            lote_desova_paxg_brl <- min(35.0 * p_usdt_brl, excesso_ouro_brl)
+            reserva_pos_desova <- saldo_paxg_brl - lote_desova_paxg_brl
+            
+            if (reserva_pos_desova >= piso_ouro_dinamico && lote_desova_paxg_brl >= 25.0) {
+              pedido <- list(
+                estrategia = "PLANO_ADEUS_PERRY",
+                origem = "PAXG", destino = "USDT",
+                valor_brl = lote_desova_paxg_brl,
+                lucro_esperado_pct = round(ret_paxg * 100, 2), timestamp = agora_ts
+              )
             }
-          }
-          
-          # Fallback auditado de preço de aquisição na Binance:
-          if (pm_leg <= 0) {
-            precos_aquisicao_legados <- list(ADA = 1.083, LINK = 59.00, NEAR = 22.50, AVAX = 135.0)
-            if (!is.null(precos_aquisicao_legados[[ast_leg]])) pm_leg <- precos_aquisicao_legados[[ast_leg]]
-          }
-          
-          p_now_leg <- tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%sBRL", ast_leg)), "parsed")$price), error = function(e) NULL)
-          
-          # Se o preço de mercado estiver em lucro ou >= VWAP * 1.0040 (Trava 6)
-          lucro_atingido <- FALSE
-          if (!is.null(p_now_leg) && p_now_leg > 0 && pm_leg > 0) {
-            ret_leg <- (p_now_leg / pm_leg) - 1.0
-            if (ret_leg >= 0.0040) {
-              lucro_atingido <- TRUE
-            }
-          } else {
-            # Se não há histórico de compra registrado, permite desova controlada
-            lucro_atingido <- TRUE
-          }
-          
-          if (lucro_atingido) {
-            pedido <- list(
-              estrategia = "PLANO_ADEUS_PERRY",
-              origem = ast_leg, destino = "BRL",
-              valor_brl = val_leg,
-              lucro_esperado_pct = 0.50, timestamp = agora_ts
-            )
           }
         }
+      }
+      
+      # 2. PRIORIDADE SECUNDÁRIA: Desova de Ativos Legados (LINK, ADA, NEAR, AVAX) sob Trava 6
+      if (is.null(pedido)) {
+        saldo_legados <- list(
+          LINK = saldo_link_brl,
+          ADA  = saldo_ada_brl,
+          NEAR = saldo_near_brl,
+          AVAX = saldo_avax_brl
+        )
+        
+        for (ast_leg in names(saldo_legados)) {
+          if (!is.null(pedido)) break
+          val_leg <- saldo_legados[[ast_leg]]
+          if (!is.null(val_leg) && !is.na(val_leg) && val_leg >= 15.0) {
+            pm_leg <- obter_vwap_ativo(ast_leg)
+            p_now_leg <- tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%sBRL", ast_leg)), "parsed")$price), error = function(e) NULL)
+            
+            lucro_atingido <- FALSE
+            if (!is.null(p_now_leg) && p_now_leg > 0 && pm_leg > 0) {
+              ret_leg <- (p_now_leg / pm_leg) - 1.0
+              if (ret_leg >= 0.0040) lucro_atingido <- TRUE
+            } else {
+              lucro_atingido <- TRUE
+            }
+            
+            if (lucro_atingido) {
+              pedido <- list(
+                estrategia = "PLANO_ADEUS_PERRY",
+                origem = ast_leg, destino = "BRL",
+                valor_brl = val_leg,
+                lucro_esperado_pct = 0.50, timestamp = agora_ts
+              )
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  # ----------------------------------------------------------------------------
+  # MOTOR 16: PLANO CABOCLO DOS ORÁCULOS (BRL <-> LINK | Calibrado 10h G500)
+  # [ATIVO EM SIMULAÇÃO / TESTE DE SINAIS CONFORME DIRETRIZ QUANTITATIVA]
+  # Configuração Otimizada Sagarana 10h: Z <= -0.80, d2Z >= +0.010, Trava 6 >= +0.80%
+  # Lucro Homologado 5m: +3,49 reais/mês (+0,160%/m) | Posse: 13,5h | 1,6 trades/mês
+  # ----------------------------------------------------------------------------
+  if (is.null(pedido) && !is.null(p_link_brl) && !is.null(stats_link) && ste_atual >= -0.02 && pc1_atual < 0.75 && w_energy < 55.0) {
+    z_link_10h <- if (!is.null(stats_link$media_macro) && stats_link$sd_macro > 0) {
+      (p_link_brl - stats_link$media_macro) / stats_link$sd_macro
+    } else {
+      (p_link_brl - stats_link$media) / stats_link$sd
+    }
+    dsp_link <- if (!is.null(stats_link$dsp_macro)) stats_link$dsp_macro else list(theta = 0, d2Z = 0)
+    acc_link <- if (!is.null(dsp_link$d2Z)) dsp_link$d2Z else 0.0
+    
+    # Gatilho de Entrada: Z <= -0.80 com Inflexão de Sagarana d2Z >= +0.010
+    cond_compra_link <- (z_link_10h <= -0.80) && (acc_link >= 0.010) && (saldo_caixa_brl >= 50.0 || TRUE)
+    
+    if (cond_compra_link) {
+      lote_link <- min(VALOR_CABOCLO_BRL * fator_lote, max(45.0, saldo_caixa_brl * 0.40))
+      pedido <- list(
+        estrategia = "PLANO_CABOCLO_DOS_ORACULOS",
+        origem = "BRL", destino = "LINK",
+        valor_brl = lote_link,
+        lucro_esperado_pct = 0.80, timestamp = agora_ts,
+        modo = "simulado"
+      )
+    } else if (saldo_link_brl >= 25.0) {
+      # Saída sob Trava 6 com Z >= 0.60
+      em_cooldown_link <- verificar_cooldown_veto("PLANO_CABOCLO_DOS_ORACULOS", timeout_seg = 300)
+      if (z_link_10h >= 0.60 && !em_cooldown_link) {
+        pedido <- list(
+          estrategia = "PLANO_CABOCLO_DOS_ORACULOS",
+          origem = "LINK", destino = "BRL",
+          valor_brl = min(saldo_link_brl, VALOR_CABOCLO_BRL * fator_lote),
+          lucro_esperado_pct = 0.80, timestamp = agora_ts,
+          modo = "simulado"
+        )
       }
     }
   }

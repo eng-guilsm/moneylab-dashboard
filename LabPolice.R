@@ -307,7 +307,18 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
     
     p_atual <- tryCatch(as.numeric(content(GET(paste0("https://api.binance.com/api/v3/ticker/price?symbol=", symbol)), "parsed")$price), error = function(e) NULL)
     if (!is.null(p_atual) && p_atual > 0) {
-      precisao <- ifelse(origem == "BTC", 5, ifelse(origem %in% c("ETH", "SOL", "BNB"), 3, ifelse(origem == "ADA", 1, 2)))
+      precisao_map <- list(
+        BTC  = 5,
+        ETH  = 4,
+        SOL  = 3,
+        BNB  = 3,
+        LINK = 2,
+        USDT = 1,
+        ADA  = 1,
+        NEAR = 1,
+        PAXG = 4
+      )
+      precisao <- if (!is.null(precisao_map[[origem]])) precisao_map[[origem]] else 2
       mult_p <- 10^precisao
       calc_qty <- floor((valor_brl / p_atual) * mult_p) / mult_p
       
@@ -319,10 +330,19 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
         if (nrow(row_p) > 0) saldo_asset_real <- sum(row_p$free, na.rm = TRUE)
       }
       if (saldo_asset_real > 0) {
-        quantity <- min(calc_qty, floor(saldo_asset_real * mult_p) / mult_p)
+        quantity_num <- min(calc_qty, floor(saldo_asset_real * mult_p) / mult_p)
       } else {
-        quantity <- calc_qty
+        quantity_num <- calc_qty
       }
+      
+      # Validação estrita de LOT_SIZE / minQty da Binance
+      min_qty_map <- list(BTC = 0.00001, ETH = 0.0001, SOL = 0.001, BNB = 0.001, LINK = 0.01, USDT = 0.1, ADA = 0.1, NEAR = 0.1, PAXG = 0.0001)
+      min_q <- if (!is.null(min_qty_map[[origem]])) min_qty_map[[origem]] else 0.01
+      if (is.null(quantity_num) || is.na(quantity_num) || quantity_num < min_q) {
+        return(list(sucesso = FALSE, msg = sprintf("Filter failure: LOT_SIZE (Qtd %.4f < Mín %.4f)", ifelse(is.null(quantity_num) || is.na(quantity_num), 0, quantity_num), min_q)))
+      }
+      
+      quantity <- sprintf(paste0("%.", precisao, "f"), quantity_num)
     }
   } else if (origem == "BTC" && destino == "SOL") {
     # Rotação BTC -> SOL: Se volume >= 85 (>= 0.0002 BTC), usa par direto SOLBTC; se menor, usa ponte inteligente BRL
@@ -498,9 +518,21 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
   } else if (origem == "PAXG" && destino == "USDT") {
     symbol <- "PAXGUSDT"
     side <- "SELL"
-    if (!is.null(quantity)) {
-      quantity <- sprintf("%.4f", as.numeric(quantity))
+    # Auto-resgate do Simple Earn se estiver no Earn flexível
+    resgatar_simple_earn_paxg()
+    p_paxg_u <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT"), "parsed")$price), error = function(e) 4500.0)
+    p_usdt_b <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) 5.18)
+    p_paxg_brl_tmp <- ifelse(!is.null(p_paxg_u) && !is.null(p_usdt_b), p_paxg_u * p_usdt_b, 23500.0)
+    
+    df_w <- tryCatch(carteira(silent = TRUE), error = function(e) NULL)
+    saldo_paxg_real <- 0
+    if (!is.null(df_w) && is.data.frame(df_w)) {
+      row_p <- df_w[df_w$asset %in% c("PAXG", "LDPAXG"), ]
+      if (nrow(row_p) > 0) saldo_paxg_real <- sum(row_p$free, na.rm = TRUE)
     }
+    calc_qty <- floor((valor_brl / p_paxg_brl_tmp) * 10000) / 10000
+    quantity_num <- if (saldo_paxg_real > 0) min(calc_qty, floor(saldo_paxg_real * 10000) / 10000) else calc_qty
+    quantity <- sprintf("%.4f", quantity_num)
   } else if (origem == "PAXG" && destino == "BTC") {
     # Guiana Ponta B: Vende PAXG por BTC usando par direto PAXGBTC ou Smart Routing via BRL
     p_paxg_brl_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT"), "parsed")$price) * as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) NULL)
@@ -743,6 +775,10 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
         estrategia_nome <- as.character(pedido$estrategia)
         hist_exec_file <- "ordens_executadas.rds"
         
+        # Detecção de Modo Simulado (Ex: Plano Caboclo dos Oráculos em fase de testes)
+        ordem_modo_simulado <- identical(pedido$modo, "simulado") || (estrategia_nome == "PLANO_CABOCLO_DOS_ORACULOS")
+        executar_real_efetivo <- executar_real && !ordem_modo_simulado
+        
         # --- TABELA DE TETOS DE VOLUME E LUCROS MÍNIMOS ---
         estrategias_validas <- c(
           "PLANO_GUIANA_BRASILEIRA",
@@ -857,17 +893,30 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           
           qtd_necessaria <- as.numeric(pedido$valor_brl) / preco_unit
           
-          if (executar_real && saldo_disp < (qtd_necessaria * 0.98)) {
+          if (executar_real_efetivo && saldo_disp < (qtd_necessaria * 0.98)) {
             aprovado <- FALSE
-            motivo_veto <- sprintf("Saldo Insuficiente\nDisponível: %.6f %s\nNecessário: %.6f %s\nValor do pedido: R$ %.2f",
+            motivo_veto <- sprintf("Saldo Insuficiente\nDisponível: %.6f %s\nNecessário: %.6f %s\nValor do pedido: %.2f reais",
                                    saldo_disp, origem_asset, qtd_necessaria, origem_asset, pedido$valor_brl)
           }
         }
         
-        # Trava 0.5: Validação de Notional Mínimo da Binance (R$ 12.00)
+        # Trava 0.5: Validação de Notional Mínimo da Binance (12.00 reais)
         if (aprovado && (is.null(pedido$valor_brl) || as.numeric(pedido$valor_brl) < 12.00)) {
           aprovado <- FALSE
-          motivo_veto <- sprintf("Notional Mínimo Binance\nValor solicitado: R$ %.2f\nMínimo exigido: R$ 12.00", pedido$valor_brl)
+          motivo_veto <- sprintf("Notional Mínimo Binance\nValor solicitado: %.2f reais\nMínimo exigido: 12.00 reais", pedido$valor_brl)
+        }
+        
+        # Trava 0.6: Pré-Validação de LOT_SIZE / Quantidade Mínima (Anti-Filter Failure)
+        if (aprovado && pedido$origem != "BRL") {
+          min_qty_map <- list(BTC = 0.00001, ETH = 0.0001, SOL = 0.001, BNB = 0.001, LINK = 0.01, USDT = 0.1, ADA = 0.1, NEAR = 0.1, PAXG = 0.0001)
+          min_q <- if (!is.null(min_qty_map[[origem_asset]])) min_qty_map[[origem_asset]] else 0.01
+          if (!is.null(preco_unit) && preco_unit > 0) {
+            qtd_estimada <- as.numeric(pedido$valor_brl) / preco_unit
+            if (qtd_estimada < min_q) {
+              aprovado <- FALSE
+              motivo_veto <- sprintf("LOT_SIZE Mínimo Binance\nAtivo: %s\nQtd Estimada: %.5f\nMínimo exigido: %.5f", origem_asset, qtd_estimada, min_q)
+            }
+          }
         }
         
         # Trava 1: Validação da Estratégia
@@ -957,8 +1006,28 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
               motivo_veto <- sprintf("Teto de Bitcoin Atingido\nPosição atual: R$ %.2f (%.1f%%)\nTeto máximo: R$ %.2f (20.0%%)",
                                      saldo_btc_brl, pct_btc_atual, teto_btc_20pct)
             }
-          } else if (aprovado && pedido$origem == "BRL" && pedido$destino %in% c("SOL", "LINK", "ETH", "USDT", "PAXG", "BNB", "ADA", "NEAR")) {
-            teto_custodia_map <- list(SOL = 540.0, LINK = 720.0, ETH = 500.0, USDT = 1200.0, PAXG = 1200.0, BNB = 180.0, ADA = 160.0, NEAR = 450.0)
+          } else if (aprovado && pedido$destino == "PAXG") {
+            # 🥇 Teto Dinâmico de Ouro PAXG (20% do Patrimônio Consolidado)
+            saldo_paxg_brl <- 0.0
+            if (exists("df_wallet") && !is.null(df_wallet) && is.data.frame(df_wallet) && nrow(df_wallet) > 0) {
+              row_p <- df_wallet[df_wallet$asset %in% c("PAXG", "LDPAXG"), ]
+              if (nrow(row_p) > 0) {
+                p_paxg_u <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT"), "parsed")$price), error = function(e) 4591.78)
+                p_usdt_b <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) 5.175)
+                p_paxg_unit <- ifelse(!is.null(p_paxg_u) && !is.null(p_usdt_b), p_paxg_u * p_usdt_b, 23762.0)
+                saldo_paxg_brl <- sum(row_p$total, na.rm = TRUE) * p_paxg_unit
+              }
+            }
+            teto_paxg_20pct <- max(400.0, patrimonio_total_brl * 0.20)
+            pct_paxg_atual <- (saldo_paxg_brl / patrimonio_total_brl) * 100.0
+            
+            if (saldo_paxg_brl >= teto_paxg_20pct) {
+              aprovado <- FALSE
+              motivo_veto <- sprintf("Teto de Ouro Atingido (20%%)\nPosição atual: R$ %.2f (%.1f%%)\nTeto máximo: R$ %.2f (20.0%%)",
+                                     saldo_paxg_brl, pct_paxg_atual, teto_paxg_20pct)
+            }
+          } else if (aprovado && pedido$origem == "BRL" && pedido$destino %in% c("SOL", "LINK", "ETH", "USDT", "BNB", "ADA", "NEAR")) {
+            teto_custodia_map <- list(SOL = 540.0, LINK = 720.0, ETH = 500.0, USDT = 1200.0, BNB = 180.0, ADA = 160.0, NEAR = 450.0)
             teto_custodia <- ifelse(!is.null(teto_custodia_map[[pedido$destino]]), teto_custodia_map[[pedido$destino]], 250.0)
             
             saldo_ativo_brl <- 0.0
@@ -1039,29 +1108,20 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           }
         }
         
-        # Trava 2.6: Piso Ratchet Inviolável de Ouro PAXG
-        # Garante a preservação do piso estrutural de ouro que sobe a cada DCA de R$ 50 do Cofre de Midas.
-        # Qualquer tentativa de venda/rotação que viole o piso acumulado é VETADA (exceto no Plano Bruce Wayne).
+        # Trava 2.6: Piso Estrutural Inviolável de Ouro PAXG (10% do Patrimônio Consolidado)
+        # Garante a preservação de pelo menos 10% do patrimônio total em Ouro como reserva de valor permanente.
+        # Qualquer tentativa de venda/rotação que viole o piso dinâmico de 10% é VETADA (exceto no Plano Bruce Wayne).
         if (aprovado && pedido$origem == "PAXG" && estrategia_nome != "PLANO_BRUCE_WAYNE") {
-          piso_ouro_acumulado <- 500.0
-          if (file.exists(hist_exec_file)) {
-            hist_all_tmp <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
-            if (!is.null(hist_all_tmp) && nrow(hist_all_tmp) > 0 && "Estrategia" %in% names(hist_all_tmp)) {
-              midas_compras <- hist_all_tmp[grepl("EXECUTADO_REAL", hist_all_tmp$Status) & hist_all_tmp$Estrategia == "PLANO_COFRE_DE_MIDAS" & hist_all_tmp$Destino == "PAXG", ]
-              if (nrow(midas_compras) > 0) {
-                piso_ouro_acumulado <- piso_ouro_acumulado + (nrow(midas_compras) * 50.0)
-              }
-            }
-          }
+          piso_ouro_dinamico <- max(200.0, patrimonio_total_brl * 0.10)
           
           # Saldo total atual de ouro (Spot + Simple Earn)
           saldo_ouro_total_brl <- saldo_disp * preco_unit
           saldo_remanescente_ouro <- saldo_ouro_total_brl - as.numeric(pedido$valor_brl)
           
-          if (saldo_remanescente_ouro < piso_ouro_acumulado) {
+          if (saldo_remanescente_ouro < piso_ouro_dinamico) {
             aprovado <- FALSE
-            motivo_veto <- sprintf("Piso Ratchet de Ouro\nReserva após venda: R$ %.2f\nPiso mínimo: R$ %.2f",
-                                   saldo_remanescente_ouro, piso_ouro_acumulado)
+            motivo_veto <- sprintf("Piso Estrutural de Ouro (10%%)\nReserva após venda: R$ %.2f\nPiso mínimo dinâmico (10%%): R$ %.2f",
+                                   saldo_remanescente_ouro, piso_ouro_dinamico)
           }
         }
         
@@ -1329,8 +1389,12 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
             if (!is.null(hist_all) && nrow(hist_all) > 0) {
               exec_reais <- hist_all[grepl("EXECUTADO_REAL", hist_all$Status), ]
               compras_abertas <- tail(exec_reais[exec_reais$Destino == as.character(pedido$origem), ], 1)
-              if (nrow(compras_abertas) > 0 && !is.na(compras_abertas$Preco_Exec) && compras_abertas$Preco_Exec > 0) {
-                p_entrada_usdt <- compras_abertas$Preco_Exec / p_usdt_b
+              p_entrada_exec <- if (nrow(compras_abertas) > 0 && !is.na(compras_abertas$Preco_Exec) && compras_abertas$Preco_Exec > 0) compras_abertas$Preco_Exec else NA
+              # Fallback auditado SSOT na Binance para Ouro PAXG:
+              if (is.na(p_entrada_exec) && pedido$origem == "PAXG") p_entrada_exec <- 23576.0
+              
+              if (!is.na(p_entrada_exec) && p_entrada_exec > 0) {
+                p_entrada_usdt <- p_entrada_exec / p_usdt_b
                 ret_usdt <- ((p_origem_u_live - p_entrada_usdt) / p_entrada_usdt) * 100
                 ret_obtido_real <- ret_usdt
                 if (ret_usdt < 0.40) {
@@ -1348,7 +1412,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           cat(sprintf("✅ [AUTORIZADO] Ordem validada com sucesso! Lucro Projetado: +%.2f%%\n", pedido$lucro_esperado_pct))
           
           resultado_binance <- list(sucesso = TRUE, orderId = "SIMULADO_LOCAL")
-          if (executar_real) {
+          if (executar_real_efetivo) {
             cat("🚀 [EXECUÇÃO REAL] Transmitindo ordem de mercado para a Binance...\n")
             resultado_binance <- enviar_ordem_binance_market(pedido$origem, pedido$destino, pedido$valor_brl)
             if (!resultado_binance$sucesso) {
@@ -1368,7 +1432,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
             }
           }
           
-          status_final <- if (executar_real) {
+          status_final <- if (executar_real_efetivo) {
             ifelse(resultado_binance$sucesso, "EXECUTADO_REAL_BINANCE", paste0("FALHA_BINANCE: ", resultado_binance$msg))
           } else {
             "SINAL_APROVADO_SIMULADO"
@@ -1417,42 +1481,73 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
             cat(sprintf("🦇 [PLANO BRUCE WAYNE] Quarentena defensiva de 12 horas decretada para %s! Compras e recompras congeladas.\n", pedido$origem))
           }
           
-          log_tag <- ifelse(executar_real, ifelse(resultado_binance$sucesso, "ORDEM_REAL_BINANCE", "FALHA_REAL_BINANCE"), "SINAL_SIMULADO_APROVADO")
-          cat(sprintf("[%s] [%s] %s: %s -> %s (R$ %.2f) Lucro: +%.2f%% | %s\n",
+          log_tag <- ifelse(executar_real_efetivo, ifelse(resultado_binance$sucesso, "ORDEM_REAL_BINANCE", "FALHA_REAL_BINANCE"), "SINAL_SIMULADO_APROVADO")
+          cat(sprintf("[%s] [%s] %s: %s -> %s (%.2f BRL) Lucro: +%.2f%% | %s\n",
                       ts_str, log_tag, pedido$estrategia, pedido$origem, pedido$destino, pedido$valor_brl, pedido$lucro_esperado_pct,
-                      ifelse(executar_real, ifelse(resultado_binance$sucesso, paste0("ENVIO_BINANCE_OK (ID: ", resultado_binance$orderId, ")"), paste0("FALHA_BINANCE: ", resultado_binance$msg)), "VALIDADO_SEM_ENVIO_CORRETORA")),
+                      ifelse(executar_real_efetivo, ifelse(resultado_binance$sucesso, paste0("ENVIO_BINANCE_OK (ID: ", resultado_binance$orderId, ")"), paste0("FALHA_BINANCE: ", resultado_binance$msg)), "VALIDADO_SEM_ENVIO_CORRETORA")),
               file = "ordens_executadas.log", append = TRUE)
           
           # Alerta Telegram Instantâneo (DM Privada)
           lucro_proj_pct <- as.numeric(pedido$lucro_esperado_pct)
           lucro_proj_brl <- as.numeric(pedido$valor_brl) * (lucro_proj_pct / 100)
-          str_lucro_proj <- sprintf("+%.2f%% | R$ %.2f", lucro_proj_pct, lucro_proj_brl)
+          str_lucro_proj <- sprintf("+%.2f%% | %.2f reais", lucro_proj_pct, lucro_proj_brl)
           
-          if (executar_real) {
+          if (executar_real_efetivo) {
             ativo_qtd_label <- ifelse(pedido$origem == "BRL", pedido$destino, pedido$origem)
             if (resultado_binance$sucesso) {
               if (!is.na(ret_obtido_real)) {
                 lucro_obt_brl <- as.numeric(pedido$valor_brl) * (ret_obtido_real / 100)
-                str_lucro_obt <- sprintf("%+.2f%% | R$ %+.2f", ret_obtido_real, lucro_obt_brl)
+                str_lucro_obt <- sprintf("%+.2f%% | %+.2f reais", ret_obtido_real, lucro_obt_brl)
               } else if (pedido$origem == "BRL") {
                 str_lucro_obt <- "Posição aberta (aquisição)"
               } else {
-                str_lucro_obt <- sprintf("+%.2f%% | R$ %.2f", lucro_proj_pct, lucro_proj_brl)
+                str_lucro_obt <- sprintf("+%.2f%% | %.2f reais", lucro_proj_pct, lucro_proj_brl)
               }
               
-              msg_tg <- sprintf("🟢 <b>[ORDEM EXECUTADA]</b>\n━━━━━━━━━━━━━━━━━━━━\n🎯 <b>Plano:</b> %s\n🔄 <b>Operação:</b> %s ➔ %s\n💰 <b>Valor:</b> R$ %.2f (Qtd: %s %s)\n📈 <b>Lucro Projetado:</b> %s\n💵 <b>Lucro Obtido:</b> %s\n🆔 <b>Order ID:</b> <code>%s</code>\n⏱️ <b>Data:</b> %s\n📝 <b>Status:</b> Preenchido na Corretora (FILLED)\n━━━━━━━━━━━━━━━━━━━━",
+              msg_tg <- sprintf("🟢 <b>[ORDEM EXECUTADA]</b>\n━━━━━━━━━━━━━━━━━━━━\n🎯 <b>Plano:</b> %s\n🔄 <b>Operação:</b> %s ➔ %s\n💰 <b>Valor:</b> %.2f reais (Qtd: %s %s)\n📈 <b>Lucro Projetado:</b> %s\n💵 <b>Lucro Obtido:</b> %s\n🆔 <b>Order ID:</b> <code>%s</code>\n⏱️ <b>Data:</b> %s\n📝 <b>Status:</b> Preenchido na Corretora (FILLED)\n━━━━━━━━━━━━━━━━━━━━",
                                 estrategia_nome, pedido$origem, pedido$destino, pedido$valor_brl,
                                 ifelse(!is.null(resultado_binance$executedQty), resultado_binance$executedQty, "--"), ativo_qtd_label,
                                 str_lucro_proj, str_lucro_obt, resultado_binance$orderId, ts_str)
+              notificar_telegram_trade(msg_tg)
             } else {
-              msg_tg <- sprintf("⚠️ <b>[FALHA NA EXECUÇÃO]</b>\n━━━━━━━━━━━━━━━━━━━━\n🎯 <b>Plano:</b> %s\n🔄 <b>Tentativa:</b> %s ➔ %s\n💰 <b>Valor:</b> R$ %.2f\n❌ <b>Erro:</b> %s\n⏱️ <b>Data:</b> %s\n━━━━━━━━━━━━━━━━━━━━",
-                                estrategia_nome, pedido$origem, pedido$destino, pedido$valor_brl, resultado_binance$msg, ts_str)
+              # Falha na execução da Binance: registrar veto com cooldown de 5 min (300s) e throttle no Telegram de 15 min
+              veto_registry_file <- "vetos_recentes.rds"
+              vetos_rec <- if (file.exists(veto_registry_file)) tryCatch(readRDS(veto_registry_file), error = function(e) list()) else list()
+              if (!is.list(vetos_rec)) vetos_rec <- list()
+              chave_estrategia <- as.character(ifelse(!is.null(pedido$estrategia), pedido$estrategia, estrategia_nome))
+              vetos_rec[[chave_estrategia]] <- list(
+                timestamp = as.numeric(Sys.time()),
+                motivo = paste0("FALHA_BINANCE: ", resultado_binance$msg),
+                origem = as.character(pedido$origem),
+                destino = as.character(pedido$destino)
+              )
+              tryCatch(saveRDS(vetos_rec, veto_registry_file), error = function(e) NULL)
+
+              # Throttle de notificação de falha (máximo 1 alerta a cada 15 min por plano)
+              falha_throttle_file <- "falha_tg_throttle.rds"
+              deve_notificar_falha <- TRUE
+              f_db <- if (file.exists(falha_throttle_file)) tryCatch(readRDS(falha_throttle_file), error = function(e) list()) else list()
+              if (!is.list(f_db)) f_db <- list()
+              if (!is.null(f_db[[chave_estrategia]])) {
+                minutos_dif <- as.numeric(difftime(Sys.time(), as.POSIXct(f_db[[chave_estrategia]]), units = "mins"))
+                if (minutos_dif < 15) {
+                  deve_notificar_falha <- FALSE
+                }
+              }
+              if (deve_notificar_falha) {
+                f_db[[chave_estrategia]] <- Sys.time()
+                tryCatch(saveRDS(f_db, falha_throttle_file), error = function(e) NULL)
+                
+                msg_tg <- sprintf("⚠️ <b>[FALHA NA EXECUÇÃO]</b>\n━━━━━━━━━━━━━━━━━━━━\n🎯 <b>Plano:</b> %s\n🔄 <b>Tentativa:</b> %s ➔ %s\n💰 <b>Valor:</b> %.2f reais\n❌ <b>Erro:</b> %s\n⏱️ <b>Data:</b> %s\n🔕 <i>Alertas de falha para este plano silenciados por 15 min</i>\n━━━━━━━━━━━━━━━━━━━━",
+                                  estrategia_nome, pedido$origem, pedido$destino, pedido$valor_brl, resultado_binance$msg, ts_str)
+                notificar_telegram_trade(msg_tg)
+              }
             }
           } else {
-            msg_tg <- sprintf("🧪 <b>[SIMULAÇÃO]</b>\n━━━━━━━━━━━━━━━━━━━━\n🎯 <b>Plano:</b> %s\n🔄 <b>Operação:</b> %s ➔ %s\n💰 <b>Lote Calculado:</b> R$ %.2f\n📈 <b>Lucro Projetado:</b> %s\n⏱️ <b>Data:</b> %s\n📝 <b>Status:</b> TESTE\n━━━━━━━━━━━━━━━━━━━━",
+            msg_tg <- sprintf("🧪 <b>[SIMULAÇÃO]</b>\n━━━━━━━━━━━━━━━━━━━━\n🎯 <b>Plano:</b> %s\n🔄 <b>Operação:</b> %s ➔ %s\n💰 <b>Lote Calculado:</b> %.2f reais\n📈 <b>Lucro Projetado:</b> %s\n⏱️ <b>Data:</b> %s\n📝 <b>Status:</b> TESTE\n━━━━━━━━━━━━━━━━━━━━",
                               estrategia_nome, pedido$origem, pedido$destino, pedido$valor_brl, str_lucro_proj, ts_str)
+            notificar_telegram_trade(msg_tg)
           }
-          notificar_telegram_trade(msg_tg)
           
         } else {
           cat(sprintf("⛔ [VETADO PELO LABPOLICE] Motivo: %s\n", motivo_veto))
