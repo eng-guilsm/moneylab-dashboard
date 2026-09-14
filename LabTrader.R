@@ -778,12 +778,20 @@ executar_radar_labtrader <- function() {
     if (any(df_w$asset %in% c("TLT", "TLTB")))   saldo_tlt_usd   <- sum(df_w$free[df_w$asset %in% c("TLT", "TLTB")], na.rm = TRUE)
   }
   
-  # 🛡️ Governança de Dólar: Preservação de Piso de 30% no Simple Earn e 70% Livre para Rotação US
-  piso_30_usdt <- saldo_usdt_usd * 0.30
-  usdt_livre_rotacao <- max(0.0, saldo_usdt_usd - piso_30_usdt)
-  
   total_patrimonio_est <- saldo_caixa_brl + saldo_btc_brl + saldo_paxg_brl + saldo_sol_brl + saldo_eth_brl + saldo_link_brl + saldo_bnb_brl + saldo_ada_brl + saldo_near_brl + saldo_avax_brl + saldo_usdt_brl + (saldo_nvdab_usd + saldo_spyb_usd + saldo_sqqqb_usd + saldo_tlt_usd) * p_usdt_brl
   peso_btc <- ifelse(total_patrimonio_est > 0, saldo_btc_brl / total_patrimonio_est, 0.35)
+  
+  # 💵 Corredor Dinâmico de Dólar USDT: Piso de 30% no Simple Earn (Intocável) e Teto de 60%
+  # Garante que o valor em dólares NUNCA zera e rende 6,88% a.a. passivamente no Simple Earn
+  piso_usdt_brl_dinamico <- max(500.0, total_patrimonio_est * 0.30)
+  teto_usdt_brl_dinamico <- max(1200.0, total_patrimonio_est * 0.60)
+  piso_usdt_usd_dinamico <- piso_usdt_brl_dinamico / p_usdt_brl
+  usdt_livre_rotacao <- max(0.0, saldo_usdt_usd - piso_usdt_usd_dinamico)
+  
+  # 🇧🇷 Corredor Dinâmico de Caixa BRL: Piso de 10% (Reserva Anti-Pânico) e Teto de 25% (Anti-Ociosidade)
+  piso_brl_dinamico <- max(200.0, total_patrimonio_est * 0.10)
+  teto_brl_dinamico <- max(550.0, total_patrimonio_est * 0.25)
+  caixa_brl_livre   <- max(0.0, saldo_caixa_brl - piso_brl_dinamico)
   
   # 🥇 Governança Dinâmica de Ouro: Piso Estrutural de 10% (Intocável) e Teto Operacional de 20%
   piso_ouro_dinamico <- max(200.0, total_patrimonio_est * 0.10)
@@ -913,10 +921,10 @@ executar_radar_labtrader <- function() {
           )
         }
       }
-    } else if (!tem_lote_patria && saldo_caixa_brl >= 120.0) {
-      # 3. ENTRADA EM DIP CAMBIAL: Compra BRL -> USDT quando Z_24h <= -1.50
+    } else if (!tem_lote_patria && caixa_brl_livre >= 80.0 && saldo_usdt_brl < teto_usdt_brl_dinamico) {
+      # 3. ENTRADA EM DIP CAMBIAL: Compra BRL -> USDT quando Z_24h <= -1.50 (Preservando piso de 10% BRL e teto de 60% USDT)
       if (z_patria <= -1.50) {
-        lote_patria <- min(VALOR_PATRIA_BRL * fator_lote, saldo_caixa_brl * 0.75)
+        lote_patria <- min(VALOR_PATRIA_BRL * fator_lote, caixa_brl_livre)
         if (lote_patria >= 80.0) {
           pedido <- list(
             estrategia = "PLANO_PATRIA_VOLATIL",
