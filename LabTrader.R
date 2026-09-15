@@ -815,10 +815,12 @@ executar_radar_labtrader <- function() {
   piso_usdt_usd_dinamico <- piso_usdt_brl_dinamico / p_usdt_brl
   usdt_livre_rotacao <- max(0.0, saldo_usdt_usd - piso_usdt_usd_dinamico)
   
-  # 🇧🇷 Corredor Dinâmico de Caixa BRL: Piso de 10% (Reserva Anti-Pânico) e Teto de 25% (Anti-Ociosidade)
-  piso_brl_dinamico <- max(200.0, total_patrimonio_est * 0.10)
-  teto_brl_dinamico <- max(550.0, total_patrimonio_est * 0.25)
-  caixa_brl_livre   <- max(0.0, saldo_caixa_brl - piso_brl_dinamico)
+  # 🇧🇷 Corredor Dinâmico de Caixa BRL: Piso de 10% (Reserva Anti-Pânico) e Teto de 25% (Anti-Ociosidade - Opção 2)
+  piso_brl_dinamico      <- max(200.0, total_patrimonio_est * 0.10)
+  teto_brl_dinamico      <- max(550.0, total_patrimonio_est * 0.25)
+  caixa_brl_livre_patria <- max(0.0, saldo_caixa_brl - piso_brl_dinamico)
+  caixa_brl_livre_cripto <- max(0.0, saldo_caixa_brl - 20.0)
+  caixa_brl_livre        <- caixa_brl_livre_patria
   
   # 🥇 Governança Dinâmica de Ouro: Piso Estrutural de 10% (Intocável) e Teto Operacional de 20%
   piso_ouro_dinamico <- max(200.0, total_patrimonio_est * 0.10)
@@ -875,15 +877,19 @@ executar_radar_labtrader <- function() {
     acc_btc_escudo <- stats_btc_escudo$dsp_fast$d2Z
     
     # Ponta A: Compra BTC em estresse real (VIX >= 21.0 ou Z <= -0.60 com d2Z >= 0.014)
-    cond_compra_escudo <- (vix_atual >= 21.00 || z_btc_escudo <= -0.60) && (acc_btc_escudo >= 0.014) && peso_btc < 0.50 && saldo_caixa_brl >= 100.0 && !bloqueio_canibalizacao_escudo
+    cond_compra_escudo <- (vix_atual >= 21.00 || z_btc_escudo <= -0.60) && (acc_btc_escudo >= 0.014) && peso_btc < 0.50 && caixa_brl_livre_cripto >= 25.0 && !bloqueio_canibalizacao_escudo
     
     if (cond_compra_escudo) {
-      pedido <- list(
-        estrategia = "PLANO_ESCUDO_DE_AQUILES",
-        origem = "BRL", destino = "BTC",
-        valor_brl = min(VALOR_ESCUDO_BRL * fator_lote, saldo_caixa_brl * 0.40), 
-        lucro_esperado_pct = 0.57, timestamp = agora_ts
-      )
+      lote_escudo <- min(VALOR_ESCUDO_BRL * fator_lote, max(25.0, caixa_brl_livre_cripto * 0.60))
+      lote_escudo <- min(lote_escudo, caixa_brl_livre_cripto)
+      if (lote_escudo >= 25.0) {
+        pedido <- list(
+          estrategia = "PLANO_ESCUDO_DE_AQUILES",
+          origem = "BRL", destino = "BTC",
+          valor_brl = lote_escudo, 
+          lucro_esperado_pct = 0.57, timestamp = agora_ts
+        )
+      }
     } else if ((vix_atual < 18.50 || z_btc_escudo >= 1.20) && ret_btc_5m >= 0.0050 && saldo_btc_brl >= 50.0 && peso_btc > 0.18) {
       # Ponta B: Normalização do VIX ou Z >= 1.20 -> Realização para Caixa BRL
       pedido <- list(
@@ -948,10 +954,10 @@ executar_radar_labtrader <- function() {
           )
         }
       }
-    } else if (!tem_lote_patria && caixa_brl_livre >= 80.0 && saldo_usdt_brl < teto_usdt_brl_dinamico) {
+    } else if (!tem_lote_patria && caixa_brl_livre_patria >= 80.0 && saldo_usdt_brl < teto_usdt_brl_dinamico) {
       # 3. ENTRADA EM DIP CAMBIAL: Compra BRL -> USDT quando Z_24h <= -1.50 (Preservando piso de 10% BRL e teto de 60% USDT)
       if (z_patria <= -1.50) {
-        lote_patria <- min(VALOR_PATRIA_BRL * fator_lote, caixa_brl_livre)
+        lote_patria <- min(VALOR_PATRIA_BRL * fator_lote, caixa_brl_livre_patria)
         if (lote_patria >= 80.0) {
           pedido <- list(
             estrategia = "PLANO_PATRIA_VOLATIL",
@@ -1160,16 +1166,19 @@ executar_radar_labtrader <- function() {
     acc_btc <- dsp_btc$d2Z
     
     # Calibração G500: Z <= -0.60 com aceleração d2Z >= 0.014
-    cond_entrada_flecha <- (z_btc <= -0.60) && (acc_btc >= 0.014) && saldo_caixa_brl >= 45.0 && saldo_btc_brl < 220.0 && !bloqueio_canibalizacao_flecha
+    cond_entrada_flecha <- (z_btc <= -0.60) && (acc_btc >= 0.014) && caixa_brl_livre_cripto >= 30.0 && saldo_btc_brl < 220.0 && !bloqueio_canibalizacao_flecha
     
     if (cond_entrada_flecha) {
-      lote_s <- min(VALOR_SAGARANA_BRL * fator_lote, saldo_caixa_brl * 0.45)
-      pedido <- list(
-        estrategia = "PLANO_FLECHA_DE_SAGARANA",
-        origem = "BRL", destino = "BTC",
-        valor_brl = lote_s,
-        lucro_esperado_pct = 0.57, timestamp = agora_ts
-      )
+      lote_s <- min(VALOR_SAGARANA_BRL * fator_lote, max(30.0, caixa_brl_livre_cripto * 0.65))
+      lote_s <- min(lote_s, caixa_brl_livre_cripto)
+      if (lote_s >= 25.0) {
+        pedido <- list(
+          estrategia = "PLANO_FLECHA_DE_SAGARANA",
+          origem = "BRL", destino = "BTC",
+          valor_brl = lote_s,
+          lucro_esperado_pct = 0.57, timestamp = agora_ts
+        )
+      }
     } else if (saldo_btc_brl >= 30.0) {
       # Saída sob Trava 6 com Z >= 1.20
       em_cooldown_sag <- verificar_cooldown_veto("PLANO_FLECHA_DE_SAGARANA", timeout_seg = 300)
@@ -1200,16 +1209,18 @@ executar_radar_labtrader <- function() {
       dsp_sol   <- obter_dsp_ativo(stats_sol_15m$serie)
       
       # Calibração G500: Z <= -1.15 com aceleração d2Z >= 0.012
-      cond_compra_sol <- (z_sol_36p <= -1.15) && (dsp_sol$d2Z >= 0.012) && (saldo_caixa_brl >= 55.0) && (saldo_sol_brl < 180.0)
+      cond_compra_sol <- (z_sol_36p <= -1.15) && (dsp_sol$d2Z >= 0.012) && (caixa_brl_livre_cripto >= 25.0) && (saldo_sol_brl < 180.0)
       
       if (cond_compra_sol) {
-        lote_sol <- min(VALOR_SOL_SENTINELA_BRL * fator_lote, max(45.0, saldo_caixa_brl * 0.40))
-        pedido <- list(
-          estrategia = "PLANO_SENTINELA_DO_SOL",
-          origem = "BRL", destino = "SOL",
-          valor_brl = lote_sol,
-          lucro_esperado_pct = 0.75, timestamp = agora_ts
-        )
+        lote_sol <- min(VALOR_SOL_SENTINELA_BRL * fator_lote, caixa_brl_livre_cripto)
+        if (lote_sol >= 25.0) {
+          pedido <- list(
+            estrategia = "PLANO_SENTINELA_DO_SOL",
+            origem = "BRL", destino = "SOL",
+            valor_brl = lote_sol,
+            lucro_esperado_pct = 0.75, timestamp = agora_ts
+          )
+        }
       } else if (saldo_sol_brl >= 25.0) {
         # Saída sob Trava 6 com Z >= 0.60
         em_cooldown_sol9 <- verificar_cooldown_veto("PLANO_SENTINELA_DO_SOL", timeout_seg = 300)
@@ -1234,14 +1245,16 @@ executar_radar_labtrader <- function() {
     dsp_bnb   <- obter_dsp_ativo(stats_bnb$serie)
     
     # Calibração G500: Z <= -1.15 com aceleração d2Z >= 0.050
-    if (z_bnb_36p <= -1.15 && dsp_bnb$d2Z >= 0.050 && saldo_caixa_brl >= 50.0 && saldo_bnb_brl < 180.0) {
-      lote_b <- min(VALOR_BNB_BRL * fator_lote, max(45.0, saldo_caixa_brl * 0.45))
-      pedido <- list(
-        estrategia = "PLANO_SENTINELA_DE_MINAS",
-        origem = "BRL", destino = "BNB",
-        valor_brl = lote_b,
-        lucro_esperado_pct = 0.86, timestamp = agora_ts
-      )
+    if (z_bnb_36p <= -1.15 && dsp_bnb$d2Z >= 0.050 && caixa_brl_livre_cripto >= 25.0 && saldo_bnb_brl < 180.0) {
+      lote_b <- min(VALOR_BNB_BRL * fator_lote, caixa_brl_livre_cripto)
+      if (lote_b >= 25.0) {
+        pedido <- list(
+          estrategia = "PLANO_SENTINELA_DE_MINAS",
+          origem = "BRL", destino = "BNB",
+          valor_brl = lote_b,
+          lucro_esperado_pct = 0.86, timestamp = agora_ts
+        )
+      }
     } else if (saldo_bnb_brl >= 20.0) {
       # Saída sob Trava 6 com Z >= 0.65
       em_cooldown_bnb <- verificar_cooldown_veto("PLANO_SENTINELA_DE_MINAS", timeout_seg = 300)
@@ -1508,17 +1521,19 @@ executar_radar_labtrader <- function() {
     acc_link <- if (!is.null(dsp_link$d2Z)) dsp_link$d2Z else 0.0
     
     # Gatilho de Entrada: Z <= -0.80 com Inflexão de Sagarana d2Z >= +0.010
-    cond_compra_link <- (z_link_10h <= -0.80) && (acc_link >= 0.010) && (saldo_caixa_brl >= 50.0 || TRUE)
+    cond_compra_link <- (z_link_10h <= -0.80) && (acc_link >= 0.010) && (caixa_brl_livre_cripto >= 25.0)
     
     if (cond_compra_link) {
-      lote_link <- min(VALOR_CABOCLO_BRL * fator_lote, max(45.0, saldo_caixa_brl * 0.40))
-      pedido <- list(
-        estrategia = "PLANO_CABOCLO_DOS_ORACULOS",
-        origem = "BRL", destino = "LINK",
-        valor_brl = lote_link,
-        lucro_esperado_pct = 0.80, timestamp = agora_ts,
-        modo = "simulado"
-      )
+      lote_link <- min(VALOR_CABOCLO_BRL * fator_lote, caixa_brl_livre_cripto)
+      if (lote_link >= 25.0) {
+        pedido <- list(
+          estrategia = "PLANO_CABOCLO_DOS_ORACULOS",
+          origem = "BRL", destino = "LINK",
+          valor_brl = lote_link,
+          lucro_esperado_pct = 0.80, timestamp = agora_ts,
+          modo = "simulado"
+        )
+      }
     } else if (saldo_link_brl >= 25.0) {
       # Saída sob Trava 6 com Z >= 0.60
       em_cooldown_link <- verificar_cooldown_veto("PLANO_CABOCLO_DOS_ORACULOS", timeout_seg = 300)
