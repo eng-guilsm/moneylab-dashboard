@@ -1175,20 +1175,40 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           }
         }
         
-        # Trava 2.8: Corredor Dinâmico de Caixa Fiduciário BRL (Piso de 10% e Teto de 25%)
-        # Preserva liquidez em reais para pescar dips de BTC, SOL, BNB e LINK
+        # Trava 2.8: Corredor Dinâmico de Caixa Fiduciário BRL (Piso de 10% e Teto de 25% com Válvula de Dip Cripto - Opção 2)
+        # Preserva liquidez em reais contra rotinas fiduciárias e dolarização (Pátria Volátil BRL -> USDT),
+        # mas permite perfuração controlada do piso de 10% (até piso residual de 20 reais)
+        # EXCLUSIVAMENTE para compras calibradas de dip/crash cripto (BTC, SOL, BNB, LINK, ETH)
         if (aprovado && pedido$origem == "BRL") {
-          piso_brl_dinamico <- max(200.0, patrimonio_total_brl * 0.10)
           saldo_brl_atual <- 0.0
           if (exists("df_wallet") && !is.null(df_wallet) && is.data.frame(df_wallet) && nrow(df_wallet) > 0) {
             row_b <- df_wallet[df_wallet$asset == "BRL", ]
             if (nrow(row_b) > 0) saldo_brl_atual <- sum(row_b$free, na.rm = TRUE)
           }
           saldo_remanescente_brl <- saldo_brl_atual - as.numeric(pedido$valor_brl)
-          if (saldo_remanescente_brl < piso_brl_dinamico) {
-            aprovado <- FALSE
-            motivo_veto <- sprintf("Piso de Caixa BRL (10%%)\nCaixa após compra: %.2f reais\nPiso mínimo de oportunidade (10%%): %.2f reais",
-                                   saldo_remanescente_brl, piso_brl_dinamico)
+          
+          # Opção 2: Válvula de Dip Cripto
+          is_estrategia_dip_cripto <- (pedido$destino %in% c("BTC", "SOL", "BNB", "LINK", "ETH")) &&
+            (estrategia_nome %in% c("PLANO_ESCUDO_DE_AQUILES", "PLANO_FLECHA_DE_SAGARANA",
+                                    "PLANO_SENTINELA_DO_SOL", "PLANO_SENTINELA_DE_MINAS",
+                                    "PLANO_CABOCLO_DOS_ORACULOS", "PLANO_DUELO_DE_TITAS"))
+          
+          if (is_estrategia_dip_cripto) {
+            # Para compras de dip cripto, exige apenas piso operacional residual de segurança (20 reais)
+            piso_operacional_cripto <- 20.0
+            if (saldo_remanescente_brl < piso_operacional_cripto) {
+              aprovado <- FALSE
+              motivo_veto <- sprintf("Piso Operacional Mínimo BRL (20 reais)\nCaixa após compra: %.2f reais\nPiso operacional mínimo: %.2f reais",
+                                     saldo_remanescente_brl, piso_operacional_cripto)
+            }
+          } else {
+            # Para rotinas fiduciárias e dolarização (ex: Pátria Volátil BRL -> USDT), o piso estrutural de 10% é rigoroso
+            piso_brl_dinamico <- max(200.0, patrimonio_total_brl * 0.10)
+            if (saldo_remanescente_brl < piso_brl_dinamico) {
+              aprovado <- FALSE
+              motivo_veto <- sprintf("Piso de Caixa BRL (10%%)\nCaixa após compra: %.2f reais\nPiso mínimo de oportunidade (10%%): %.2f reais",
+                                     saldo_remanescente_brl, piso_brl_dinamico)
+            }
           }
         }
         
