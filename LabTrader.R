@@ -653,13 +653,15 @@ obter_lote_aberto_estrategia <- function(estrategia_nome, ativo) {
     return(list(
       tem_lote = TRUE,
       minutos_posse = minutos_posse,
+      minutos_desde_venda = 999.0,
       preco_compra = ultimo_trade$Preco_Exec,
       valor_compra = ultimo_trade$Valor_BRL,
       data_compra = ultimo_trade$Data_Hora
     ))
   }
   
-  return(list(tem_lote = FALSE, minutos_posse = 0.0))
+  minutos_desde_venda <- as.numeric(difftime(Sys.time(), as.POSIXct(ultimo_trade$Data_Hora), units = "mins"))
+  return(list(tem_lote = FALSE, minutos_posse = 0.0, minutos_desde_venda = minutos_desde_venda))
 }
 
 obter_vwap_ativo <- function(ativo_sym) {
@@ -1014,12 +1016,13 @@ executar_radar_labtrader <- function() {
       if (is.na(s_nvda) || s_nvda <= 0) s_nvda <- 1.5
       z_nvda <- (tail(nvda_serie, 1) - m_nvda) / s_nvda
       
+      tempo_pos_venda_nvda_ok <- is.null(lote_nvda$minutos_desde_venda) || is.na(lote_nvda$minutos_desde_venda) || lote_nvda$minutos_desde_venda >= 30.0
       lote_base_nvda <- 0.0
       regime_nvda <- NULL
-      if (z_nvda <= -1.25) {
+      if (z_nvda <= -1.25 && tempo_pos_venda_nvda_ok) {
         lote_base_nvda <- VALOR_TITA_USDT_CRASH  # Regime 2: Crash (55 USDT)
         regime_nvda <- "CRASH"
-      } else if (z_nvda <= -0.50 && saldo_nvdab_usd <= 0.01) {
+      } else if (z_nvda <= -0.50 && saldo_nvdab_usd <= 0.01 && tempo_pos_venda_nvda_ok) {
         lote_base_nvda <- VALOR_TITA_USDT_DIP    # Regime 1: Correção Moderada (35 USDT)
         regime_nvda <- "DIP"
       }
@@ -1347,8 +1350,11 @@ executar_radar_labtrader <- function() {
         }
       }
     } else if (usdt_livre_rotacao >= 18.0) {
+      # Cooldown de Recompra Anti-Churning: após vender, aguarda no mínimo 30 minutos antes de recomprar SQQQB
+      tempo_pos_venda_ok <- is.null(lote_anti$minutos_desde_venda) || is.na(lote_anti$minutos_desde_venda) || lote_anti$minutos_desde_venda >= 30.0
+      
       # Calibração G500: Entrada com ret_btc_5m <= -0.0035 (queda intradiária de BTC)
-      if (!is.null(ret_btc_5m) && ret_btc_5m <= -0.0035) {
+      if (!is.null(ret_btc_5m) && ret_btc_5m <= -0.0035 && tempo_pos_venda_ok) {
         lote_usdt_anti <- min(18.0 * fator_lote, usdt_livre_rotacao)
         pedido <- list(
           estrategia = "PLANO_SENTINELA_ANTIFRAGIL",
@@ -1411,10 +1417,11 @@ executar_radar_labtrader <- function() {
       if (is.na(s_sp) || s_sp <= 0) s_sp <- 2.0
       z_sp <- (tail(sp500_serie, 1) - m_sp) / s_sp
       
+      tempo_pos_venda_spy_ok <- is.null(lote_spy$minutos_desde_venda) || is.na(lote_spy$minutos_desde_venda) || lote_spy$minutos_desde_venda >= 30.0
       lote_base_spy <- NULL
-      if (z_sp <= -1.80 && usdt_livre_rotacao >= VALOR_WALLSTREET_USDT_CRASH) {
+      if (z_sp <= -1.80 && usdt_livre_rotacao >= VALOR_WALLSTREET_USDT_CRASH && tempo_pos_venda_spy_ok) {
         lote_base_spy <- VALOR_WALLSTREET_USDT_CRASH
-      } else if (z_sp <= -0.40 && usdt_livre_rotacao >= VALOR_WALLSTREET_USDT_DIP) {
+      } else if (z_sp <= -0.40 && usdt_livre_rotacao >= VALOR_WALLSTREET_USDT_DIP && tempo_pos_venda_spy_ok) {
         lote_base_spy <- VALOR_WALLSTREET_USDT_DIP
       }
       

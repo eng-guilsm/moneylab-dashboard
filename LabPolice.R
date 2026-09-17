@@ -1619,13 +1619,13 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           if (executar_real_efetivo) {
             ativo_qtd_label <- ifelse(pedido$origem == "BRL", pedido$destino, pedido$origem)
             if (resultado_binance$sucesso) {
-              if (!is.na(ret_obtido_real)) {
+              if (pedido$origem %in% c("BRL", "USDT") && !(pedido$origem == "USDT" && pedido$destino == "BRL")) {
+                str_lucro_obt <- "Posição aberta (aquisição)"
+              } else if (!is.na(ret_obtido_real)) {
                 lucro_obt_brl <- as.numeric(pedido$valor_brl) * (ret_obtido_real / 100)
                 str_lucro_obt <- sprintf("%+.2f%% | %+.2f reais", ret_obtido_real, lucro_obt_brl)
-              } else if (pedido$origem == "BRL") {
-                str_lucro_obt <- "Posição aberta (aquisição)"
               } else {
-                str_lucro_obt <- sprintf("+%.2f%% | %.2f reais", lucro_proj_pct, lucro_proj_brl)
+                str_lucro_obt <- "Posição desovada / rotação"
               }
               
               msg_tg <- sprintf("🟢 <b>[ORDEM EXECUTADA]</b>\n━━━━━━━━━━━━━━━━━━━━\n🎯 <b>Plano:</b> %s\n🔄 <b>Operação:</b> %s ➔ %s\n💰 <b>Valor:</b> %.2f reais (Qtd: %s %s)\n📈 <b>Lucro Projetado:</b> %s\n💵 <b>Lucro Obtido:</b> %s\n🆔 <b>Order ID:</b> <code>%s</code>\n⏱️ <b>Data:</b> %s\n📝 <b>Status:</b> Preenchido na Corretora (FILLED)\n━━━━━━━━━━━━━━━━━━━━",
