@@ -356,6 +356,11 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
         return(list(sucesso = FALSE, msg = sprintf("Filter failure: LOT_SIZE (Qtd %.4f < Mín %.4f)", ifelse(is.null(quantity_num) || is.na(quantity_num), 0, quantity_num), min_q)))
       }
       
+      # Validação estrita de NOTIONAL da Binance (Mínimo 10.00 BRL)
+      if (!is.null(p_atual) && (quantity_num * p_atual < 10.00)) {
+        return(list(sucesso = FALSE, msg = sprintf("Filter failure: NOTIONAL (Valor %.2f BRL < Mín 10.00 BRL)", quantity_num * p_atual)))
+      }
+      
       quantity <- sprintf(paste0("%.", precisao, "f"), quantity_num)
     }
   } else if (origem == "BTC" && destino == "SOL") {
@@ -546,6 +551,12 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
     }
     calc_qty <- floor((valor_brl / p_paxg_brl_tmp) * 10000) / 10000
     quantity_num <- if (saldo_paxg_real > 0) min(calc_qty, floor(saldo_paxg_real * 10000) / 10000) else calc_qty
+    if (quantity_num < 0.0001) {
+      return(list(sucesso = FALSE, msg = sprintf("Filter failure: LOT_SIZE (Qtd %.4f < Mín 0.0001)", quantity_num)))
+    }
+    if (quantity_num * p_paxg_u < 5.00) {
+      return(list(sucesso = FALSE, msg = sprintf("Filter failure: NOTIONAL (Valor %.2f USDT < Mín 5.00 USDT)", quantity_num * p_paxg_u)))
+    }
     quantity <- sprintf("%.4f", quantity_num)
   } else if (origem == "PAXG" && destino == "BTC") {
     # Guiana Ponta B: Vende PAXG por BTC usando par direto PAXGBTC ou Smart Routing via BRL
@@ -677,6 +688,12 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
     if (!is.null(p_eq_u) && p_eq_u > 0) {
       calc_q <- floor(((valor_brl / p_usdt_b) / p_eq_u) * 100) / 100
       quantity_num <- if (saldo_eq_real > 0) min(calc_q, floor(saldo_eq_real * 100) / 100) else calc_q
+      if (quantity_num < 0.01) {
+        return(list(sucesso = FALSE, msg = sprintf("Filter failure: LOT_SIZE (Qtd %.2f < Mín 0.01)", quantity_num)))
+      }
+      if (quantity_num * p_eq_u < 5.00) {
+        return(list(sucesso = FALSE, msg = sprintf("Filter failure: NOTIONAL (Valor %.2f USDT < Mín 5.00 USDT)", quantity_num * p_eq_u)))
+      }
       quantity <- sprintf("%.2f", quantity_num)
     }
     
@@ -789,8 +806,8 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
         estrategia_nome <- as.character(pedido$estrategia)
         hist_exec_file <- "ordens_executadas.rds"
         
-        # Detecção de Modo Simulado (Ex: Plano Caboclo dos Oráculos em fase de testes)
-        ordem_modo_simulado <- identical(pedido$modo, "simulado") || (estrategia_nome == "PLANO_CABOCLO_DOS_ORACULOS")
+        # Detecção de Modo Simulado
+        ordem_modo_simulado <- identical(pedido$modo, "simulado")
         executar_real_efetivo <- executar_real && !ordem_modo_simulado
         
         # --- TABELA DE TETOS DE VOLUME E LUCROS MÍNIMOS ---
@@ -821,28 +838,28 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
         )
         
         tetos_volume <- list(
-          "PLANO_GUIANA_BRASILEIRA" = 200.00,
-          "PLANO_ESCUDO_DE_AQUILES" = 250.00,
-          "PLANO_PATRIA_VOLATIL" = 350.00,
-          "PLANO_CABOCLO_DOS_ORACULOS" = 480.00,
+          "PLANO_GUIANA_BRASILEIRA" = 220.00,
+          "PLANO_ESCUDO_DE_AQUILES" = 400.00,
+          "PLANO_PATRIA_VOLATIL" = 500.00,
+          "PLANO_CABOCLO_DOS_ORACULOS" = 350.00,
           "PLANO_GRAVIDADE_ZERO" = 220.00,
           "PLANO_OURO_LIQUIDO" = 250.00,
           "PLANO_CORISCO_DA_SOLANA" = 220.00,
-          "PLANO_DUELO_DE_TITAS" = 150.00,
-          "PLANO_FLECHA_DE_SAGARANA" = 300.00,
+          "PLANO_DUELO_DE_TITAS" = 180.00,
+          "PLANO_FLECHA_DE_SAGARANA" = 450.00,
           "PLANO_COFRE_DE_MIDAS" = 70.00,
-          "PLANO_SENTINELA_DO_SOL" = 180.00,
-          "PLANO_SENTINELA_DE_MINAS" = 120.00,
+          "PLANO_SENTINELA_DO_SOL" = 250.00,
+          "PLANO_SENTINELA_DE_MINAS" = 200.00,
           "PLANO_SERTAO_VALENTE" = 160.00,
-          "PLANO_FAROL_DE_NEAR" = 300.00,
+          "PLANO_FAROL_DE_NEAR" = 250.00,
           "PLANO_BRUCE_WAYNE" = 350.00,
-          "PLANO_SENTINELA_WALLSTREET" = 300.00,
+          "PLANO_SENTINELA_WALLSTREET" = 450.00,
           "PLANO_DOLLARUS_QUANTUM_PEG" = 220.00,
-          "PLANO_TITA_DO_SILICIO" = 300.00,
-          "PLANO_CHOQUE_ENERGETICO" = 120.00,
-          "PLANO_ESCUDO_DE_WASHINGTON" = 120.00,
-          "PLANO_SENTINELA_ANTIFRAGIL" = 120.00,
-          "PLANO_COMMODITY_ENERGY_ALPHA" = 120.00,
+          "PLANO_TITA_DO_SILICIO" = 450.00,
+          "PLANO_CHOQUE_ENERGETICO" = 150.00,
+          "PLANO_ESCUDO_DE_WASHINGTON" = 150.00,
+          "PLANO_SENTINELA_ANTIFRAGIL" = 380.00,
+          "PLANO_COMMODITY_ENERGY_ALPHA" = 150.00,
           "PLANO_ADEUS_PERRY" = 450.00
         )
         
@@ -850,24 +867,24 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_GUIANA_BRASILEIRA" = 0.40,
           "PLANO_ESCUDO_DE_AQUILES" = 0.57,
           "PLANO_PATRIA_VOLATIL" = 0.40,
-          "PLANO_CABOCLO_DOS_ORACULOS" = 0.70,
+          "PLANO_CABOCLO_DOS_ORACULOS" = 0.50,
           "PLANO_GRAVIDADE_ZERO" = 1.07,
           "PLANO_OURO_LIQUIDO" = 0.60,
           "PLANO_CORISCO_DA_SOLANA" = 0.50,
           "PLANO_DUELO_DE_TITAS" = 0.53,
           "PLANO_FLECHA_DE_SAGARANA" = 0.57,
           "PLANO_COFRE_DE_MIDAS" = 0.00,
-          "PLANO_SENTINELA_DO_SOL" = 0.75,
-          "PLANO_SENTINELA_DE_MINAS" = 0.86,
+          "PLANO_SENTINELA_DO_SOL" = 0.50,
+          "PLANO_SENTINELA_DE_MINAS" = 0.50,
           "PLANO_SERTAO_VALENTE" = 0.45,
-          "PLANO_FAROL_DE_NEAR" = 0.70,
+          "PLANO_FAROL_DE_NEAR" = 0.80,
           "PLANO_BRUCE_WAYNE" = 0.00,
           "PLANO_SENTINELA_WALLSTREET" = 0.48,
           "PLANO_DOLLARUS_QUANTUM_PEG" = 0.50,
           "PLANO_TITA_DO_SILICIO" = 0.40,
           "PLANO_CHOQUE_ENERGETICO" = 0.43,
           "PLANO_ESCUDO_DE_WASHINGTON" = 0.52,
-          "PLANO_SENTINELA_ANTIFRAGIL" = 0.52,
+          "PLANO_SENTINELA_ANTIFRAGIL" = 0.50,
           "PLANO_COMMODITY_ENERGY_ALPHA" = 0.43,
           "PLANO_ADEUS_PERRY" = 0.40
         )
@@ -1041,7 +1058,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                                      saldo_paxg_brl, pct_paxg_atual, teto_paxg_20pct)
             }
           } else if (aprovado && pedido$origem == "BRL" && pedido$destino %in% c("SOL", "LINK", "ETH", "USDT", "BNB", "ADA", "NEAR")) {
-            teto_custodia_map <- list(SOL = 540.0, LINK = 720.0, ETH = 500.0, USDT = 1200.0, BNB = 180.0, ADA = 160.0, NEAR = 450.0)
+            teto_custodia_map <- list(SOL = 540.0, LINK = 500.0, ETH = 500.0, USDT = 1950.0, BNB = 300.0, ADA = 160.0, NEAR = 350.0)
             teto_custodia <- ifelse(!is.null(teto_custodia_map[[pedido$destino]]), teto_custodia_map[[pedido$destino]], 250.0)
             
             saldo_ativo_brl <- 0.0
@@ -1139,10 +1156,10 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           }
         }
         
-        # Trava 2.7: Corredor Dinâmico de Dólar USDT (Piso de 30% e Teto de 60% do Patrimônio Consolidado)
+        # Trava 2.7: Corredor Dinâmico de Dólar USDT (Piso de 40% e Teto de 60% do Patrimônio Consolidado - Cenário B)
         # Garante que o valor em dólares NUNCA zera e rende 6,88% a.a. passivamente no Simple Earn
         if (aprovado) {
-          piso_usdt_dinamico <- max(500.0, patrimonio_total_brl * 0.30)
+          piso_usdt_dinamico <- max(500.0, patrimonio_total_brl * 0.40)
           teto_usdt_dinamico <- max(1200.0, patrimonio_total_brl * 0.60)
           
           # Saldo total atual de USDT (Spot + Simple Earn)
@@ -1154,12 +1171,12 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           p_u_tmp <- if (exists("cotacoes") && !is.null(cotacoes[["USDT"]])) cotacoes[["USDT"]] else 5.175
           saldo_usdt_total_brl <- saldo_usdt_total_usd * p_u_tmp
           
-          # Piso: Vendas de USDT para BRL não podem furar o piso de 30%
+          # Piso: Vendas de USDT para BRL não podem furar o piso de 40%
           if (pedido$origem == "USDT" && pedido$destino == "BRL") {
             saldo_remanescente_usdt_brl <- saldo_usdt_total_brl - as.numeric(pedido$valor_brl)
             if (saldo_remanescente_usdt_brl < piso_usdt_dinamico) {
               aprovado <- FALSE
-              motivo_veto <- sprintf("Piso Estrutural de Dólar (30%%)\nSaldo após venda: %.2f reais (%.1f%%)\nPiso mínimo exigido (30%%): %.2f reais",
+              motivo_veto <- sprintf("Piso Estrutural de Dólar (40%%)\nSaldo após venda: %.2f reais (%.1f%%)\nPiso mínimo exigido (40%%): %.2f reais",
                                      saldo_remanescente_usdt_brl, (saldo_remanescente_usdt_brl / patrimonio_total_brl) * 100, piso_usdt_dinamico)
             }
           }
@@ -1175,10 +1192,10 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           }
         }
         
-        # Trava 2.8: Corredor Dinâmico de Caixa Fiduciário BRL (Piso de 10% e Teto de 25% com Válvula de Dip Cripto - Opção 2)
+        # Trava 2.8: Corredor Dinâmico de Caixa Fiduciário BRL (Piso de 10% e Teto de 20% com Válvula de Dip Cripto - Opção 2)
         # Preserva liquidez em reais contra rotinas fiduciárias e dolarização (Pátria Volátil BRL -> USDT),
         # mas permite perfuração controlada do piso de 10% (até piso residual de 20 reais)
-        # EXCLUSIVAMENTE para compras calibradas de dip/crash cripto (BTC, SOL, BNB, LINK, ETH)
+        # EXCLUSIVAMENTE para compras calibradas de dip/crash cripto (BTC, SOL, BNB, LINK, ETH, NEAR)
         if (aprovado && pedido$origem == "BRL") {
           saldo_brl_atual <- 0.0
           if (exists("df_wallet") && !is.null(df_wallet) && is.data.frame(df_wallet) && nrow(df_wallet) > 0) {
@@ -1188,10 +1205,11 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           saldo_remanescente_brl <- saldo_brl_atual - as.numeric(pedido$valor_brl)
           
           # Opção 2: Válvula de Dip Cripto
-          is_estrategia_dip_cripto <- (pedido$destino %in% c("BTC", "SOL", "BNB", "LINK", "ETH")) &&
+          is_estrategia_dip_cripto <- (pedido$destino %in% c("BTC", "SOL", "BNB", "LINK", "ETH", "NEAR")) &&
             (estrategia_nome %in% c("PLANO_ESCUDO_DE_AQUILES", "PLANO_FLECHA_DE_SAGARANA",
                                     "PLANO_SENTINELA_DO_SOL", "PLANO_SENTINELA_DE_MINAS",
-                                    "PLANO_CABOCLO_DOS_ORACULOS", "PLANO_DUELO_DE_TITAS"))
+                                    "PLANO_CABOCLO_DOS_ORACULOS", "PLANO_FAROL_DE_NEAR",
+                                    "PLANO_DUELO_DE_TITAS"))
           
           if (is_estrategia_dip_cripto) {
             # Para compras de dip cripto, exige apenas piso operacional residual de segurança (20 reais)
@@ -1291,17 +1309,19 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                 # Não segregam custódia por estratégia, pois existem justamente para liquidar posições legadas!
                 compras_abertas <- exec_reais[exec_reais$Destino == as.character(pedido$origem), ]
               } else {
-                # Identifica o índice da última VENDA deste ativo para ESTA ESTRATÉGIA
-                idx_vendas <- which(exec_reais$Origem == as.character(pedido$origem) & exec_reais$Estrategia == estrategia_nome)
-                ultimo_idx_venda <- if (length(idx_vendas) > 0) max(idx_vendas) else 0
-                
-                # Compras em aberto: apenas compras DESTA ESTRATÉGIA que ocorreram APÓS a sua última venda
-                # Para PLANO_PATRIA_VOLATIL, considera apenas lotes de swing intradiário (Valor_BRL <= 350)
+                # 🛡️ Rastreamento FIFO Real de Lotes Abertos por Estratégia
                 filtro_patria <- if (estrategia_nome == "PLANO_PATRIA_VOLATIL") exec_reais$Valor_BRL <= 350.0 else TRUE
-                compras_abertas <- exec_reais[seq_len(nrow(exec_reais)) > ultimo_idx_venda & 
-                                              exec_reais$Destino == as.character(pedido$origem) & 
-                                              exec_reais$Estrategia == estrategia_nome &
-                                              filtro_patria, ]
+                compras_todas <- exec_reais[exec_reais$Destino == as.character(pedido$origem) & 
+                                            exec_reais$Estrategia == estrategia_nome & 
+                                            filtro_patria, ]
+                vendas_todas  <- exec_reais[exec_reais$Origem == as.character(pedido$origem) & 
+                                            exec_reais$Estrategia == estrategia_nome, ]
+                n_c <- nrow(compras_todas)
+                n_v <- nrow(vendas_todas)
+                
+                # Sob FIFO, as primeiras n_v compras já foram fechadas pelas n_v vendas anteriores.
+                # Os lotes em aberto são estritamente as compras a partir de (n_v + 1):
+                compras_abertas <- if (n_c > n_v) compras_todas[(n_v + 1):n_c, , drop = FALSE] else data.frame()
               }
               
               # Fallback auditado de preço de aquisição na Binance para ativos legados (ADA, LINK, NEAR, AVAX):
@@ -1374,11 +1394,14 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                   }
                 }
                 
-                p_entrada <- if (nrow(validos) > 0) {
-                  sum(validos$Valor_BRL) / sum(validos$Valor_BRL / validos$Preco_Exec)
-                } else {
-                  NA
-                }
+                # 🛡️ TRAVA 6 RIGOROSA SSOT ANTI-MICRO-PREJUÍZO (FIFO REAL):
+                # O lote a ser desovado na corretora pela regra da Binance API é o LOTE FIFO MAIS ANTIGO:
+                p_fifo_lote <- validos$Preco_Exec[1] # Preço de aquisição do lote mais antigo a ser fechado
+                p_vwap_lote <- sum(validos$Valor_BRL) / sum(validos$Valor_BRL / validos$Preco_Exec) # VWAP de todos os lotes
+                
+                # O preço de referência de custo DEVE cobrir rigorosamente o MÁXIMO entre o lote FIFO e o VWAP:
+                p_entrada_seguro <- max(p_fifo_lote, p_vwap_lote, na.rm = TRUE)
+                p_entrada <- p_entrada_seguro
                 
                 # Validação de Holding Time Mínimo (15 minutos para maturação de onda espectral)
                 # Exceto se o lucro real atual for expressivo (>= +1.50%)
@@ -1389,14 +1412,17 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                   ret_nominal <- ((p_atual_mercado - p_entrada) / p_entrada) * 100
                   ret_obtido_real <- ret_nominal
                   
+                  # Lucro mínimo exigido: no mínimo +0.40% (ou o lucro projetado pedido pela ordem, o que for maior)
+                  lucro_minimo_exigido <- max(0.40, ifelse(!is.null(pedido$lucro_esperado_pct), as.numeric(pedido$lucro_esperado_pct), 0.40))
+                  
                   if (tempo_posse_min < 15.0 && ret_nominal < 1.50) {
                     aprovado <- FALSE
                     motivo_veto <- sprintf("Holding Time Mínimo\nTempo de posse: %.1f min\nTempo exigido: >= 15.0 min",
                                            tempo_posse_min)
-                  } else if (ret_nominal < 0.40) {
+                  } else if (ret_nominal < lucro_minimo_exigido) {
                     aprovado <- FALSE
-                    motivo_veto <- sprintf("Trava Anti-Prejuízo\nPreço atual de %s: R$ %.2f\nLote em aberto: R$ %.2f\nRetorno: %+.2f%% | Exige >= +0.40%%",
-                                           pedido$origem, p_atual_mercado, p_entrada, ret_nominal)
+                    motivo_veto <- sprintf("Trava Anti-Prejuízo FIFO Real\nPreço atual de %s: R$ %.2f\nLote FIFO em aberto: R$ %.2f (VWAP: R$ %.2f)\nRetorno FIFO: %+.2f%% | Exige >= +%.2f%%",
+                                           pedido$origem, p_atual_mercado, p_fifo_lote, p_vwap_lote, ret_nominal, lucro_minimo_exigido)
                   }
                 }
               }
@@ -1421,10 +1447,11 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           if (ratio_live > 0 && file.exists(hist_exec_file)) {
             hist_all <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
             if (!is.null(hist_all) && nrow(hist_all) > 0 && "Destino" %in% names(hist_all)) {
-              exec_reais <- hist_all[grepl("EXECUTADO_REAL", hist_all$Status), ]
-              idx_vendas <- which(exec_reais$Origem == as.character(pedido$origem))
-              ultimo_idx_venda <- if (length(idx_vendas) > 0) max(idx_vendas) else 0
-              compras_abertas <- exec_reais[seq_len(nrow(exec_reais)) > ultimo_idx_venda & exec_reais$Destino == as.character(pedido$origem), ]
+              compras_todas <- exec_reais[exec_reais$Destino == as.character(pedido$origem), ]
+              vendas_todas  <- exec_reais[exec_reais$Origem == as.character(pedido$origem), ]
+              n_c <- nrow(compras_todas)
+              n_v <- nrow(vendas_todas)
+              compras_abertas <- if (n_c > n_v) compras_todas[(n_v + 1):n_c, , drop = FALSE] else data.frame()
               if (nrow(compras_abertas) == 0) {
                 compras_abertas <- tail(exec_reais[exec_reais$Destino == as.character(pedido$origem), ], 1)
               }
@@ -1481,12 +1508,17 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
             if (!is.null(hist_all) && nrow(hist_all) > 0 && "Destino" %in% names(hist_all)) {
               exec_reais <- hist_all[grepl("EXECUTADO_REAL", hist_all$Status), ]
               
-              # Identifica a última venda deste ativo para ESTA ESTRATÉGIA (FIFO estrito)
-              idx_vendas <- which(exec_reais$Origem == as.character(pedido$origem) & exec_reais$Estrategia == estrategia_nome)
-              ultimo_idx_venda <- if (length(idx_vendas) > 0) max(idx_vendas) else 0
-              compras_abertas <- exec_reais[seq_len(nrow(exec_reais)) > ultimo_idx_venda & 
-                                            exec_reais$Destino == as.character(pedido$origem) & 
+              if (estrategia_nome %in% c("PLANO_ADEUS_PERRY", "PLANO_BRUCE_WAYNE")) {
+                compras_abertas <- exec_reais[exec_reais$Destino == as.character(pedido$origem), ]
+              } else {
+                compras_todas <- exec_reais[exec_reais$Destino == as.character(pedido$origem) & 
                                             exec_reais$Estrategia == estrategia_nome, ]
+                vendas_todas  <- exec_reais[exec_reais$Origem == as.character(pedido$origem) & 
+                                            exec_reais$Estrategia == estrategia_nome, ]
+                n_c <- nrow(compras_todas)
+                n_v <- nrow(vendas_todas)
+                compras_abertas <- if (n_c > n_v) compras_todas[(n_v + 1):n_c, , drop = FALSE] else data.frame()
+              }
               
               if (nrow(compras_abertas) == 0 && estrategia_nome %in% c("PLANO_ADEUS_PERRY", "PLANO_BRUCE_WAYNE")) {
                 compras_abertas <- tail(exec_reais[exec_reais$Destino == as.character(pedido$origem), ], 1)
@@ -1498,6 +1530,8 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                                        estrategia_nome, pedido$origem)
               } else {
                 validos <- compras_abertas[!is.na(compras_abertas$Preco_Exec) & compras_abertas$Preco_Exec > 0 & !is.na(compras_abertas$Valor_BRL), ]
+                if (pedido$origem == "PAXG") validos <- validos[validos$Preco_Exec > 1000.0, , drop = FALSE]
+                
                 p_entrada_exec <- if (nrow(validos) > 0) {
                   sum(validos$Valor_BRL) / sum(validos$Valor_BRL / validos$Preco_Exec)
                 } else NA
@@ -1525,9 +1559,19 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                     motivo_veto <- sprintf("Trava Dólar FIFO\nPreço atual de %s: US$ %.2f\nLote em aberto: US$ %.2f\nRetorno: %+.2f%% | Exige >= +%.2f%%",
                                            pedido$origem, p_origem_u_live, p_entrada_usdt, ret_usdt, min_lucro_exigido)
                   }
+                } else {
+                  aprovado <- FALSE
+                  motivo_veto <- sprintf("Segregação de Custódia\nPreço de entrada FIFO não disponível para %s", pedido$origem)
                 }
               }
+            } else {
+              aprovado <- FALSE
+              motivo_veto <- sprintf("Auditoria Trava 6\nHistórico de execuções inacessível para validar lote de %s", pedido$origem)
             }
+          } else {
+            # FAIL-CLOSED SOBERANO: Se cotação ao vivo falhar, NUNCA autoriza venda para USDT!
+            aprovado <- FALSE
+            motivo_veto <- sprintf("Falha na Cotação de Mercado\nNão foi possível obter preço ao vivo de %sUSDT na Binance para validação da Trava 6 Dólar FIFO", orig_sym_check)
           }
         }
         
@@ -1565,7 +1609,10 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           p_calc_exec <- 0.0
           ativo_adquirido <- ifelse(pedido$origem == "BRL", pedido$destino, ifelse(pedido$destino == "BRL", pedido$origem, pedido$destino))
           
-          if (pedido$origem == "BRL" && !is.null(resultado_binance$cummulativeQuoteQty) && !is.null(resultado_binance$executedQty)) {
+          if (!is.null(resultado_binance$executedQty) && !is.na(as.numeric(resultado_binance$executedQty)) && as.numeric(resultado_binance$executedQty) > 0) {
+            # Preço unitário em BRL baseado na quantidade real executada na Binance (elimina distorção cambial)
+            p_calc_exec <- as.numeric(pedido$valor_brl) / as.numeric(resultado_binance$executedQty)
+          } else if (pedido$origem == "BRL" && !is.null(resultado_binance$cummulativeQuoteQty) && !is.null(resultado_binance$executedQty)) {
             e_qty <- as.numeric(resultado_binance$executedQty)
             if (!is.na(e_qty) && e_qty > 0) {
               p_calc_exec <- as.numeric(resultado_binance$cummulativeQuoteQty) / e_qty
