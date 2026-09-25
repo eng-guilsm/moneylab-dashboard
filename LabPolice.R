@@ -779,6 +779,136 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
   })
 }
 
+obter_lote_aberto_binance_ssot <- function(ativo) {
+  if (!exists("call_binance")) return(NULL)
+  tryCatch({
+    sym <- sprintf("%sBRL", ativo)
+    trades <- call_binance("/api/v3/myTrades", list(symbol = sym, limit = 40))
+    if (is.null(trades) || length(trades) == 0) return(NULL)
+    
+    df <- if (is.data.frame(trades)) trades else dplyr::bind_rows(trades)
+    if (nrow(df) == 0) return(NULL)
+    
+    df$time_num <- as.numeric(df$time)
+    df$price_num <- as.numeric(df$price)
+    df$qty_num <- as.numeric(df$qty)
+    df$is_buy <- df$isBuyer == TRUE | df$isBuyer == "true"
+    df <- df[order(df$time_num), ]
+    
+    compras <- list()
+    for (i in 1:nrow(df)) {
+      row <- df[i, ]
+      if (row$is_buy) {
+        compras[[length(compras) + 1]] <- list(time = row$time_num, price = row$price_num, qty = row$qty_num, rem = row$qty_num)
+      } else {
+        q_v <- row$qty_num
+        for (k in seq_along(compras)) {
+          if (q_v <= 1e-8) break
+          if (compras[[k]]$rem > 1e-8) {
+            match_q <- min(q_v, compras[[k]]$rem)
+            compras[[k]]$rem <- compras[[k]]$rem - match_q
+            q_v <- q_v - match_q
+          }
+        }
+      }
+    }
+    
+    total_rem <- 0
+    custo_total <- 0
+    primeiro_preco <- NA
+    primeiro_ts <- NA
+    n_abertos <- 0
+    
+    for (c in compras) {
+      if (c$rem > 1e-6) {
+        if (is.na(primeiro_preco)) {
+          primeiro_preco <- c$price
+          primeiro_ts <- c$time
+        }
+        total_rem <- total_rem + c$rem
+        custo_total <- custo_total + (c$rem * c$price)
+        n_abertos <- n_abertos + 1
+      }
+    }
+    
+    if (total_rem > 1e-4 && custo_total > 5.0) {
+      vwap_real <- custo_total / total_rem
+      min_posse <- if (!is.na(primeiro_ts)) (as.numeric(Sys.time()) - (primeiro_ts / 1000)) / 60 else 999.0
+      return(list(
+        tem_lote = TRUE,
+        n_lotes_abertos = n_abertos,
+        minutos_posse = min_posse,
+        minutos_desde_venda = 999.0,
+        preco_compra = primeiro_preco,
+        vwap_abertos = vwap_real,
+        valor_compra = primeiro_preco * total_rem,
+        data_compra = if (!is.na(primeiro_ts)) as.character(as.POSIXct(primeiro_ts / 1000, origin = "1970-01-01", tz = "America/Sao_Paulo")) else as.character(Sys.time()),
+        qtd_aberta = total_rem,
+        valor_total_aberto = custo_total
+      ))
+    }
+  }, error = function(e) NULL)
+  return(NULL)
+}
+
+calcular_lotes_abertos_fifo <- function(compras, vendas, ativo = "") {
+  if (is.null(compras) || nrow(compras) == 0) return(data.frame())
+  
+  default_asset_prices <- list(
+    BTC = 405000.0, ETH = 12500.0, SOL = 492.0, BNB = 3800.0,
+    LINK = 60.0, NEAR = 20.0, ADA = 1.10, AVAX = 130.0,
+    PAXG = 23500.0, USDT = 5.25, NVDAB = 120.0, SPYB = 550.0,
+    SQQQB = 80.0, TLT = 95.0
+  )
+  def_p <- if (!is.null(default_asset_prices[[ativo]])) default_asset_prices[[ativo]] else 100.0
+  
+  compras <- compras[order(as.POSIXct(compras$Data_Hora)), , drop = FALSE]
+  compras$p_u <- as.numeric(compras$Preco_Exec)
+  compras$p_u[is.na(compras$p_u) | compras$p_u <= 0] <- def_p
+  compras$qtd <- as.numeric(compras$Valor_BRL) / compras$p_u
+  
+  if (is.null(vendas) || nrow(vendas) == 0) {
+    compras_abertas <- compras
+  } else {
+    vendas <- vendas[order(as.POSIXct(vendas$Data_Hora)), , drop = FALSE]
+    vendas$p_u <- as.numeric(vendas$Preco_Exec)
+    vendas$p_u[is.na(vendas$p_u) | vendas$p_u <= 0] <- def_p
+    vendas$qtd <- as.numeric(vendas$Valor_BRL) / vendas$p_u
+    
+    compras$qtd_rem <- compras$qtd
+    
+    for (j in seq_len(nrow(vendas))) {
+      v_time <- as.POSIXct(vendas$Data_Hora[j])
+      v_qtd <- vendas$qtd[j]
+      
+      idx_comp <- which(as.POSIXct(compras$Data_Hora) <= v_time & compras$qtd_rem > 0.0001)
+      for (k in idx_comp) {
+        if (v_qtd <= 0.0001) break
+        abater <- min(v_qtd, compras$qtd_rem[k])
+        compras$qtd_rem[k] <- compras$qtd_rem[k] - abater
+        v_qtd <- v_qtd - abater
+      }
+    }
+    
+    abertas_idx <- which(compras$qtd_rem > 0.0001)
+    if (length(abertas_idx) > 0) {
+      compras_abertas <- compras[abertas_idx, , drop = FALSE]
+      compras_abertas$qtd <- compras_abertas$qtd_rem
+      compras_abertas$Valor_BRL <- compras_abertas$qtd * compras_abertas$p_u
+    } else {
+      compras_abertas <- data.frame()
+    }
+  }
+  
+  if (nrow(compras_abertas) > 0) {
+    if (sum(compras_abertas$Valor_BRL, na.rm = TRUE) < 5.0 || sum(compras_abertas$qtd, na.rm = TRUE) < 0.0005) {
+      compras_abertas <- data.frame()
+    }
+  }
+  
+  return(compras_abertas)
+}
+
 # ==============================================================================
 # PROCESSADOR DO GATEKEEPER & AUDITORIA DE RISCO
 # ==============================================================================
@@ -834,7 +964,11 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_ESCUDO_DE_WASHINGTON",
           "PLANO_SENTINELA_ANTIFRAGIL",
           "PLANO_COMMODITY_ENERGY_ALPHA",
-          "PLANO_ADEUS_PERRY"
+          "PLANO_ADEUS_PERRY",
+          "PLANO_RAIO_DE_TESLA",
+          "PLANO_POMAR_DE_NEWTON",
+          "PLANO_DUELO_DE_TITAS_TECH",
+          "PLANO_SENTINELA_DE_ETER"
         )
         
         tetos_volume <- list(
@@ -845,7 +979,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_GRAVIDADE_ZERO" = 220.00,
           "PLANO_OURO_LIQUIDO" = 250.00,
           "PLANO_CORISCO_DA_SOLANA" = 220.00,
-          "PLANO_DUELO_DE_TITAS" = 180.00,
+          "PLANO_DUELO_DE_TITAS" = 250.00,
           "PLANO_FLECHA_DE_SAGARANA" = 450.00,
           "PLANO_COFRE_DE_MIDAS" = 70.00,
           "PLANO_SENTINELA_DO_SOL" = 250.00,
@@ -860,18 +994,22 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_ESCUDO_DE_WASHINGTON" = 150.00,
           "PLANO_SENTINELA_ANTIFRAGIL" = 380.00,
           "PLANO_COMMODITY_ENERGY_ALPHA" = 150.00,
-          "PLANO_ADEUS_PERRY" = 450.00
+          "PLANO_ADEUS_PERRY" = 450.00,
+          "PLANO_RAIO_DE_TESLA" = 280.00,
+          "PLANO_POMAR_DE_NEWTON" = 280.00,
+          "PLANO_DUELO_DE_TITAS_TECH" = 280.00,
+          "PLANO_SENTINELA_DE_ETER" = 480.00
         )
         
         lucros_minimos <- list(
           "PLANO_GUIANA_BRASILEIRA" = 0.40,
           "PLANO_ESCUDO_DE_AQUILES" = 0.57,
           "PLANO_PATRIA_VOLATIL" = 0.40,
-          "PLANO_CABOCLO_DOS_ORACULOS" = 0.50,
+          "PLANO_CABOCLO_DOS_ORACULOS" = 1.00,
           "PLANO_GRAVIDADE_ZERO" = 1.07,
           "PLANO_OURO_LIQUIDO" = 0.60,
           "PLANO_CORISCO_DA_SOLANA" = 0.50,
-          "PLANO_DUELO_DE_TITAS" = 0.53,
+          "PLANO_DUELO_DE_TITAS" = 0.60,
           "PLANO_FLECHA_DE_SAGARANA" = 0.57,
           "PLANO_COFRE_DE_MIDAS" = 0.00,
           "PLANO_SENTINELA_DO_SOL" = 0.50,
@@ -886,7 +1024,11 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_ESCUDO_DE_WASHINGTON" = 0.52,
           "PLANO_SENTINELA_ANTIFRAGIL" = 0.50,
           "PLANO_COMMODITY_ENERGY_ALPHA" = 0.43,
-          "PLANO_ADEUS_PERRY" = 0.40
+          "PLANO_ADEUS_PERRY" = 0.40,
+          "PLANO_RAIO_DE_TESLA" = 0.60,
+          "PLANO_POMAR_DE_NEWTON" = 0.60,
+          "PLANO_DUELO_DE_TITAS_TECH" = 0.60,
+          "PLANO_SENTINELA_DE_ETER" = 0.40
         )
         
         # Trava 0: Validação de Saldo em Custódia Real (Anti-Venda a Descoberto)
@@ -954,6 +1096,17 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
         if (aprovado && !(estrategia_nome %in% estrategias_validas)) {
           aprovado <- FALSE
           motivo_veto <- sprintf("Estratégia Não Autorizada\nPlano: %s\nStatus: Fora da matriz ativa", estrategia_nome)
+        }
+        
+        # 🛡️ Trava de Segregação Exclusiva Adeus, Perry:
+        # O Plano Adeus Perry opera estrita e exclusivamente a poda de excesso de Ouro PAXG (> 20% da carteira).
+        # É terminantemente vetada qualquer tentativa de venda ou desova de altcoins (NEAR, LINK, ADA, AVAX, etc.) ou ativos não-PAXG pelo Adeus Perry.
+        if (aprovado && estrategia_nome == "PLANO_ADEUS_PERRY") {
+          if (as.character(pedido$origem) != "PAXG") {
+            aprovado <- FALSE
+            motivo_veto <- sprintf("Segregação Exclusiva Adeus Perry\nOrigem solicitada: %s\nRegra Soberana: Adeus Perry é restrito 100%% à poda de excesso de PAXG",
+                                   pedido$origem)
+          }
         }
         
         # Subtrava 2.0: Quarentena Antitransbordo Bruce Wayne (12 Horas de Congelamento de Compras & Recompra)
@@ -1209,7 +1362,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
             (estrategia_nome %in% c("PLANO_ESCUDO_DE_AQUILES", "PLANO_FLECHA_DE_SAGARANA",
                                     "PLANO_SENTINELA_DO_SOL", "PLANO_SENTINELA_DE_MINAS",
                                     "PLANO_CABOCLO_DOS_ORACULOS", "PLANO_FAROL_DE_NEAR",
-                                    "PLANO_DUELO_DE_TITAS"))
+                                    "PLANO_DUELO_DE_TITAS", "PLANO_SENTINELA_DE_ETER"))
           
           if (is_estrategia_dip_cripto) {
             # Para compras de dip cripto, exige apenas piso operacional residual de segurança (20 reais)
@@ -1230,10 +1383,16 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           }
         }
         
-        # Trava 3: Validação de Lucro Mínimo Esperado
+        # Trava 3: Validação de Lucro Mínimo Esperado (Com Suporte à Subtrava 6.2 Target Decay Ratchet)
         if (aprovado && estrategia_nome %in% names(lucros_minimos)) {
-          min_lucro <- ifelse(!is.null(lucros_minimos[[estrategia_nome]]), lucros_minimos[[estrategia_nome]], 0.80)
-          if (is.null(pedido$lucro_esperado_pct) || pedido$lucro_esperado_pct < min_lucro) {
+          min_lucro_base <- ifelse(!is.null(lucros_minimos[[estrategia_nome]]), lucros_minimos[[estrategia_nome]], 0.80)
+          is_decay_strategy <- estrategia_nome %in% c("PLANO_SENTINELA_DO_SOL", "PLANO_SENTINELA_DE_MINAS", "PLANO_FAROL_DE_NEAR", "PLANO_CABOCLO_DOS_ORACULOS", "PLANO_SENTINELA_DE_ETER")
+          min_lucro <- if (is_decay_strategy && !is.null(pedido$lucro_esperado_pct) && as.numeric(pedido$lucro_esperado_pct) >= 0.40) {
+            min(min_lucro_base, as.numeric(pedido$lucro_esperado_pct))
+          } else {
+            min_lucro_base
+          }
+          if (is.null(pedido$lucro_esperado_pct) || as.numeric(pedido$lucro_esperado_pct) < min_lucro) {
             aprovado <- FALSE
             motivo_veto <- sprintf("Lucro Projetado Insuficiente\nLucro esperado: +%.2f%%\nLucro exigido: +%.2f%%",
                                    pedido$lucro_esperado_pct, min_lucro)
@@ -1262,7 +1421,8 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                               ifelse(estrategia_nome == "PLANO_SERTAO_VALENTE", 0.25,
                               ifelse(estrategia_nome == "PLANO_FAROL_DE_NEAR", 1.0,
                               ifelse(estrategia_nome == "PLANO_DUELO_DE_TITAS", 1.5,
-                              ifelse(grepl("GRAVIDADE", estrategia_nome), 0.16, 1.0))))))))))))
+                              ifelse(estrategia_nome == "PLANO_SENTINELA_DE_ETER", 0.50,
+                              ifelse(grepl("GRAVIDADE", estrategia_nome), 0.16, 1.0)))))))))))))
               
               # Se for realização de lucro / rotação oposta, zera o cooldown
               ultimo_reg <- tail(hist_est, 1)
@@ -1302,34 +1462,57 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
             if (!is.null(hist_all) && nrow(hist_all) > 0 && "Destino" %in% names(hist_all)) {
               exec_reais <- hist_all[grepl("EXECUTADO_REAL", hist_all$Status), ]
               
-              is_estrategia_desova <- estrategia_nome %in% c("PLANO_ADEUS_PERRY", "PLANO_BRUCE_WAYNE")
+              is_estrategia_desova <- (estrategia_nome == "PLANO_ADEUS_PERRY" && as.character(pedido$origem) == "PAXG") || (estrategia_nome == "PLANO_BRUCE_WAYNE")
               
               if (is_estrategia_desova) {
                 # 🛡️ Planos de Liquidação e Circuit Breaker (Adeus, Perry / Bruce Wayne):
-                # Não segregam custódia por estratégia, pois existem justamente para liquidar posições legadas!
-                compras_abertas <- exec_reais[exec_reais$Destino == as.character(pedido$origem), ]
+                # Não segregam custódia por estratégia para seus ativos autorizados (PAXG no Perry, geral no Bruce Wayne)!
+                compras_todas <- exec_reais[exec_reais$Destino == as.character(pedido$origem), ]
+                vendas_todas  <- exec_reais[exec_reais$Origem == as.character(pedido$origem), ]
+                compras_abertas <- calcular_lotes_abertos_fifo(compras_todas, vendas_todas)
+                if (nrow(compras_abertas) == 0) {
+                  compras_abertas <- compras_todas
+                }
               } else {
-                # 🛡️ Rastreamento FIFO Real de Lotes Abertos por Estratégia
-                filtro_patria <- if (estrategia_nome == "PLANO_PATRIA_VOLATIL") exec_reais$Valor_BRL <= 350.0 else TRUE
-                compras_todas <- exec_reais[exec_reais$Destino == as.character(pedido$origem) & 
-                                            exec_reais$Estrategia == estrategia_nome & 
-                                            filtro_patria, ]
-                vendas_todas  <- exec_reais[exec_reais$Origem == as.character(pedido$origem) & 
-                                            exec_reais$Estrategia == estrategia_nome, ]
-                n_c <- nrow(compras_todas)
-                n_v <- nrow(vendas_todas)
+                # 🛡️ Rastreamento FIFO Real de Lotes Abertos por Estratégia (Baseado em Quantidade de Tokens)
+                ativos_exclusivos <- c("NEAR", "LINK", "SOL", "BNB", "ADA", "AVAX", "NVDAB", "SPYB", "SQQQB", "TLT", "TSLAB", "AAPLB", "ETH")
+                if (as.character(pedido$origem) %in% ativos_exclusivos) {
+                  compras_todas <- exec_reais[exec_reais$Destino == as.character(pedido$origem), ]
+                  vendas_todas  <- exec_reais[exec_reais$Origem == as.character(pedido$origem), ]
+                } else {
+                  filtro_patria <- if (estrategia_nome == "PLANO_PATRIA_VOLATIL") exec_reais$Valor_BRL <= 350.0 else TRUE
+                  compras_todas <- exec_reais[exec_reais$Destino == as.character(pedido$origem) & 
+                                              exec_reais$Estrategia == estrategia_nome & 
+                                              filtro_patria, ]
+                  vendas_todas <- exec_reais[exec_reais$Origem == as.character(pedido$origem) & 
+                                            (exec_reais$Estrategia == estrategia_nome | exec_reais$Estrategia %in% c("PLANO_ADEUS_PERRY", "PLANO_BRUCE_WAYNE")), ]
+                }
                 
-                # Sob FIFO, as primeiras n_v compras já foram fechadas pelas n_v vendas anteriores.
-                # Os lotes em aberto são estritamente as compras a partir de (n_v + 1):
-                compras_abertas <- if (n_c > n_v) compras_todas[(n_v + 1):n_c, , drop = FALSE] else data.frame()
+                compras_abertas <- calcular_lotes_abertos_fifo(compras_todas, vendas_todas, ativo = as.character(pedido$origem))
+                
+                # 🛡️ SSOT BINANCE API: Sincronização direta com a custódia real na corretora para altcoins
+                if (as.character(pedido$origem) %in% c("NEAR", "LINK", "SOL", "BNB", "ETH")) {
+                  ssot_lote <- tryCatch(obter_lote_aberto_binance_ssot(as.character(pedido$origem)), error = function(e) NULL)
+                  if (!is.null(ssot_lote) && isTRUE(ssot_lote$tem_lote) && !is.null(ssot_lote$vwap_abertos) && ssot_lote$vwap_abertos > 0) {
+                    compras_abertas <- data.frame(
+                      Data_Hora = ssot_lote$data_compra,
+                      Estrategia = estrategia_nome,
+                      Origem = "BRL",
+                      Destino = as.character(pedido$origem),
+                      Valor_BRL = ssot_lote$valor_total_aberto,
+                      Preco_Exec = ssot_lote$vwap_abertos,
+                      qtd = ssot_lote$qtd_aberta,
+                      Status = "EXECUTADO_REAL_BINANCE",
+                      stringsAsFactors = FALSE
+                    )
+                  }
+                }
               }
               
-              # Fallback auditado de preço de aquisição na Binance para ativos legados (ADA, LINK, NEAR, AVAX):
+              # Fallback auditado de preço de aquisição na Binance para ativos legados (ADA, AVAX):
               if (nrow(compras_abertas) == 0 && is_estrategia_desova) {
                 precos_aquisicao_legados <- list(
                   ADA  = 1.083,  # 120 ADA adquiridas na Binance a R$ 1.083
-                  LINK = 59.00,  # 0.763 LINK adquiridas a R$ 59.00
-                  NEAR = 22.50,
                   AVAX = 135.0
                 )
                 
@@ -1397,10 +1580,29 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                 # 🛡️ TRAVA 6 RIGOROSA SSOT ANTI-MICRO-PREJUÍZO (FIFO REAL):
                 # O lote a ser desovado na corretora pela regra da Binance API é o LOTE FIFO MAIS ANTIGO:
                 p_fifo_lote <- validos$Preco_Exec[1] # Preço de aquisição do lote mais antigo a ser fechado
-                p_vwap_lote <- sum(validos$Valor_BRL) / sum(validos$Valor_BRL / validos$Preco_Exec) # VWAP de todos os lotes
+                p_vwap_lote <- sum(validos$Valor_BRL) / sum(validos$qtd) # VWAP de todos os lotes
                 
-                # O preço de referência de custo DEVE cobrir rigorosamente o MÁXIMO entre o lote FIFO e o VWAP:
-                p_entrada_seguro <- max(p_fifo_lote, p_vwap_lote, na.rm = TRUE)
+                # Custo ponderado e preço máximo dos lotes tocados por esta ordem específica:
+                qtd_venda_est <- as.numeric(pedido$valor_brl) / p_atual_mercado
+                qtd_restante <- qtd_venda_est
+                custo_acum <- 0
+                qtd_acum <- 0
+                precos_lotes_tocados <- c()
+                for (j in 1:nrow(validos)) {
+                  if (qtd_restante <= 1e-6) break
+                  qtd_lote_j <- if ("qtd" %in% names(validos) && !is.na(validos$qtd[j])) validos$qtd[j] else (validos$Valor_BRL[j] / validos$Preco_Exec[j])
+                  qtd_usar <- min(qtd_restante, qtd_lote_j)
+                  custo_acum <- custo_acum + (qtd_usar * validos$Preco_Exec[j])
+                  qtd_acum <- qtd_acum + qtd_usar
+                  precos_lotes_tocados <- c(precos_lotes_tocados, validos$Preco_Exec[j])
+                  qtd_restante <- qtd_restante - qtd_usar
+                }
+                custo_fifo_ordem <- if (qtd_acum > 0) custo_acum / qtd_acum else p_fifo_lote
+                maior_preco_tocado <- if (length(precos_lotes_tocados) > 0) max(precos_lotes_tocados) else p_fifo_lote
+                
+                # O preço de referência de custo DEVE cobrir rigorosamente o MÁXIMO entre:
+                # 1) Lote FIFO mais antigo; 2) VWAP global; 3) Custo dos lotes consumidos; 4) Maior preço de compra tocado
+                p_entrada_seguro <- max(c(p_fifo_lote, p_vwap_lote, custo_fifo_ordem, maior_preco_tocado), na.rm = TRUE)
                 p_entrada <- p_entrada_seguro
                 
                 # Validação de Holding Time Mínimo (15 minutos para maturação de onda espectral)
@@ -1412,8 +1614,15 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                   ret_nominal <- ((p_atual_mercado - p_entrada) / p_entrada) * 100
                   ret_obtido_real <- ret_nominal
                   
-                  # Lucro mínimo exigido: no mínimo +0.40% (ou o lucro projetado pedido pela ordem, o que for maior)
-                  lucro_minimo_exigido <- max(0.40, ifelse(!is.null(pedido$lucro_esperado_pct), as.numeric(pedido$lucro_esperado_pct), 0.40))
+                  # Lucro mínimo exigido conforme tabela oficial de governança
+                  meta_tabela <- if (estrategia_nome %in% names(lucros_minimos)) as.numeric(lucros_minimos[[estrategia_nome]]) else 0.40
+                  # 🛡️ Subtrava 6.2: Target Decay Ratchet (respeita meta dinâmica desde que estritamente >= +0.40% piso)
+                  is_decay_strategy <- estrategia_nome %in% c("PLANO_SENTINELA_DO_SOL", "PLANO_SENTINELA_DE_MINAS", "PLANO_FAROL_DE_NEAR", "PLANO_CABOCLO_DOS_ORACULOS")
+                  lucro_minimo_exigido <- if (is_decay_strategy && !is.null(pedido$lucro_esperado_pct) && as.numeric(pedido$lucro_esperado_pct) >= 0.40) {
+                    min(meta_tabela, as.numeric(pedido$lucro_esperado_pct))
+                  } else {
+                    meta_tabela
+                  }
                   
                   if (tempo_posse_min < 15.0 && ret_nominal < 1.50) {
                     aprovado <- FALSE
@@ -1421,8 +1630,8 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                                            tempo_posse_min)
                   } else if (ret_nominal < lucro_minimo_exigido) {
                     aprovado <- FALSE
-                    motivo_veto <- sprintf("Trava Anti-Prejuízo FIFO Real\nPreço atual de %s: R$ %.2f\nLote FIFO em aberto: R$ %.2f (VWAP: R$ %.2f)\nRetorno FIFO: %+.2f%% | Exige >= +%.2f%%",
-                                           pedido$origem, p_atual_mercado, p_fifo_lote, p_vwap_lote, ret_nominal, lucro_minimo_exigido)
+                    motivo_veto <- sprintf("Trava Anti-Prejuízo FIFO Real\nPreço atual de %s: R$ %.2f\nCusto Seguro (Max FIFO/VWAP/Lotes): R$ %.2f\nRetorno FIFO: %+.2f%% | Exige >= +%.2f%%",
+                                           pedido$origem, p_atual_mercado, p_entrada_seguro, ret_nominal, lucro_minimo_exigido)
                   }
                 }
               }
@@ -1447,13 +1656,20 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           if (ratio_live > 0 && file.exists(hist_exec_file)) {
             hist_all <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
             if (!is.null(hist_all) && nrow(hist_all) > 0 && "Destino" %in% names(hist_all)) {
-              compras_todas <- exec_reais[exec_reais$Destino == as.character(pedido$origem), ]
-              vendas_todas  <- exec_reais[exec_reais$Origem == as.character(pedido$origem), ]
-              n_c <- nrow(compras_todas)
-              n_v <- nrow(vendas_todas)
-              compras_abertas <- if (n_c > n_v) compras_todas[(n_v + 1):n_c, , drop = FALSE] else data.frame()
+              is_desova_sub61 <- (estrategia_nome == "PLANO_BRUCE_WAYNE")
+              if (!is_desova_sub61) {
+                compras_todas <- exec_reais[exec_reais$Destino == as.character(pedido$origem) & exec_reais$Estrategia == estrategia_nome, ]
+                vendas_todas  <- exec_reais[exec_reais$Origem == as.character(pedido$origem) & exec_reais$Estrategia == estrategia_nome, ]
+              } else {
+                compras_todas <- exec_reais[exec_reais$Destino == as.character(pedido$origem), ]
+                vendas_todas  <- exec_reais[exec_reais$Origem == as.character(pedido$origem), ]
+              }
+              compras_abertas <- calcular_lotes_abertos_fifo(compras_todas, vendas_todas, ativo = as.character(pedido$origem))
+              
               if (nrow(compras_abertas) == 0) {
-                compras_abertas <- tail(exec_reais[exec_reais$Destino == as.character(pedido$origem), ], 1)
+                aprovado <- FALSE
+                motivo_veto <- sprintf("Segregação Estrita de Custódia\nO plano %s não possui lote aberto de %s para realizar rotação para BTC.",
+                                       estrategia_nome, pedido$origem)
               }
               
               validos <- compras_abertas[!is.na(compras_abertas$Preco_Exec) & compras_abertas$Preco_Exec > 0 & !is.na(compras_abertas$Valor_BRL), ]
@@ -1493,6 +1709,24 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
               }
             }
           }
+        } else if (aprovado && pedido$origem == "BTC" && pedido$destino == "PAXG") {
+          # === SUB-TRAVA 6.3: ROTAÇÃO BTC -> PAXG (PLANO GUIANA BRASILEIRA) ===
+          # Exige compulsoriamente que a estratégia possua lote aberto próprio de BTC
+          if (file.exists(hist_exec_file)) {
+            hist_all <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
+            if (!is.null(hist_all) && nrow(hist_all) > 0) {
+              exec_reais <- hist_all[grepl("EXECUTADO_REAL", hist_all$Status), ]
+              compras_todas <- exec_reais[exec_reais$Destino == "BTC" & exec_reais$Estrategia == estrategia_nome, ]
+              vendas_todas  <- exec_reais[exec_reais$Origem == "BTC" & exec_reais$Estrategia == estrategia_nome, ]
+              compras_abertas <- calcular_lotes_abertos_fifo(compras_todas, vendas_todas, ativo = "BTC")
+              
+              if (nrow(compras_abertas) == 0) {
+                aprovado <- FALSE
+                motivo_veto <- sprintf("Segregação Estrita de Custódia\nO plano %s não possui lote aberto de BTC para realizar compra de PAXG.",
+                                       estrategia_nome)
+              }
+            }
+          }
         } else if (aprovado && pedido$destino == "USDT" && pedido$origem %in% c("PAXG", "BTC", "ETH", "SQQQB", "NVDAB", "SPYB", "TLT", "TSLAB", "QQQB", "AAPLB", "MSFTB")) {
           # === SUB-TRAVA 6.2: ROTAÇÕES PARA DÓLAR USDT (CRIPTO + BACKED EQUITIES SPOT) ===
           p_usdt_b <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) 5.20)
@@ -1509,15 +1743,23 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
               exec_reais <- hist_all[grepl("EXECUTADO_REAL", hist_all$Status), ]
               
               if (estrategia_nome %in% c("PLANO_ADEUS_PERRY", "PLANO_BRUCE_WAYNE")) {
-                compras_abertas <- exec_reais[exec_reais$Destino == as.character(pedido$origem), ]
+                compras_todas <- exec_reais[exec_reais$Destino == as.character(pedido$origem), ]
+                vendas_todas  <- exec_reais[exec_reais$Origem == as.character(pedido$origem), ]
+                compras_abertas <- calcular_lotes_abertos_fifo(compras_todas, vendas_todas)
+                if (nrow(compras_abertas) == 0) {
+                  compras_abertas <- compras_todas
+                }
               } else {
                 compras_todas <- exec_reais[exec_reais$Destino == as.character(pedido$origem) & 
                                             exec_reais$Estrategia == estrategia_nome, ]
-                vendas_todas  <- exec_reais[exec_reais$Origem == as.character(pedido$origem) & 
-                                            exec_reais$Estrategia == estrategia_nome, ]
-                n_c <- nrow(compras_todas)
-                n_v <- nrow(vendas_todas)
-                compras_abertas <- if (n_c > n_v) compras_todas[(n_v + 1):n_c, , drop = FALSE] else data.frame()
+                ativos_exclusivos <- c("NEAR", "LINK", "SOL", "BNB", "ADA", "AVAX", "NVDAB", "SPYB", "SQQQB", "TLT", "TSLAB", "AAPLB", "ETH")
+                if (as.character(pedido$origem) %in% ativos_exclusivos) {
+                  vendas_todas <- exec_reais[exec_reais$Origem == as.character(pedido$origem), ]
+                } else {
+                  vendas_todas <- exec_reais[exec_reais$Origem == as.character(pedido$origem) & 
+                                            (exec_reais$Estrategia == estrategia_nome | exec_reais$Estrategia %in% c("PLANO_ADEUS_PERRY", "PLANO_BRUCE_WAYNE")), ]
+                }
+                compras_abertas <- calcular_lotes_abertos_fifo(compras_todas, vendas_todas)
               }
               
               if (nrow(compras_abertas) == 0 && estrategia_nome %in% c("PLANO_ADEUS_PERRY", "PLANO_BRUCE_WAYNE")) {
@@ -1533,14 +1775,26 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                 if (pedido$origem == "PAXG") validos <- validos[validos$Preco_Exec > 1000.0, , drop = FALSE]
                 
                 p_entrada_exec <- if (nrow(validos) > 0) {
-                  sum(validos$Valor_BRL) / sum(validos$Valor_BRL / validos$Preco_Exec)
+                  sum(validos$Valor_BRL) / sum(validos$qtd)
                 } else NA
                 
                 # Fallback auditado SSOT na Binance para Ouro PAXG:
                 if (is.na(p_entrada_exec) && pedido$origem == "PAXG") p_entrada_exec <- 23576.0
                 
                 if (!is.na(p_entrada_exec) && p_entrada_exec > 0) {
-                  p_entrada_usdt <- p_entrada_exec / p_usdt_b
+                  p_entrada_usdt <- tryCatch({
+                    if (as.character(pedido$origem) %in% c("NVDAB", "SPYB", "SQQQB", "TLT", "TSLAB", "AAPLB")) {
+                      sym_t <- if (as.character(pedido$origem) == "TLT") "TLTBUSDT" else paste0(as.character(pedido$origem), "USDT")
+                      tr_eq <- call_binance("/api/v3/myTrades", list(symbol = sym_t, limit = 5))
+                      if (!is.null(tr_eq) && length(tr_eq) > 0) {
+                        buys_eq <- tr_eq[sapply(tr_eq, function(x) isTRUE(x$isBuyer))]
+                        if (length(buys_eq) > 0) as.numeric(tail(buys_eq, 1)[[1]]$price) else (p_entrada_exec / p_usdt_b)
+                      } else (p_entrada_exec / p_usdt_b)
+                    } else {
+                      p_entrada_exec / p_usdt_b
+                    }
+                  }, error = function(e) (p_entrada_exec / p_usdt_b))
+                  
                   ret_usdt <- ((p_origem_u_live - p_entrada_usdt) / p_entrada_usdt) * 100
                   ret_obtido_real <- ret_usdt
                   
@@ -1607,7 +1861,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           }
           
           p_calc_exec <- 0.0
-          ativo_adquirido <- ifelse(pedido$origem == "BRL", pedido$destino, ifelse(pedido$destino == "BRL", pedido$origem, pedido$destino))
+          ativo_adquirido <- if (pedido$origem %in% c("BRL", "USDT")) as.character(pedido$destino) else as.character(pedido$origem)
           
           if (!is.null(resultado_binance$executedQty) && !is.na(as.numeric(resultado_binance$executedQty)) && as.numeric(resultado_binance$executedQty) > 0) {
             # Preço unitário em BRL baseado na quantidade real executada na Binance (elimina distorção cambial)
@@ -1621,6 +1875,8 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
             # Para pares cruzados ou fallbacks, obtém a cotação real fiduciária de mercado no momento
             if (ativo_adquirido == "PAXG") {
               p_calc_exec <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT"), "parsed")$price) * as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) 24000.0)
+            } else if (ativo_adquirido %in% c("NVDAB", "SPYB", "SQQQB", "TLT", "TSLAB", "QQQB", "AAPLB")) {
+              p_calc_exec <- tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%sUSDT", ativo_adquirido)), "parsed")$price) * as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) 1150.0)
             } else {
               p_calc_exec <- tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%sBRL", ativo_adquirido)), "parsed")$price), error = function(e) 0.0)
             }
@@ -1668,11 +1924,22 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
             if (resultado_binance$sucesso) {
               if (pedido$origem %in% c("BRL", "USDT") && !(pedido$origem == "USDT" && pedido$destino == "BRL")) {
                 str_lucro_obt <- "Posição aberta (aquisição)"
-              } else if (!is.na(ret_obtido_real)) {
-                lucro_obt_brl <- as.numeric(pedido$valor_brl) * (ret_obtido_real / 100)
-                str_lucro_obt <- sprintf("%+.2f%% | %+.2f reais", ret_obtido_real, lucro_obt_brl)
+              } else if (pedido$destino %in% c("BRL", "USDT")) {
+                # Liquidação efetiva em Fiat (BRL ou USDT) -> Lucro FIFO Real Realizado
+                if (!is.na(ret_obtido_real)) {
+                  lucro_obt_brl <- as.numeric(pedido$valor_brl) * (ret_obtido_real / 100)
+                  str_lucro_obt <- sprintf("%+.2f%% | %+.2f reais [FIFO Real]", ret_obtido_real, lucro_obt_brl)
+                } else {
+                  str_lucro_obt <- "Posição desovada em Fiat"
+                }
               } else {
-                str_lucro_obt <- "Posição desovada / rotação"
+                # Trade intermediário entre ativos (ex: BTC -> PAXG ou PAXG -> BTC)
+                # Retorno relativo em Satoshis ou Gramas; liquidação em Fiat permanece em trânsito
+                if (!is.na(ret_obtido_real)) {
+                  str_lucro_obt <- sprintf("%+.2f%% (Spread em Satoshis / Em Trânsito Fiat)", ret_obtido_real)
+                } else {
+                  str_lucro_obt <- sprintf("Rotação de Ativo (Em custódia de %s até desova Fiat)", pedido$destino)
+                }
               }
               
               msg_tg <- sprintf("🟢 <b>[ORDEM EXECUTADA]</b>\n━━━━━━━━━━━━━━━━━━━━\n🎯 <b>Plano:</b> %s\n🔄 <b>Operação:</b> %s ➔ %s\n💰 <b>Valor:</b> %.2f reais (Qtd: %s %s)\n📈 <b>Lucro Projetado:</b> %s\n💵 <b>Lucro Obtido:</b> %s\n🆔 <b>Order ID:</b> <code>%s</code>\n⏱️ <b>Data:</b> %s\n📝 <b>Status:</b> Preenchido na Corretora (FILLED)\n━━━━━━━━━━━━━━━━━━━━",
