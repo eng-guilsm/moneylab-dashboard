@@ -252,6 +252,48 @@ carteira <- function(silent = FALSE) {
   df$total <- df$free + df$locked
   df <- df[!is.na(df$total) & df$total > 0, ]
   
+  # SSOT: Enriquece e corrige Simple Earn diretamente da API (/sapi/v1/simple-earn/flexible/position)
+  # O token LD* na conta Spot tem lag de sincronização da Binance e omite parcelas recém-alocadas
+  tryCatch({
+    se_flex <- call_binance("/sapi/v1/simple-earn/flexible/position", list(size = 100))
+    if (!is.null(se_flex$rows) && length(se_flex$rows) > 0) {
+      flex_rows <- bind_rows(se_flex$rows)
+      for (r in 1:nrow(flex_rows)) {
+        earn_asset <- flex_rows$asset[r]
+        earn_amt <- as.numeric(flex_rows$totalAmount[r])
+        if (!is.na(earn_amt) && earn_amt > 0) {
+          earn_token <- paste0("LD", earn_asset)
+          if (earn_token %in% df$asset) {
+            df$free[df$asset == earn_token] <- earn_amt
+            df$total[df$asset == earn_token] <- earn_amt
+          } else {
+            df <- rbind(df, data.frame(asset = earn_token, free = earn_amt, locked = 0, total = earn_amt, stringsAsFactors = FALSE))
+          }
+        }
+      }
+    }
+  }, error = function(e) {})
+  
+  # Funding Wallet (saldos residuais de P2P ou transferências internas)
+  tryCatch({
+    fund <- call_binance_post("/sapi/v1/asset/get-funding-asset", list())
+    if (!is.null(fund) && length(fund) > 0) {
+      fund_rows <- bind_rows(fund)
+      for (r in 1:nrow(fund_rows)) {
+        f_asset <- fund_rows$asset[r]
+        f_free <- as.numeric(fund_rows$free[r])
+        if (!is.na(f_free) && f_free > 0) {
+          if (f_asset %in% df$asset) {
+            df$free[df$asset == f_asset] <- df$free[df$asset == f_asset] + f_free
+            df$total[df$asset == f_asset] <- df$total[df$asset == f_asset] + f_free
+          } else {
+            df <- rbind(df, data.frame(asset = f_asset, free = f_free, locked = 0, total = f_free, stringsAsFactors = FALSE))
+          }
+        }
+      }
+    }
+  }, error = function(e) {})
+  
   if (!silent) {
     cat("\n💼 SALDO ATUAL CARTEIRA BINANCE:\n")
     print(df)
