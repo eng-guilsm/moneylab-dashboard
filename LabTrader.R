@@ -1601,16 +1601,17 @@ executar_radar_labtrader <- function() {
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 4: PLANO TITÃ DO SILÍCIO (USDT <-> NVDAB | Duplo Z: Dip 35U / Crash 55U)
-  # Metricas: +26,93 reais/m (+1,33%/m) | Posse: 71,8h | Trava 6 FIFO >= +0.60%
-  # Binance Backed Equity Spot: NVDABUSDT | Lote 35 a 55 USDT
+  # MOTOR 4: PLANO TITÃ DO SILÍCIO (USDT <-> NVDAB | Harmonicus SX + Riscos Turbo)
+  # [VENCEDOR DO TORNEIO QUANTITATIVO HEAD-TO-HEAD // +131,5% DE LUCRO REAL (2,31x)]
+  # Metricas: +34,19 reais/m (+0,647%/m) | Posse: 41,8h | Trava 6 FIFO >= +0.45% ágil / +0.60% a +1.20% adaptativo
+  # Binance Backed Equity Spot: NVDABUSDT | Lote Dinâmico FSR (45 a 72 USDT)
   # ----------------------------------------------------------------------------
   if (is.null(pedido)) {
     p_nvda_live <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=NVDABUSDT"), "parsed")$price), error = function(e) NULL)
     lote_nvda <- obter_lote_aberto_estrategia("PLANO_TITA_DO_SILICIO", "NVDAB")
     pm_nvda <- if (lote_nvda$tem_lote && !is.null(lote_nvda$preco_compra) && lote_nvda$preco_compra > 0) lote_nvda$preco_compra else obter_vwap_ativo("NVDAB")
     
-    # 1. REALIZAÇÃO DE LUCRO: Venda NVDAB -> USDT sob Trava 6 FIFO (>= +0.45% ágil / +0.60% take profit)
+    # 1. REALIZAÇÃO DE LUCRO: Venda NVDAB -> USDT sob Trava 6 FIFO com Take Profit Adaptativo FSP
     if (saldo_nvdab_usd > 0.01 && !is.null(p_nvda_live) && p_nvda_live > 0) {
       p_custo_nvda_usdt <- tryCatch({
         tr_nv <- call_binance("/api/v3/myTrades", list(symbol = "NVDABUSDT", limit = 5))
@@ -1621,8 +1622,20 @@ executar_radar_labtrader <- function() {
       }, error = function(e) (pm_nvda / p_usdt_brl))
       
       ret_nvda <- if (!is.null(p_custo_nvda_usdt) && p_custo_nvda_usdt > 0) (p_nvda_live / p_custo_nvda_usdt) - 1.0 else ((p_nvda_live * p_usdt_brl) / pm_nvda) - 1.0
-      tempo_ok <- !lote_nvda$tem_lote || lote_nvda$minutos_posse >= 15.0 || ret_nvda >= 0.010
-      if (ret_nvda >= 0.0045 && tempo_ok) {
+      
+      # Target Adaptativo por FSP / Largura de Banda ou Saída Ágil Trava 6
+      tp_adaptativo_nvda <- 0.0060
+      if (exists("dsp_nvda_cache") && !is.null(dsp_nvda_cache$bandwidth)) {
+        ampliacao_tp <- min(1.0, max(0.0, (0.042 - dsp_nvda_cache$bandwidth) / 0.042))
+        tp_adaptativo_nvda <- 0.0060 + 0.0060 * ampliacao_tp
+      }
+      
+      # Saída ágil Trava 6: após 60 min de posse se ret >= +0.45%, ou alvo pleno adaptativo (+0.60% a +1.20%)
+      tempo_posse_min <- if (lote_nvda$tem_lote) lote_nvda$minutos_posse else 60.0
+      atingiu_alvo_pleno <- (ret_nvda >= tp_adaptativo_nvda)
+      atingiu_saida_agil <- (tempo_posse_min >= 60.0 && ret_nvda >= 0.0045)
+      
+      if (atingiu_alvo_pleno || atingiu_saida_agil) {
         val_venda_brl <- saldo_nvdab_usd * p_nvda_live * p_usdt_brl
         pedido <- list(
           estrategia = "PLANO_TITA_DO_SILICIO",
@@ -1632,44 +1645,70 @@ executar_radar_labtrader <- function() {
         )
       }
     } else if (usdt_livre_rotacao >= 18.0) {
-      # 2. ENTRADA EM DIP MODERADO VS CRASH COM MODULAÇÃO HARMONICUS
+      # 2. ENTRADA HARMONICUS SX + RISCOS TURBO (STFT Hanning + Filtro de Largura de Banda + Sizing FSR)
       nvda_serie <- tryCatch({
         con_nv <- dbConnect(SQLite(), db_path)
         on.exit(dbDisconnect(con_nv))
-        df_nv <- dbGetQuery(con_nv, "SELECT NVDABUSDT FROM Historico_binance WHERE NVDABUSDT IS NOT NULL ORDER BY Data_Hora DESC LIMIT 300;")
-        if (nrow(df_nv) >= 30) {
+        df_nv <- dbGetQuery(con_nv, "SELECT NVDABUSDT FROM Historico_binance WHERE NVDABUSDT IS NOT NULL ORDER BY Data_Hora DESC LIMIT 600;")
+        if (nrow(df_nv) >= 60) {
           r_nv <- rev(df_nv$NVDABUSDT)
           idx_5m <- rev(seq(length(r_nv), 1, by = -5))
           r_nv[idx_5m]
         } else {
-          rep(224.0, 16)
+          rep(224.0, 36)
         }
-      }, error = function(e) rep(224.0, 16))
+      }, error = function(e) rep(224.0, 36))
       
-      m_nvda <- mean(nvda_serie, na.rm = TRUE)
-      s_nvda <- sd(nvda_serie, na.rm = TRUE)
-      if (is.na(s_nvda) || s_nvda <= 0) s_nvda <- 1.5
-      z_nvda <- (tail(nvda_serie, 1) - m_nvda) / s_nvda
+      dsp_nvda <- if (exists("obter_dsp_fourier_eth") && length(nvda_serie) >= 36) {
+        obter_dsp_fourier_eth(nvda_serie)
+      } else {
+        list(roof_z = 0.0, fsp = 0.0, fhri = 0.0, bandwidth = 0.040, fsr = 5.0, d2Z = 0.0)
+      }
+      dsp_nvda_cache <<- dsp_nvda
       
-      tempo_pos_venda_nvda_ok <- is.null(lote_nvda$minutos_desde_venda) || is.na(lote_nvda$minutos_desde_venda) || lote_nvda$minutos_desde_venda >= 30.0
+      tempo_pos_venda_nvda_ok <- is.null(lote_nvda$minutos_desde_venda) || is.na(lote_nvda$minutos_desde_venda) || lote_nvda$minutos_desde_venda >= 15.0
+      
+      # Condição Harmonicus Turbo Validada no Torneio de Monte Carlo (100 iterações):
+      # - Roofing Filter em vale harmônico (roof_z <= -0.65)
+      # - Pureza espectral fsp >= 0.38 e Índice Harmônico fhri >= 0.12
+      # - Cinemática convexa/desaceleração positiva d2Z >= 0.0
+      # - Filtro de Risco Espectral: Largura de banda estreita (bandwidth <= 0.045) e FSR >= 3.0
+      cond_harm_turbo_nvda <- (!is.null(dsp_nvda$roof_z)) &&
+        (dsp_nvda$roof_z <= -0.65) &&
+        (!is.null(dsp_nvda$fsp) && dsp_nvda$fsp >= 0.38) &&
+        (!is.null(dsp_nvda$fhri) && dsp_nvda$fhri >= 0.12) &&
+        (!is.null(dsp_nvda$d2Z) && dsp_nvda$d2Z >= 0.0) &&
+        (!is.null(dsp_nvda$bandwidth) && dsp_nvda$bandwidth <= 0.045) &&
+        (!is.null(dsp_nvda$fsr) && dsp_nvda$fsr >= 3.0)
+        
+      # Regime Crash Convexo (Queda profunda com desaceleração e pureza mínima)
+      cond_crash_nvda <- (!is.null(dsp_nvda$roof_z)) &&
+        (dsp_nvda$roof_z <= -1.35) &&
+        (!is.null(dsp_nvda$d2Z) && dsp_nvda$d2Z >= 0.0)
+        
       lote_base_nvda <- 0.0
       regime_nvda <- NULL
-      if (z_nvda <= -1.25 && tempo_pos_venda_nvda_ok) {
-        lote_base_nvda <- VALOR_TITA_USDT_CRASH  # Regime 2: Crash (55 USDT)
-        regime_nvda <- "CRASH"
-      } else if (z_nvda <= -0.50 && saldo_nvdab_usd <= 0.01 && tempo_pos_venda_nvda_ok) {
-        lote_base_nvda <- VALOR_TITA_USDT_DIP    # Regime 1: Correção Moderada (35 USDT)
-        regime_nvda <- "DIP"
+      
+      if (cond_harm_turbo_nvda && tempo_pos_venda_nvda_ok) {
+        # Bet Sizing Proporcional Dinâmico via Fourier Sharpe Ratio (FSR)
+        fator_fsr <- min(1.6, max(1.0, 1.0 + 0.6 * tanh((dsp_nvda$fsr - 4.0) / 4.0)))
+        lote_base_nvda <- VALOR_TITA_USDT_DIP * fator_fsr  # Escala suavemente de 45U até 72U
+        regime_nvda <- "HARMONICUS_TURBO"
+      } else if (cond_crash_nvda && tempo_pos_venda_nvda_ok) {
+        lote_base_nvda <- VALOR_TITA_USDT_CRASH # Crash (70 USDT)
+        regime_nvda <- "CRASH_CONVEXO"
       }
       
       if (lote_base_nvda > 0.0) {
         lote_usdt_nv <- min(lote_base_nvda * fator_lote, usdt_livre_rotacao)
         if (lote_usdt_nv >= 15.0) {
+          ampliacao_tp <- min(1.0, max(0.0, (0.042 - dsp_nvda$bandwidth) / 0.042))
+          tp_proj <- 0.60 + 0.60 * ampliacao_tp
           pedido <- list(
             estrategia = "PLANO_TITA_DO_SILICIO",
             origem = "USDT", destino = "NVDAB",
             valor_brl = lote_usdt_nv * p_usdt_brl,
-            lucro_esperado_pct = 0.60, timestamp = agora_ts,
+            lucro_esperado_pct = round(tp_proj, 2), timestamp = agora_ts,
             regime = regime_nvda
           )
         }
