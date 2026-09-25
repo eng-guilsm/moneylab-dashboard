@@ -30,8 +30,9 @@ VALOR_BNB_BRL               <- 130.0  # 4.0% - Plano 10: Sentinela de Minas (BRL
 VALOR_TLT_BRL               <- 80.0   # 2.5% - Plano 11: Escudo de Washington (TLT T-Bonds 5h | Posse 331.9h)
 VALOR_SQQQB_BRL             <- 274.0  # 8.5% (53 USDT) - Plano 12: Sentinela Antifrágil (SQQQB 1h | Posse 2.3h | Meta 1%/m)
 VALOR_BRUCE_BRL             <- 350.0  # Plano 13: Bruce Wayne (Desativado Temporariamente)
-VALOR_WALLSTREET_USDT_DIP   <- 50.0   # 8.1% (50 USDT ~R$ 260) - Plano 14: Sentinela Wall Street Dip Moderado (Z <= -0.40)
-VALOR_WALLSTREET_USDT_CRASH <- 75.0   # 12.5% (75 USDT ~R$ 387) - Plano 14: Sentinela Wall Street Forte Queda (Z <= -1.80)
+VALOR_WALLSTREET_USDT       <- 80.0   # 8.0% (~422 reais / 81 USDT) - ⭐🎵 Plano 14: Sentinela Wall Street (Harmonicus SX Equities)
+VALOR_WALLSTREET_USDT_DIP   <- VALOR_WALLSTREET_USDT # Alias compatibilidade
+VALOR_WALLSTREET_USDT_CRASH <- VALOR_WALLSTREET_USDT # Alias compatibilidade
 VALOR_PERRY_BRL             <- 180.0  # Plano 15: Adeus, Perry (Desova Tranche 35 USDT sob Lucro)
 VALOR_CABOCLO_BRL           <- 145.0  # 4.5% - Plano 16: Caboclo dos Oráculos (LINK 12h | Lucro +30,60 reais/m | Posse 21,9h)
 VALOR_NEAR_BRL              <- 112.0  # 3.5% - Plano 17: Farol de Near (NEAR 6h | Lucro +17,34 reais/m | Posse 4,8h Giro Rápido)
@@ -538,20 +539,27 @@ obter_stats_bnb_1h <- function() {
   tryCatch({
     con <- dbConnect(SQLite(), db_path)
     on.exit(dbDisconnect(con))
-    # 1 hora = 12 candles de 5m (ou 60 minutos / amostras)
-    df <- dbGetQuery(con, "SELECT BNBBRL FROM Historico_binance WHERE BNBBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 150;")
-    if (nrow(df) >= 20) {
+    # Janela de 500 minutos = 100 candles de 5m para alimentar Roofing (48p) + STFT Fourier (32p)
+    df <- dbGetQuery(con, "SELECT BNBBRL FROM Historico_binance WHERE BNBBRL IS NOT NULL ORDER BY Data_Hora DESC LIMIT 500;")
+    if (nrow(df) >= 30) {
       p_rec <- rev(df$BNBBRL)
       step_5m <- seq(1, length(p_rec), by = 5)
       p_5m <- p_rec[step_5m]
       p_sub <- tail(p_5m, min(12, length(p_5m)))
       m_val <- mean(p_sub, na.rm = TRUE)
       s_val <- max(0.50, sd(p_sub, na.rm = TRUE))
-      dsp   <- obter_dsp_ativo(p_sub)
-      return(list(media = m_val, sd = s_val, serie = p_sub, dsp = dsp))
+      dsp_classico <- obter_dsp_ativo(p_sub)
+      dsp_fourier  <- if (exists("obter_dsp_fourier_eth")) obter_dsp_fourier_eth(p_5m) else list(roof_z = 0, fsp = 0, phi_dom = 0, fhri = 0, d2Z = 0, dom_k = 1)
+      return(list(media = m_val, sd = s_val, serie = p_sub, serie_5m = p_5m, dsp = dsp_classico, fourier = dsp_fourier))
     }
   }, error = function(e) NULL)
-  return(list(media = 3450.0, sd = 15.0, serie = rep(3450.0, 16), dsp = list(theta = 0, d2Z = 0)))
+  p_live <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=BNBBRL"), "parsed")$price), error = function(e) 3450.0)
+  if (is.null(p_live) || is.na(p_live) || p_live <= 0) p_live <- 3450.0
+  return(list(
+    media = p_live, sd = 15.0, serie = rep(p_live, 12), serie_5m = rep(p_live, 48),
+    dsp = list(theta = 0, dtheta = 0, d2Z = 0),
+    fourier = list(roof_z = 0, fsp = 0, phi_dom = 0, fhri = 0, d2Z = 0, dom_k = 1)
+  ))
 }
 
 obter_stats_ada_30m <- function() {
@@ -754,6 +762,8 @@ obter_dsp_fourier_eth <- function(p) {
     dom_k = as.numeric(dom_k)
   ))
 }
+
+obter_dsp_fourier <- obter_dsp_fourier_eth
 
 obter_stats_eth_1h <- function() {
   db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
@@ -1334,8 +1344,9 @@ executar_radar_labtrader <- function() {
   VALOR_SQQQB_BRL             <- max(30.0, total_patrimonio_est * 0.085) #  8.5% - Sentinela Antifrágil (SQQQB)
   VALOR_TITA_USDT_DIP         <- max(15.0, (total_patrimonio_est * 0.075) / p_usdt_brl) # 7.5% - Titã Dip (NVDAB)
   VALOR_TITA_USDT_CRASH       <- max(20.0, (total_patrimonio_est * 0.115) / p_usdt_brl) # 11.5% - Titã Crash (NVDAB)
-  VALOR_WALLSTREET_USDT_DIP   <- max(15.0, (total_patrimonio_est * 0.075) / p_usdt_brl) # 7.5% - Wall St Dip (SPYB)
-  VALOR_WALLSTREET_USDT_CRASH <- max(20.0, (total_patrimonio_est * 0.115) / p_usdt_brl) # 11.5% - Wall St Crash (SPYB)
+  VALOR_WALLSTREET_USDT       <- max(20.0, (total_patrimonio_est * 0.080) / p_usdt_brl) # 8.0% - Harmonicus Wall St (SPYB)
+  VALOR_WALLSTREET_USDT_DIP   <- VALOR_WALLSTREET_USDT
+  VALOR_WALLSTREET_USDT_CRASH <- VALOR_WALLSTREET_USDT
   VALOR_TESLA_USDT            <- max(20.0, (total_patrimonio_est * 0.070) / p_usdt_brl) # 7.0% - Raio de Tesla (TSLAB)
   VALOR_DUELO_TITAS_USDT      <- VALOR_TESLA_USDT
   VALOR_OURO_LIQUIDO_USDT     <- max(15.0, (total_patrimonio_est * 0.048) / p_usdt_brl) # 4.8% - Ouro Líquido (PAXG)
@@ -1344,7 +1355,8 @@ executar_radar_labtrader <- function() {
   VALOR_TITAS_BRL             <- VALOR_ETH_TRANCHE_BRL
   VALOR_SOL_SENTINELA_BRL     <- max(30.0, total_patrimonio_est * 0.045) #  4.5% - Sentinela do Sol (SOL)
   VALOR_CABOCLO_BRL           <- max(25.0, total_patrimonio_est * 0.040) #  4.0% - Caboclo dos Oráculos (LINK)
-  VALOR_BNB_BRL               <- max(30.0, total_patrimonio_est * 0.040) #  4.0% - Sentinela de Minas (BNB)
+  VALOR_BNB_BRL               <- max(370.0, total_patrimonio_est * 0.1135) # 11.35% - Sentinela de Minas (BNB | 370 reais)
+  VALOR_BNB_TRANCHE_BRL       <- VALOR_BNB_BRL / 2.0                       #  5.68% - Tranche Individual (~185 reais)
   VALOR_NEAR_BRL              <- max(25.0, total_patrimonio_est * 0.035) #  3.5% - Farol de Near (NEAR)
   VALOR_CHOQUE_BRL            <- max(25.0, total_patrimonio_est * 0.028) #  2.8% - Choque Energético (XLE)
   VALOR_TLT_BRL               <- max(25.0, total_patrimonio_est * 0.025) #  2.5% - Escudo de Washington (TLT)
@@ -1367,6 +1379,17 @@ executar_radar_labtrader <- function() {
   # 🥇 Governança Dinâmica de Ouro: Piso Estrutural de 10% (Intocável) e Teto Operacional de 20%
   piso_ouro_dinamico <- max(200.0, total_patrimonio_est * 0.10)
   teto_ouro_dinamico <- max(400.0, total_patrimonio_est * 0.20)
+  
+  # 🛡️ TETOS INDIVIDUAIS DINÂMICOS DE EXPOSIÇÃO POR ATIVO (GOVERNANÇA CENTRALIZADA)
+  # Garante que nenhum criptoativo ultrapasse sua cota máxima no patrimônio consolidado vivo
+  teto_bnb_brl  <- max(370.0, total_patrimonio_est * 0.120) # Teto BNB: 370 reais fixado / 12,0%
+  teto_btc_brl  <- max(450.0, total_patrimonio_est * 0.200) # Teto BTC: 450 reais / 20,0%
+  teto_eth_brl  <- max(450.0, total_patrimonio_est * 0.150) # Teto ETH: 450 reais / 15,0% (Cap 3 tranches de 4,6%)
+  teto_sol_brl  <- max(250.0, total_patrimonio_est * 0.080) # Teto SOL: 250 reais / 8,0%
+  teto_link_brl <- max(200.0, total_patrimonio_est * 0.065) # Teto LINK: 200 reais / 6,5%
+  teto_near_brl <- max(180.0, total_patrimonio_est * 0.055) # Teto NEAR: 180 reais / 5,5%
+  teto_ada_brl  <- max(60.0,  total_patrimonio_est * 0.020) # Teto ADA: 60 reais / 2,0%
+  teto_avax_brl <- max(60.0,  total_patrimonio_est * 0.020) # Teto AVAX: 60 reais / 2,0%
   
   pedido <- NULL
   
@@ -1465,11 +1488,11 @@ executar_radar_labtrader <- function() {
       n_abertos <- if (isTRUE(lote_escudo_btc$tem_lote)) lote_escudo_btc$n_lotes_abertos else 0
       
       # Tranche 1: Dip intradiário Z <= -1.10 com convexidade d2Z >= 0.0
-      cond_tranche_1 <- (n_abertos == 0) && (z_btc_escudo <= -1.10) && (acc_btc_escudo >= 0.0) && peso_btc < 0.50
+      cond_tranche_1 <- (n_abertos == 0) && (z_btc_escudo <= -1.10) && (acc_btc_escudo >= 0.0) && (peso_btc < 0.50) && (saldo_btc_brl < teto_btc_brl)
       
       # Tranche 2: Capitulação mais profunda Z <= -1.80 com preço <= 98.8% do primeiro lote
       p_primeiro_lote <- if (isTRUE(lote_escudo_btc$tem_lote) && !is.null(lote_escudo_btc$preco_compra)) lote_escudo_btc$preco_compra else p_btc_brl
-      cond_tranche_2 <- (n_abertos == 1) && (z_btc_escudo <= -1.80) && (acc_btc_escudo >= 0.0) && (p_btc_brl <= p_primeiro_lote * 0.988) && peso_btc < 0.55
+      cond_tranche_2 <- (n_abertos == 1) && (z_btc_escudo <= -1.80) && (acc_btc_escudo >= 0.0) && (p_btc_brl <= p_primeiro_lote * 0.988) && (peso_btc < 0.55) && (saldo_btc_brl < teto_btc_brl)
       
       if (cond_tranche_1 || cond_tranche_2) {
         lote_escudo_tranche <- min(VALOR_ESCUDO_BRL * 0.50 * fator_lote, max(25.0, caixa_brl_livre_cripto * 0.50))
@@ -1547,11 +1570,12 @@ executar_radar_labtrader <- function() {
       cond_sweep_ociosidade <- excesso_caixa_brl >= 50.0
       cond_dip_cambial <- (!tem_lote_patria) && (z_patria <= -1.50) && (caixa_brl_livre_patria >= 80.0)
       
-      if (cond_dip_cambial || cond_sweep_ociosidade) {
+      em_cooldown_patria <- verificar_cooldown_veto("PLANO_PATRIA_VOLATIL", timeout_seg = 300)
+      if ((cond_dip_cambial || cond_sweep_ociosidade) && !em_cooldown_patria) {
         val_compra <- if (cond_sweep_ociosidade) {
-          min(excesso_caixa_brl, VALOR_PATRIA_BRL * 1.5 * fator_lote)
+          min(excesso_caixa_brl, VALOR_PATRIA_BRL * 1.5 * fator_lote, 480.0)
         } else {
-          min(VALOR_PATRIA_BRL * fator_lote, caixa_brl_livre_patria)
+          min(VALOR_PATRIA_BRL * fator_lote, caixa_brl_livre_patria, 480.0)
         }
         if (val_compra >= 50.0) {
           pedido <- list(
@@ -1828,7 +1852,7 @@ executar_radar_labtrader <- function() {
     
     cond_entrada_flecha <- (cond_fourier_flecha || cond_classica_flecha) && 
                            caixa_brl_livre_cripto >= 30.0 && 
-                           saldo_btc_brl < 350.0 && 
+                           saldo_btc_brl < teto_btc_brl && 
                            !bloqueio_canibalizacao_flecha
     
     if (cond_entrada_flecha) {
@@ -1893,7 +1917,7 @@ executar_radar_labtrader <- function() {
     acc_sol  <- if (!is.null(dsp_sol$d2Z)) dsp_sol$d2Z else 0.0
     
     # Calibração Otimizada: Z <= -0.65 com inflexão d2Z >= 0.0
-    cond_compra_sol <- (z_sol_1h <= -0.65) && (acc_sol >= 0.0) && (caixa_brl_livre_cripto >= 25.0) && (saldo_sol_brl < 250.0)
+    cond_compra_sol <- (z_sol_1h <= -0.65) && (acc_sol >= 0.0) && (caixa_brl_livre_cripto >= 25.0) && (saldo_sol_brl < teto_sol_brl)
     
     if (cond_compra_sol) {
       lote_sol <- min(VALOR_SOL_SENTINELA_BRL * fator_lote, caixa_brl_livre_cripto)
@@ -1933,22 +1957,48 @@ executar_radar_labtrader <- function() {
   }
   
   # ----------------------------------------------------------------------------
-  # MOTOR 10: PLANO SENTINELA DE MINAS (BRL <-> BNB | Reversão Intradiária 1h)
-  # [RECALIBRADO VIA SIMULAÇÃO QUANTITATIVA 5M CONFORME DIRETRIZ GOAL]
-  # Configuração Otimizada: Janela 1h (12p 5m), Z <= -0.85, d2Z >= 0.0, Trava 6 >= +0.50%
-  # Métricas Oficiais 5m: 18,8 trades/mês | Posse Média: 4,3h | Lucro: +7,23 a +13,97 reais/mês | Win Rate: 100,0%
-  # Benefício Perpétuo: Abastecimento de saldo BNB para desconto permanente de 25% nas taxas
+  # MOTOR 10: ⭐🎵 PLANO SENTINELA DE MINAS (BRL <-> BNB | Harmonicus 2T DCA)
+  # [VENCEDOR DO TORNEIO QUANTITATIVO HEAD-TO-HEAD // +55% MEDIANA VS CLASSIC]
+  # Configuração Vencedora: Roofing Z <= -0.85 (T1) / -1.60 (T2), FHRI >= 0.12, FSP >= 0.30, PC1 <= 0.60, d2Z >= 0.0
+  # Lote: 370,00 reais total em 2 tranches DCA de 185,00 reais | Teto Fixo Centralizado: 370,00 reais
+  # Métricas 5m Contínuos (20,8 meses / 182k candles):
+  #   • Mediana: +11,23 reais/mês (Média: +9,97 reais/mês)
+  #   • Tempo de Posse Médio: 81,1 horas (-16 horas de ócio vs Classic)
+  #   • Taxa de Acerto: 100,0% sob Trava 6 Breakeven FIFO/VWAP >= +0.50%
+  # Benefício Perpétuo: Abastecimento de saldo BNB para desconto permanente de 25% nas taxas Binance
   # ----------------------------------------------------------------------------
   if (is.null(pedido) && !is.null(p_bnb_brl) && !is.null(stats_bnb_1h) && ste_atual >= -0.02 && pc1_atual < PC1_CORTE_SECULAR && w_energy < 55.0) {
     z_bnb_1h <- (p_bnb_brl - stats_bnb_1h$media) / stats_bnb_1h$sd
     dsp_bnb  <- if (!is.null(stats_bnb_1h$dsp)) stats_bnb_1h$dsp else list(theta = 0, d2Z = 0)
     acc_bnb  <- if (!is.null(dsp_bnb$d2Z)) dsp_bnb$d2Z else 0.0
+    dsp_fourier_bnb <- stats_bnb_1h$fourier
+    roof_z_bnb <- if (!is.null(dsp_fourier_bnb$roof_z)) dsp_fourier_bnb$roof_z else z_bnb_1h
+    fhri_bnb   <- if (!is.null(dsp_fourier_bnb$fhri)) dsp_fourier_bnb$fhri else 0.15
+    fsp_bnb    <- if (!is.null(dsp_fourier_bnb$fsp)) dsp_fourier_bnb$fsp else 0.35
     
-    # Calibração Otimizada: Z <= -0.85 com inflexão d2Z >= 0.0
-    cond_compra_bnb <- (z_bnb_1h <= -0.85) && (acc_bnb >= 0.0) && (caixa_brl_livre_cripto >= 25.0) && (saldo_bnb_brl < 250.0)
+    lote_info_bnb <- obter_lote_aberto_estrategia("PLANO_SENTINELA_DE_MINAS", "BNB")
+    em_cooldown_bnb <- verificar_cooldown_veto("PLANO_SENTINELA_DE_MINAS", timeout_seg = 300)
     
-    if (cond_compra_bnb) {
-      lote_b <- min(VALOR_BNB_BRL * fator_lote, caixa_brl_livre_cripto)
+    # 1. Tranche 1: Dip Harmonicus no Vale (Roofing <= -0.85 ou Classic Z <= -1.00 com pureza espectral e d2Z >= 0)
+    cond_fourier_t1 <- (roof_z_bnb <= -0.85) && (fhri_bnb >= 0.12) && (fsp_bnb >= 0.30)
+    cond_classic_t1 <- (z_bnb_1h <= -1.00)
+    cond_compra_bnb_t1 <- !em_cooldown_bnb && (cond_fourier_t1 || cond_classic_t1) && (acc_bnb >= 0.0) && 
+                          (pc1_atual <= 0.60) && (caixa_brl_livre_cripto >= 25.0) && 
+                          (saldo_bnb_brl < VALOR_BNB_TRANCHE_BRL) && (saldo_bnb_brl < teto_bnb_brl)
+    
+    # 2. Tranche 2 (DCA): Capitulação profunda (Roofing <= -1.60 ou Classic Z <= -1.80) com espaçamento de 60 min
+    tempo_posse_bnb <- if (isTRUE(lote_info_bnb$tem_lote) && !is.null(lote_info_bnb$minutos_posse)) lote_info_bnb$minutos_posse else 0.0
+    p_ref_dca_bnb   <- if (isTRUE(lote_info_bnb$tem_lote) && !is.null(lote_info_bnb$vwap_abertos)) lote_info_bnb$vwap_abertos else p_bnb_brl
+    cond_dca_preco  <- (p_bnb_brl <= p_ref_dca_bnb * 0.985) || (tempo_posse_bnb >= 60.0)
+    cond_compra_bnb_t2 <- !em_cooldown_bnb && isTRUE(lote_info_bnb$tem_lote) && 
+                          (saldo_bnb_brl >= 50.0) && (saldo_bnb_brl < (teto_bnb_brl - 25.0)) && 
+                          (roof_z_bnb <= -1.60 || z_bnb_1h <= -1.80) && (acc_bnb >= 0.0) && 
+                          cond_dca_preco && (caixa_brl_livre_cripto >= 25.0)
+    
+    if (cond_compra_bnb_t1 || cond_compra_bnb_t2) {
+      lote_b_base <- if (cond_compra_bnb_t2) min(VALOR_BNB_TRANCHE_BRL, teto_bnb_brl - saldo_bnb_brl) else VALOR_BNB_TRANCHE_BRL
+      lote_b <- min(lote_b_base * fator_lote, caixa_brl_livre_cripto)
+      lote_b <- min(lote_b, max(0.0, teto_bnb_brl - saldo_bnb_brl))
       if (lote_b >= 25.0) {
         pedido <- list(
           estrategia = "PLANO_SENTINELA_DE_MINAS",
@@ -1958,10 +2008,8 @@ executar_radar_labtrader <- function() {
         )
       }
     } else if (saldo_bnb_brl >= 25.0) {
-      # Saída sob Trava 6 com Z >= 0.15 OU Take Profit por Lucro Real Expressivo (>= +1.20%)
+      # Saída sob Trava 6 Breakeven FIFO/VWAP com Z >= 0.15 OU Take Profit por Lucro Real Expressivo (>= +1.20%)
       # 🛡️ Subtrava 6.2: Target Decay Ratchet (72h a 96h decaindo suavemente até +0.40% piso)
-      em_cooldown_bnb <- verificar_cooldown_veto("PLANO_SENTINELA_DE_MINAS", timeout_seg = 300)
-      lote_info_bnb <- obter_lote_aberto_estrategia("PLANO_SENTINELA_DE_MINAS", "BNB")
       preco_ref_bnb <- if (isTRUE(lote_info_bnb$tem_lote)) {
         if (!is.null(lote_info_bnb$vwap_abertos) && !is.na(lote_info_bnb$vwap_abertos) && lote_info_bnb$vwap_abertos > 0) lote_info_bnb$vwap_abertos else lote_info_bnb$preco_compra
       } else NA
@@ -1970,15 +2018,17 @@ executar_radar_labtrader <- function() {
       meta_alvo_bnb <- calcular_meta_lucro_decay(lote_info_bnb$minutos_posse, meta_base = 0.50, horas_inicio_decay = 72.0, horas_fim_decay = 96.0, piso_minimo = 0.40)
       margem_minima_bnb_ok <- (retorno_real_bnb >= meta_alvo_bnb)
       take_profit_bnb_ok <- (retorno_real_bnb >= 1.20)
+      tempo_posse_min_bnb <- if (!is.null(lote_info_bnb$minutos_posse)) lote_info_bnb$minutos_posse else 0.0
+      saida_piso_decay_ok <- (retorno_real_bnb >= 0.40 && tempo_posse_min_bnb >= 5760.0)
       
-      deve_vender_bnb <- isTRUE(lote_info_bnb$tem_lote) && !em_cooldown_bnb && (take_profit_bnb_ok || (z_bnb_1h >= 0.15 && margem_minima_bnb_ok))
+      deve_vender_bnb <- isTRUE(lote_info_bnb$tem_lote) && !em_cooldown_bnb && (take_profit_bnb_ok || (z_bnb_1h >= 0.15 && margem_minima_bnb_ok) || saida_piso_decay_ok)
       
       if (deve_vender_bnb) {
         pedido <- list(
           estrategia = "PLANO_SENTINELA_DE_MINAS",
           origem = "BNB", destino = "BRL",
           valor_brl = saldo_bnb_brl, # Saída Única: Desova 100% da posição em 1 trade limpo
-          lucro_esperado_pct = meta_alvo_bnb, timestamp = agora_ts
+          lucro_esperado_pct = max(meta_alvo_bnb, round(retorno_real_bnb, 2)), timestamp = agora_ts
         )
       }
     }
@@ -2116,13 +2166,13 @@ executar_radar_labtrader <- function() {
   PLANO_BRUCE_WAYNE_ATIVO <- FALSE
   
   # ----------------------------------------------------------------------------
-  # MOTOR 14: PLANO SENTINELA DE WALL STREET (SPYB / USDT - S&P 500 Trust)
-  # Calibracao Duplo Z (5m): Z_dip <= -0.40 (35 USDT) | Z_crash <= -1.80 (55 USDT)
-  # Lucro Homologado: +4,74 reais/m (+0,23%/m) | Posse: 33,6h | Ocio: 1,8h
-  # Binance Backed Equity Spot: SPYBUSDT
+  # MOTOR 14: ⭐🎵 PLANO SENTINELA DE WALL STREET (SPYB / USDT - Harmonicus SX Equities)
+  # Calibração Harmonicus Fourier (5m): Roofing <= -0.60 | FSP >= 0.40 | FHRI >= 0.12 | d2Z >= 0.0
+  # Lucro Homologado: +3,65 a +4,88 reais/m (+0,069% a +0,092%/m) | Posse: 51,6h | Win Rate: 84,7% | Max DD: 18,97 reais
+  # Binance Backed Equity Spot: SPYBUSDT | Lote Homologado: 8,0% (~422 reais / ~81 USDT)
   # ----------------------------------------------------------------------------
   if (is.null(pedido)) {
-    # 1. REALIZACAO DE LUCRO: Venda SPYB -> USDT sob a Trava 6 (>= +0.60%)
+    # 1. REALIZACAO DE LUCRO: Venda SPYB -> USDT sob a Trava 6 Breakeven FIFO (>= +0.40% ágil)
     lote_spy <- obter_lote_aberto_estrategia("PLANO_SENTINELA_WALLSTREET", "SPYB")
     if (saldo_spyb_usd > 0.01) {
       p_spy_live <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=SPYBUSDT"), "parsed")$price), error = function(e) NULL)
@@ -2138,8 +2188,8 @@ executar_radar_labtrader <- function() {
         
         ret_spy <- if (!is.null(p_custo_spy_usdt) && p_custo_spy_usdt > 0) (p_spy_live / p_custo_spy_usdt) - 1.0 else ((p_spy_live * p_usdt_brl) / pm_spy) - 1.0
         tempo_ok <- !lote_spy$tem_lote || lote_spy$minutos_posse >= 15.0 || ret_spy >= 0.010
-        # Saída Ágil Calibrada: +0.50% (ou +0.40% se ret_spy >= 0.0040 e posse >= 1h)
-        cond_saida_spy <- ((ret_spy >= 0.0050) || (ret_spy >= 0.0040 && !is.null(lote_spy$minutos_posse) && lote_spy$minutos_posse >= 60.0)) && tempo_ok
+        # Saída Ágil Calibrada Harmonicus: +0.40% líquido sobre VWAP/FIFO
+        cond_saida_spy <- ((ret_spy >= 0.0040) || (ret_spy >= 0.0050)) && tempo_ok
         if (cond_saida_spy) {
           val_venda_brl <- saldo_spyb_usd * p_spy_live * p_usdt_brl
           pedido <- list(
@@ -2150,40 +2200,51 @@ executar_radar_labtrader <- function() {
           )
         }
       }
-    } else if (usdt_livre_rotacao >= VALOR_WALLSTREET_USDT_DIP) {
-      # 2. ENTRADA EM DUPLO Z (1h / 12 periodos de 5m): Dip (-0.40) vs Crash (-1.80)
+    } else if (usdt_livre_rotacao >= VALOR_WALLSTREET_USDT) {
+      # 2. ENTRADA EM VALE HARMONICUS FOURIER SX (Ehlers Roofing 48p/8p + STFT Hanning 32p)
       sp500_serie <- tryCatch({
         con_sp <- dbConnect(SQLite(), db_path)
         on.exit(dbDisconnect(con_sp))
-        df_sp <- dbGetQuery(con_sp, "SELECT SPYBUSDT FROM Historico_binance WHERE SPYBUSDT IS NOT NULL ORDER BY Data_Hora DESC LIMIT 60;")
-        if (nrow(df_sp) >= 12) {
+        df_sp <- dbGetQuery(con_sp, "SELECT SPYBUSDT FROM Historico_binance WHERE SPYBUSDT IS NOT NULL ORDER BY Data_Hora DESC LIMIT 250;")
+        if (nrow(df_sp) >= 40) {
           r_sp <- rev(df_sp$SPYBUSDT)
           idx_5m <- rev(seq(length(r_sp), 1, by = -5))
           r_sp[idx_5m]
-        } else rep(765.0, 12)
-      }, error = function(e) rep(765.0, 12))
+        } else if (nrow(df_sp) >= 12) {
+          r_sp <- rev(df_sp$SPYBUSDT)
+          idx_5m <- rev(seq(length(r_sp), 1, by = -5))
+          r_sp[idx_5m]
+        } else rep(765.0, 36)
+      }, error = function(e) rep(765.0, 36))
       
-      dsp_sp500 <- obter_dsp_ativo(sp500_serie)
-      m_sp <- mean(sp500_serie, na.rm = TRUE)
-      s_sp <- sd(sp500_serie, na.rm = TRUE)
-      if (is.na(s_sp) || s_sp <= 0) s_sp <- 2.0
-      z_sp <- (tail(sp500_serie, 1) - m_sp) / s_sp
-      
-      tempo_pos_venda_spy_ok <- is.null(lote_spy$minutos_desde_venda) || is.na(lote_spy$minutos_desde_venda) || lote_spy$minutos_desde_venda >= 30.0
-      lote_base_spy <- NULL
-      if (z_sp <= -1.80 && usdt_livre_rotacao >= VALOR_WALLSTREET_USDT_CRASH && tempo_pos_venda_spy_ok) {
-        lote_base_spy <- VALOR_WALLSTREET_USDT_CRASH
-      } else if (z_sp <= -0.40 && usdt_livre_rotacao >= VALOR_WALLSTREET_USDT_DIP && tempo_pos_venda_spy_ok) {
-        lote_base_spy <- VALOR_WALLSTREET_USDT_DIP
+      dsp_fourier_spy <- if (exists("obter_dsp_fourier") && length(sp500_serie) >= 36) {
+        obter_dsp_fourier(sp500_serie)
+      } else {
+        list(roof_z = 0.0, fsp = 0.0, fhri = 0.0, phi_dom = 0.0, d2Z = 0.0)
       }
       
-      if (!is.null(lote_base_spy)) {
-        lote_usdt_ws <- min(lote_base_spy * fator_lote, usdt_livre_rotacao)
+      tempo_pos_venda_spy_ok <- is.null(lote_spy$minutos_desde_venda) || is.na(lote_spy$minutos_desde_venda) || lote_spy$minutos_desde_venda >= 30.0
+      
+      # Gatilho Harmonicus SX Equities no Vale:
+      # Roofing <= -0.60 | FSP >= 0.40 | FHRI >= 0.12 | d2Z >= 0.0
+      cond_harm_spy <- (!is.null(dsp_fourier_spy$roof_z)) && 
+                       (dsp_fourier_spy$roof_z <= -0.60) && 
+                       (!is.null(dsp_fourier_spy$fsp) && dsp_fourier_spy$fsp >= 0.40) && 
+                       (!is.null(dsp_fourier_spy$fhri) && dsp_fourier_spy$fhri >= 0.12) && 
+                       (!is.null(dsp_fourier_spy$d2Z) && dsp_fourier_spy$d2Z >= 0.0)
+      
+      # Confirmação Alternativa em Overshoot / Crash (Roofing <= -1.40 e d2Z >= 0.0)
+      cond_crash_spy <- (!is.null(dsp_fourier_spy$roof_z)) && 
+                        (dsp_fourier_spy$roof_z <= -1.40) && 
+                        (!is.null(dsp_fourier_spy$d2Z) && dsp_fourier_spy$d2Z >= 0.0)
+      
+      if ((cond_harm_spy || cond_crash_spy) && usdt_livre_rotacao >= VALOR_WALLSTREET_USDT && tempo_pos_venda_spy_ok) {
+        lote_usdt_ws <- min(VALOR_WALLSTREET_USDT * fator_lote, usdt_livre_rotacao)
         pedido <- list(
           estrategia = "PLANO_SENTINELA_WALLSTREET",
           origem = "USDT", destino = "SPYB",
           valor_brl = lote_usdt_ws * p_usdt_brl,
-          lucro_esperado_pct = 0.60, timestamp = agora_ts
+          lucro_esperado_pct = 0.40, timestamp = agora_ts
         )
       }
     }
@@ -2252,7 +2313,7 @@ executar_radar_labtrader <- function() {
     tempo_compra_link_ok <- !isTRUE(lote_info_link$tem_lote) || is.null(lote_info_link$minutos_posse) || is.na(lote_info_link$minutos_posse) || lote_info_link$minutos_posse >= 12.0
     
     # Gatilho de Entrada Sniper: Z <= -0.75 com Inflexão d2Z >= 0.0 (respeitando cooldown e posse mínima de 12 min)
-    cond_compra_link <- !em_cooldown_link && tempo_compra_link_ok && (z_link_4h <= -0.75) && (acc_link >= 0.0) && (caixa_brl_livre_cripto >= 25.0) && (saldo_link_brl < 250.0)
+    cond_compra_link <- !em_cooldown_link && tempo_compra_link_ok && (z_link_4h <= -0.75) && (acc_link >= 0.0) && (caixa_brl_livre_cripto >= 25.0) && (saldo_link_brl < teto_link_brl)
     
     if (cond_compra_link) {
       lote_link <- min(VALOR_CABOCLO_BRL * fator_lote, caixa_brl_livre_cripto)
@@ -2342,7 +2403,7 @@ executar_radar_labtrader <- function() {
     acc_near  <- if (!is.null(dsp_near$d2Z)) dsp_near$d2Z else 0.0
     
     # Gatilho de Entrada: Z_6h <= -0.75 com Inflexão d2Z >= 0.0
-    cond_compra_near <- (z_near_6h <= -0.75) && (acc_near >= 0.0) && (caixa_brl_livre_cripto >= 25.0) && (saldo_near_brl < 350.0)
+    cond_compra_near <- (z_near_6h <= -0.75) && (acc_near >= 0.0) && (caixa_brl_livre_cripto >= 25.0) && (saldo_near_brl < teto_near_brl)
     
     if (cond_compra_near) {
       lote_near <- min(VALOR_NEAR_BRL * fator_lote, caixa_brl_livre_cripto)

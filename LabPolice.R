@@ -973,17 +973,17 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
         
         tetos_volume <- list(
           "PLANO_GUIANA_BRASILEIRA" = 220.00,
-          "PLANO_ESCUDO_DE_AQUILES" = 400.00,
-          "PLANO_PATRIA_VOLATIL" = 500.00,
+          "PLANO_ESCUDO_DE_AQUILES" = 500.00,
+          "PLANO_PATRIA_VOLATIL" = 650.00,
           "PLANO_CABOCLO_DOS_ORACULOS" = 350.00,
           "PLANO_GRAVIDADE_ZERO" = 220.00,
           "PLANO_OURO_LIQUIDO" = 250.00,
           "PLANO_CORISCO_DA_SOLANA" = 220.00,
           "PLANO_DUELO_DE_TITAS" = 250.00,
-          "PLANO_FLECHA_DE_SAGARANA" = 450.00,
+          "PLANO_FLECHA_DE_SAGARANA" = 600.00,
           "PLANO_COFRE_DE_MIDAS" = 70.00,
           "PLANO_SENTINELA_DO_SOL" = 250.00,
-          "PLANO_SENTINELA_DE_MINAS" = 200.00,
+          "PLANO_SENTINELA_DE_MINAS" = 370.00,
           "PLANO_SERTAO_VALENTE" = 160.00,
           "PLANO_FAROL_DE_NEAR" = 250.00,
           "PLANO_BRUCE_WAYNE" = 350.00,
@@ -992,13 +992,13 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_TITA_DO_SILICIO" = 450.00,
           "PLANO_CHOQUE_ENERGETICO" = 150.00,
           "PLANO_ESCUDO_DE_WASHINGTON" = 150.00,
-          "PLANO_SENTINELA_ANTIFRAGIL" = 380.00,
+          "PLANO_SENTINELA_ANTIFRAGIL" = 500.00,
           "PLANO_COMMODITY_ENERGY_ALPHA" = 150.00,
           "PLANO_ADEUS_PERRY" = 450.00,
           "PLANO_RAIO_DE_TESLA" = 280.00,
           "PLANO_POMAR_DE_NEWTON" = 280.00,
           "PLANO_DUELO_DE_TITAS_TECH" = 280.00,
-          "PLANO_SENTINELA_DE_ETER" = 480.00
+          "PLANO_SENTINELA_DE_ETER" = 500.00
         )
         
         lucros_minimos <- list(
