@@ -15,18 +15,19 @@ if (file.exists("config_auth.R")) {
 
 # --- PARÂMETROS DE VOLUME HARMONICUS ULTRA-DEEP (CALIBRAÇÃO PROPORCIONAL DINÂMICA 3.210 BRL) ---
 VALOR_GUIANA_BRL            <- 150.0  # 4.7% - Plano 1: Guiana Brasileira (PAXG <-> BTC 5h | Posse 123.3h | CV 7.0%)
-VALOR_ESCUDO_BRL            <- 300.0  # 9.3% - Plano 2: Escudo de Aquiles (BRL -> BTC 4h | Posse 176.0h | CV 26.5%)
-VALOR_VIX_BRL               <- 300.0  # 9.3% - Alias para Escudo de Aquiles
+VALOR_ESCUDO_BRL            <- 389.0  # 12.0% - Plano 2: Escudo de Aquiles (BRL -> BTC 4h | 2 tranches de 6% = 195 reais)
+VALOR_VIX_BRL               <- 389.0  # Alias para Escudo de Aquiles
 VALOR_PATRIA_BRL            <- 260.0  # 8.1% - Plano 3: Patria Volatil / Sentinela Cambial (Swing 24h | Simple Earn 6,88% a.a.)
-VALOR_TITA_USDT_DIP         <- 50.0   # 8.1% (50 USDT ~R$ 260) - Plano 4: Titã do Silício Dip Moderado (Z <= -0.50)
-VALOR_TITA_USDT_CRASH       <- 75.0   # 12.5% (75 USDT ~R$ 387) - Plano 4: Titã do Silício Forte Queda (Z <= -1.25)
-VALOR_OURO_LIQUIDO_USDT     <- 30.0   # 4.8% (30 USDT ~R$ 155) - Plano 5: Ouro Líquido (PAXG <-> USDT 4h | Trava 6 >= +0.60%)
+VALOR_TITA_USDT_DIP         <- 50.0   # 8.1% (50 USDT ~260 reais) - Plano 4: Titã do Silício Dip Moderado (Z <= -0.50)
+VALOR_TITA_USDT_CRASH       <- 75.0   # 12.5% (75 USDT ~387 reais) - Plano 4: Titã do Silício Forte Queda (Z <= -1.25)
+VALOR_OURO_LIQUIDO_USDT     <- 30.0   # 4.8% (30 USDT ~155 reais) - Plano 5: Ouro Líquido (PAXG <-> USDT 4h | Trava 6 >= +0.60%)
 VALOR_CHOQUE_BRL            <- 90.0   # 2.8% - Plano 6: Choque Energético (XLE Hedge 5h | Posse 475.5h)
-VALOR_ETH_TRANCHE_BRL       <- 150.0  # 4.6% - Plano 7: Sentinela de Éter (BRL <-> ETH 1h | Harmonicus Estágio 3 Soberano | 3 Tranches Cap 13.8%)
+VALOR_ETH_TRANCHE_BRL       <- 130.0  # 4.0% - Plano 7: Sentinela de Éter (BRL <-> ETH 1h | Harmonicus Estágio 3 | 2 Tranches Cap 8.0%)
 VALOR_TITAS_BRL             <- VALOR_ETH_TRANCHE_BRL # Alias para compatibilidade
-VALOR_SAGARANA_BRL          <- 320.0  # 10.0% - Plano 8: Flecha de Sagarana (BRL <-> BTC 4h | Posse 176.0h | CV 5.9%)
-VALOR_SOL_SENTINELA_BRL     <- 145.0  # 4.5% - Plano 9: Sentinela do Sol (BRL <-> SOL 1h | Posse 5.2h | Lucro 11.83-14.27 reais/m | Sizing 4.5%)
-VALOR_BNB_BRL               <- 130.0  # 4.0% - Plano 10: Sentinela de Minas (BRL <-> BNB 3h | Posse 177.9h | CV 7.4%)
+VALOR_SAGARANA_BRL          <- 195.0  # 6.0% - Plano 8: Flecha de Sagarana (BRL <-> BTC 4h | Tranche de 6%)
+VALOR_SOL_SENTINELA_BRL     <- 227.0  # 7.0% - Plano 9: Sentinela do Sol (BRL <-> SOL 1h | Scalp Direto 7.0%)
+VALOR_BNB_BRL               <- 162.0  # 5.0% - Plano 10: Sentinela de Minas (BRL <-> BNB 3h | 2 Tranches de 2.5% = 81 reais)
+VALOR_BNB_TRANCHE_BRL       <- 81.0   # 2.5% - Tranche Individual BNB
 VALOR_TLT_BRL               <- 80.0   # 2.5% - Plano 11: Escudo de Washington (TLT T-Bonds 5h | Posse 331.9h)
 VALOR_SQQQB_BRL             <- 274.0  # 8.5% (53 USDT) - Plano 12: Sentinela Antifrágil (SQQQB 1h | Posse 2.3h | Meta 1%/m)
 VALOR_BRUCE_BRL             <- 350.0  # Plano 13: Bruce Wayne (Desativado Temporariamente)
@@ -34,8 +35,8 @@ VALOR_WALLSTREET_USDT       <- 80.0   # 8.0% (~422 reais / 81 USDT) - ⭐🎵 Pl
 VALOR_WALLSTREET_USDT_DIP   <- VALOR_WALLSTREET_USDT # Alias compatibilidade
 VALOR_WALLSTREET_USDT_CRASH <- VALOR_WALLSTREET_USDT # Alias compatibilidade
 VALOR_PERRY_BRL             <- 180.0  # Plano 15: Adeus, Perry (Desova Tranche 35 USDT sob Lucro)
-VALOR_CABOCLO_BRL           <- 145.0  # 4.5% - Plano 16: Caboclo dos Oráculos (LINK 12h | Lucro +30,60 reais/m | Posse 21,9h)
-VALOR_NEAR_BRL              <- 112.0  # 3.5% - Plano 17: Farol de Near (NEAR 6h | Lucro +17,34 reais/m | Posse 4,8h Giro Rápido)
+VALOR_CABOCLO_BRL           <- 97.0   # 3.0% - Plano 16: Caboclo dos Oráculos (LINK 12h | 2 Tranches Cap 6.0%)
+VALOR_NEAR_BRL              <- 130.0  # 4.0% - Plano 17: Farol de Near (NEAR 6h | Scalp Direto 4.0%)
 
 # --- LIMIAR MACRO PC1 CALIBRADO VIA SIMULAÇÃO HISTÓRICA (CESTA CORE 5 CRIPTO / P90 SECULAR) ---
 # Estudo de Cestas: Core 5 (BTC, ETH, SOL, BNB, LINK) possui latência de 0,21 ms (< 0,1s) e contraste Crash/Normal de 1,12x.
@@ -1362,8 +1363,8 @@ executar_radar_labtrader <- function() {
   
   # --- SIZING PROPORCIONAL DINÂMICO (% DO PATRIMÔNIO CONSOLIDADO REAL) ---
   # Escala automaticamente as ordens conforme novos aportes ou lucros são realizados (sem hardcoding)
-  VALOR_SAGARANA_BRL          <- max(50.0, total_patrimonio_est * 0.095) #  9.5% - Flecha de Sagarana (BTC)
-  VALOR_ESCUDO_BRL            <- max(50.0, total_patrimonio_est * 0.090) #  9.0% - Escudo de Aquiles (BTC)
+  VALOR_SAGARANA_BRL          <- max(30.0, total_patrimonio_est * 0.060) #  6.0% - Flecha de Sagarana (BTC)
+  VALOR_ESCUDO_BRL            <- max(60.0, total_patrimonio_est * 0.120) # 12.0% - Escudo de Aquiles (BTC, 2 tranches de 6% = 195 reais)
   VALOR_VIX_BRL               <- VALOR_ESCUDO_BRL
   VALOR_PATRIA_BRL            <- max(50.0, total_patrimonio_est * 0.080) #  8.0% - Pátria Volátil (USDT)
   VALOR_SQQQB_BRL             <- max(30.0, total_patrimonio_est * 0.085) #  8.5% - Sentinela Antifrágil (SQQQB)
@@ -1376,13 +1377,13 @@ executar_radar_labtrader <- function() {
   VALOR_DUELO_TITAS_USDT      <- VALOR_TESLA_USDT
   VALOR_OURO_LIQUIDO_USDT     <- max(15.0, (total_patrimonio_est * 0.048) / p_usdt_brl) # 4.8% - Ouro Líquido (PAXG)
   VALOR_GUIANA_BRL            <- max(30.0, total_patrimonio_est * 0.045) #  4.5% - Guiana Brasileira (PAXG <-> BTC)
-  VALOR_ETH_TRANCHE_BRL       <- max(25.0, total_patrimonio_est * 0.046) #  4.6% - Sentinela de Éter (ETH Tranche, Cap 3x = 13.8%)
+  VALOR_ETH_TRANCHE_BRL       <- max(25.0, total_patrimonio_est * 0.040) #  4.0% - Sentinela de Éter (ETH Tranche, Cap 2x = 8.0%)
   VALOR_TITAS_BRL             <- VALOR_ETH_TRANCHE_BRL
-  VALOR_SOL_SENTINELA_BRL     <- max(30.0, total_patrimonio_est * 0.045) #  4.5% - Sentinela do Sol (SOL)
-  VALOR_CABOCLO_BRL           <- max(25.0, total_patrimonio_est * 0.040) #  4.0% - Caboclo dos Oráculos (LINK)
-  VALOR_BNB_BRL               <- max(370.0, total_patrimonio_est * 0.1135) # 11.35% - Sentinela de Minas (BNB | 370 reais)
-  VALOR_BNB_TRANCHE_BRL       <- VALOR_BNB_BRL / 2.0                       #  5.68% - Tranche Individual (~185 reais)
-  VALOR_NEAR_BRL              <- max(25.0, total_patrimonio_est * 0.035) #  3.5% - Farol de Near (NEAR)
+  VALOR_SOL_SENTINELA_BRL     <- max(30.0, total_patrimonio_est * 0.070) #  7.0% - Sentinela do Sol (SOL Scalp Direto)
+  VALOR_CABOCLO_BRL           <- max(25.0, total_patrimonio_est * 0.030) #  3.0% - Caboclo dos Oráculos (LINK Tranche, Cap 2x = 6.0%)
+  VALOR_BNB_BRL               <- max(50.0, total_patrimonio_est * 0.050) #  5.0% - Sentinela de Minas (BNB | 162 reais)
+  VALOR_BNB_TRANCHE_BRL       <- VALOR_BNB_BRL / 2.0                       #  2.5% - Tranche Individual (~81 reais)
+  VALOR_NEAR_BRL              <- max(25.0, total_patrimonio_est * 0.040) #  4.0% - Farol de Near (NEAR Scalp Direto)
   VALOR_CHOQUE_BRL            <- max(25.0, total_patrimonio_est * 0.028) #  2.8% - Choque Energético (XLE)
   VALOR_TLT_BRL               <- max(25.0, total_patrimonio_est * 0.025) #  2.5% - Escudo de Washington (TLT)
   VALOR_PERRY_BRL             <- max(30.0, total_patrimonio_est * 0.055) #  5.5% - Adeus, Perry (Desova Ouro > 20%)
@@ -1405,16 +1406,16 @@ executar_radar_labtrader <- function() {
   piso_ouro_dinamico <- max(200.0, total_patrimonio_est * 0.10)
   teto_ouro_dinamico <- max(400.0, total_patrimonio_est * 0.20)
   
-  # 🛡️ TETOS INDIVIDUAIS DINÂMICOS DE EXPOSIÇÃO POR ATIVO (GOVERNANÇA CENTRALIZADA)
-  # Garante que nenhum criptoativo ultrapasse sua cota máxima no patrimônio consolidado vivo
-  teto_bnb_brl  <- max(370.0, total_patrimonio_est * 0.120) # Teto BNB: 370 reais fixado / 12,0%
-  teto_btc_brl  <- max(450.0, total_patrimonio_est * 0.200) # Teto BTC: 450 reais / 20,0%
-  teto_eth_brl  <- max(450.0, total_patrimonio_est * 0.150) # Teto ETH: 450 reais / 15,0% (Cap 3 tranches de 4,6%)
-  teto_sol_brl  <- max(250.0, total_patrimonio_est * 0.080) # Teto SOL: 250 reais / 8,0%
-  teto_link_brl <- max(200.0, total_patrimonio_est * 0.065) # Teto LINK: 200 reais / 6,5%
-  teto_near_brl <- max(180.0, total_patrimonio_est * 0.055) # Teto NEAR: 180 reais / 5,5%
-  teto_ada_brl  <- max(60.0,  total_patrimonio_est * 0.020) # Teto ADA: 60 reais / 2,0%
-  teto_avax_brl <- max(60.0,  total_patrimonio_est * 0.020) # Teto AVAX: 60 reais / 2,0%
+  # 🛡️ TETOS INDIVIDUAIS DINÂMICOS DE EXPOSIÇÃO POR ATIVO (GOVERNANÇA CENTRALIZADA - OTIMIZAÇÃO MARKOWITZ / HRP)
+  # Garante que nenhum criptoativo ultrapasse sua cota máxima no patrimônio consolidado vivo (Orçamento Cripto 42%)
+  teto_btc_brl  <- max(100.0, total_patrimonio_est * 0.120) # Teto BTC:  12,0% (~389 reais)
+  teto_eth_brl  <- max(50.0,  total_patrimonio_est * 0.080) # Teto ETH:   8,0% (~259 reais, 2 tranches de 4,0%)
+  teto_sol_brl  <- max(50.0,  total_patrimonio_est * 0.070) # Teto SOL:   7,0% (~227 reais, scalp direto)
+  teto_link_brl <- max(50.0,  total_patrimonio_est * 0.060) # Teto LINK:  6,0% (~195 reais, 2 tranches de 3,0%)
+  teto_bnb_brl  <- max(50.0,  total_patrimonio_est * 0.050) # Teto BNB:   5,0% (~162 reais, 2 tranches de 2,5%)
+  teto_near_brl <- max(50.0,  total_patrimonio_est * 0.040) # Teto NEAR:  4,0% (~130 reais, scalp direto)
+  teto_ada_brl  <- max(30.0,  total_patrimonio_est * 0.020) # Teto ADA:   2,0% (~65 reais)
+  teto_avax_brl <- max(30.0,  total_patrimonio_est * 0.020) # Teto AVAX:  2,0% (~65 reais)
   
   pedido <- NULL
   
@@ -1865,8 +1866,8 @@ executar_radar_labtrader <- function() {
     }
     target_adaptativo_eth <- 0.55 + 0.45 * ampliacao_tp # varia linearmente de +0.55% a +1.00%
     
-    # Gestão de Tranches (Cap Máximo de 3 tranches = ~13,8% de Et)
-    teto_eth_brl     <- VALOR_ETH_TRANCHE_BRL * 3.0
+    # Gestão de Tranches (Cap Máximo de 2 tranches = ~8,0% de Et)
+    teto_eth_brl     <- VALOR_ETH_TRANCHE_BRL * 2.0
     lote_tranche_eth <- min(VALOR_ETH_TRANCHE_BRL * fator_lote_fsr, caixa_brl_livre_cripto)
     pode_comprar_eth <- (saldo_eth_brl < teto_eth_brl) && (lote_tranche_eth >= 25.0) && (caixa_brl_livre_cripto >= lote_tranche_eth)
     
@@ -2082,7 +2083,7 @@ executar_radar_labtrader <- function() {
     p_ref_dca_bnb   <- if (isTRUE(lote_info_bnb$tem_lote) && !is.null(lote_info_bnb$vwap_abertos)) lote_info_bnb$vwap_abertos else p_bnb_brl
     cond_dca_preco  <- (p_bnb_brl <= p_ref_dca_bnb * 0.985) || (tempo_posse_bnb >= 60.0)
     cond_compra_bnb_t2 <- !em_cooldown_bnb && isTRUE(lote_info_bnb$tem_lote) && 
-                          (saldo_bnb_brl >= 50.0) && (saldo_bnb_brl < (teto_bnb_brl - 25.0)) && 
+                          (saldo_bnb_brl >= 25.0) && (saldo_bnb_brl < (teto_bnb_brl - 25.0)) && 
                           (roof_z_bnb <= -1.60 || z_bnb_1h <= -1.80) && (acc_bnb >= 0.0) && 
                           cond_dca_preco && (caixa_brl_livre_cripto >= 25.0)
     

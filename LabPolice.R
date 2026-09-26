@@ -1015,19 +1015,19 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
         
         tetos_volume <- list(
           "PLANO_GUIANA_BRASILEIRA" = 220.00,
-          "PLANO_ESCUDO_DE_AQUILES" = 500.00,
+          "PLANO_ESCUDO_DE_AQUILES" = 250.00,
           "PLANO_PATRIA_VOLATIL" = 650.00,
-          "PLANO_CABOCLO_DOS_ORACULOS" = 350.00,
+          "PLANO_CABOCLO_DOS_ORACULOS" = 150.00,
           "PLANO_GRAVIDADE_ZERO" = 220.00,
           "PLANO_OURO_LIQUIDO" = 250.00,
           "PLANO_CORISCO_DA_SOLANA" = 220.00,
           "PLANO_DUELO_DE_TITAS" = 250.00,
-          "PLANO_FLECHA_DE_SAGARANA" = 600.00,
+          "PLANO_FLECHA_DE_SAGARANA" = 250.00,
           "PLANO_COFRE_DE_MIDAS" = 70.00,
-          "PLANO_SENTINELA_DO_SOL" = 250.00,
-          "PLANO_SENTINELA_DE_MINAS" = 370.00,
+          "PLANO_SENTINELA_DO_SOL" = 260.00,
+          "PLANO_SENTINELA_DE_MINAS" = 120.00,
           "PLANO_SERTAO_VALENTE" = 160.00,
-          "PLANO_FAROL_DE_NEAR" = 250.00,
+          "PLANO_FAROL_DE_NEAR" = 160.00,
           "PLANO_BRUCE_WAYNE" = 350.00,
           "PLANO_SENTINELA_WALLSTREET" = 450.00,
           "PLANO_DOLLARUS_QUANTUM_PEG" = 220.00,
@@ -1040,7 +1040,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_RAIO_DE_TESLA" = 280.00,
           "PLANO_POMAR_DE_NEWTON" = 280.00,
           "PLANO_DUELO_DE_TITAS_TECH" = 280.00,
-          "PLANO_SENTINELA_DE_ETER" = 500.00
+          "PLANO_SENTINELA_DE_ETER" = 160.00
         )
         
         lucros_minimos <- list(
@@ -1214,73 +1214,52 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
             patrimonio_total_brl <- max(1000.0, sum(valores_ativos, na.rm = TRUE))
           }
           
-          # Subtrava 2.1: Teto Universal de 20% para Bitcoin & Teto de Posição Cumulativa em Aberto
-          if (aprovado && pedido$destino == "BTC") {
-            saldo_btc_brl <- 0.0
-            if (exists("df_wallet") && !is.null(df_wallet) && is.data.frame(df_wallet) && nrow(df_wallet) > 0) {
-              row_btc <- df_wallet[df_wallet$asset == "BTC", ]
-              if (nrow(row_btc) > 0) {
-                p_btc_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=BTCBRL"), "parsed")$price), error = function(e) 407000.0)
-                saldo_btc_brl <- sum(row_btc$total, na.rm = TRUE) * p_btc_tmp
-              }
-            }
-            teto_btc_20pct <- max(400.0, patrimonio_total_brl * 0.20)
-            pct_btc_atual <- (saldo_btc_brl / patrimonio_total_brl) * 100
-            
-            if (saldo_btc_brl >= teto_btc_20pct) {
-              aprovado <- FALSE
-              motivo_veto <- sprintf("Teto de Bitcoin Atingido\nPosição atual: R$ %.2f (%.1f%%)\nTeto máximo: R$ %.2f (20.0%%)",
-                                     saldo_btc_brl, pct_btc_atual, teto_btc_20pct)
-            }
-          } else if (aprovado && pedido$destino == "PAXG") {
-            # 🥇 Teto Dinâmico de Ouro PAXG (20% do Patrimônio Consolidado)
-            saldo_paxg_brl <- 0.0
-            if (exists("df_wallet") && !is.null(df_wallet) && is.data.frame(df_wallet) && nrow(df_wallet) > 0) {
-              row_p <- df_wallet[df_wallet$asset %in% c("PAXG", "LDPAXG"), ]
-              if (nrow(row_p) > 0) {
-                p_paxg_u <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT"), "parsed")$price), error = function(e) 4591.78)
-                p_usdt_b <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) 5.175)
-                p_paxg_unit <- ifelse(!is.null(p_paxg_u) && !is.null(p_usdt_b), p_paxg_u * p_usdt_b, 23762.0)
-                saldo_paxg_brl <- sum(row_p$total, na.rm = TRUE) * p_paxg_unit
-              }
-            }
-            teto_paxg_20pct <- max(400.0, patrimonio_total_brl * 0.20)
-            pct_paxg_atual <- (saldo_paxg_brl / patrimonio_total_brl) * 100.0
-            
-            if (saldo_paxg_brl >= teto_paxg_20pct) {
-              aprovado <- FALSE
-              motivo_veto <- sprintf("Teto de Ouro Atingido (20%%)\nPosição atual: R$ %.2f (%.1f%%)\nTeto máximo: R$ %.2f (20.0%%)",
-                                     saldo_paxg_brl, pct_paxg_atual, teto_paxg_20pct)
-            }
-          } else if (aprovado && pedido$origem == "BRL" && pedido$destino %in% c("SOL", "LINK", "ETH", "USDT", "BNB", "ADA", "NEAR")) {
-            teto_custodia_map <- list(SOL = 540.0, LINK = 500.0, ETH = 500.0, USDT = 1950.0, BNB = 300.0, ADA = 160.0, NEAR = 350.0)
-            teto_custodia <- ifelse(!is.null(teto_custodia_map[[pedido$destino]]), teto_custodia_map[[pedido$destino]], 250.0)
+          # 🛡️ Subtrava 2.1: Tetos Dinâmicos Harmonizados por Ativo (Otimização Markowitz / Paridade de Risco)
+          # Orçamento Fechado Cripto: 42.0% consolidado | Regra Estrita: Acima do teto, apenas vendas são aceitas.
+          teto_pct_map <- list(
+            BTC  = 0.12, # 12.0% (~389 reais)
+            ETH  = 0.08, #  8.0% (~259 reais)
+            SOL  = 0.07, #  7.0% (~227 reais)
+            LINK = 0.06, #  6.0% (~195 reais)
+            BNB  = 0.05, #  5.0% (~162 reais)
+            NEAR = 0.04, #  4.0% (~130 reais)
+            ADA  = 0.02, #  2.0% (~65 reais)
+            AVAX = 0.02, #  2.0% (~65 reais)
+            PAXG = 0.20, # 20.0% Trava 2.6 (Ouro Físico)
+            USDT = 0.60  # 60.0% Trava 2.7 (Dólar FX)
+          )
+          
+          dest_ast <- as.character(pedido$destino)
+          if (aprovado && dest_ast %in% names(teto_pct_map) && dest_ast != as.character(pedido$origem)) {
+            pct_alvo <- teto_pct_map[[dest_ast]]
+            teto_custodia <- max(50.0, patrimonio_total_brl * pct_alvo)
             
             saldo_ativo_brl <- 0.0
             if (exists("df_wallet") && !is.null(df_wallet) && is.data.frame(df_wallet) && nrow(df_wallet) > 0) {
-              dest_asset <- as.character(pedido$destino)
-              row_d <- df_wallet[df_wallet$asset %in% c(dest_asset, paste0("LD", dest_asset)), ]
+              row_d <- df_wallet[df_wallet$asset %in% c(dest_ast, paste0("LD", dest_ast)), ]
               if (nrow(row_d) > 0) {
                 p_dest_unit <- 1.0
-                if (dest_asset != "BRL") {
-                  if (dest_asset == "PAXG") {
+                if (dest_ast != "BRL") {
+                  if (dest_ast == "PAXG") {
                     p_paxg_u <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT"), "parsed")$price), error = function(e) 4591.78)
                     p_usdt_b <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) 5.175)
                     p_dest_unit <- ifelse(!is.null(p_paxg_u) && !is.null(p_usdt_b), p_paxg_u * p_usdt_b, 23762.0)
                   } else {
-                    sym_d <- paste0(dest_asset, "BRL")
+                    sym_d <- paste0(dest_ast, "BRL")
                     p_tmp_d <- tryCatch(as.numeric(content(GET(paste0("https://api.binance.com/api/v3/ticker/price?symbol=", sym_d)), "parsed")$price), error = function(e) NULL)
                     if (!is.null(p_tmp_d) && length(p_tmp_d) > 0 && !is.na(p_tmp_d) && p_tmp_d > 0) p_dest_unit <- p_tmp_d
                   }
                 }
-                saldo_ativo_brl <- sum(row_d$free, na.rm = TRUE) * p_dest_unit
+                saldo_ativo_brl <- sum(row_d$total, na.rm = TRUE) * p_dest_unit
               }
             }
             
+            pct_ativo_atual <- (saldo_ativo_brl / patrimonio_total_brl) * 100.0
+            
             if (saldo_ativo_brl >= teto_custodia) {
               aprovado <- FALSE
-              motivo_veto <- sprintf("Teto de Posição Atingido\nCustódia de %s: R$ %.2f\nTeto máximo: R$ %.2f",
-                                     pedido$destino, saldo_ativo_brl, teto_custodia)
+              motivo_veto <- sprintf("Teto de Posição Atingido (%.1f%%)\nCustódia de %s: %.2f reais (%.1f%%)\nTeto máximo: %.2f reais (%.1f%%)\nRegra Estrita: Apenas ordens de venda são autorizadas acima do teto.",
+                                     pct_alvo * 100.0, dest_ast, saldo_ativo_brl, pct_ativo_atual, teto_custodia, pct_alvo * 100.0)
             }
           }
           
