@@ -330,8 +330,8 @@ function renderKineticsChart(symbol, tfKey, data) {
 
   const padLeft = 70;
   const padRight = 75;
-  const padTop = 20;
-  const padBottom = 72;
+  const padTop = 18;
+  const padBottom = 66;
   const chartH = h - padBottom - padTop;
 
   ctx.clearRect(0, 0, w, h);
@@ -553,8 +553,8 @@ function renderKineticsChart(symbol, tfKey, data) {
   // ----------------------------------------------------------------------------
   // 3. SUB-PAINEL DE VELOCIDADE (dP/dt) & SEPARADORES
   // ----------------------------------------------------------------------------
-  const derivY0 = padTop + chartH + 20; // Centro das barras dP/dt (~310px)
-  const timeAxisY = h - 28; // Linha base do eixo de tempo (~352px)
+  const derivY0 = padTop + chartH + 16; // Centro das barras dP/dt
+  const timeAxisY = h - 26; // Linha base do eixo de tempo (~354px)
 
   // Linha divisória sutil entre área de preço e velocidade
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
@@ -662,17 +662,17 @@ function renderKineticsChart(symbol, tfKey, data) {
         // Linha 1: Horário nítido
         ctx.fillStyle = '#E2E8F0';
         ctx.font = 'bold 9px JetBrains Mono, monospace';
-        ctx.fillText(timeStr, x, timeAxisY + 13);
+        ctx.fillText(timeStr, x, timeAxisY + 11);
 
         // Linha 2: Data em ciano suave
         ctx.fillStyle = '#06B6D4';
         ctx.font = '8px JetBrains Mono, monospace';
-        ctx.fillText(dateStr, x, timeAxisY + 23);
+        ctx.fillText(dateStr, x, timeAxisY + 21);
       } else {
         // Linha única centrada
         ctx.fillStyle = '#CBD5E1';
         ctx.font = 'bold 9px JetBrains Mono, monospace';
-        ctx.fillText(rawLabel, x, timeAxisY + 16);
+        ctx.fillText(rawLabel, x, timeAxisY + 15);
       }
     });
   }
