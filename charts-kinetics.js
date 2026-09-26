@@ -274,6 +274,7 @@ function renderKineticsChart(symbol, tfKey, data) {
   const fullSS = series.zerolag || series.supersmoother || [];
   const fullVelocities = series.velocidades || series.velocities || [];
   const fullTimestamps = series.labels || series.timestamps || [];
+  const fullDates = series.full_dates || [];
 
   if (fullPrices.length === 0) return;
 
@@ -289,6 +290,7 @@ function renderKineticsChart(symbol, tfKey, data) {
   const supersmoother = fullSS.length > 0 ? fullSS.slice(startIndex, endIndex + 1) : [];
   const velocities = fullVelocities.slice(startIndex, endIndex + 1);
   const timestamps = fullTimestamps.slice(startIndex, endIndex + 1);
+  const dates = fullDates.length > 0 ? fullDates.slice(startIndex, endIndex + 1) : [];
 
   // Fallback de alta precisão para garantir a Banda Zero-Lag caso não venha no dataset estático
   if (zlUpper.length === 0 && supersmoother.length === prices.length && prices.length > 0) {
@@ -329,7 +331,7 @@ function renderKineticsChart(symbol, tfKey, data) {
   const padLeft = 70;
   const padRight = 75;
   const padTop = 20;
-  const padBottom = 65;
+  const padBottom = 72;
   const chartH = h - padBottom - padTop;
 
   ctx.clearRect(0, 0, w, h);
@@ -548,104 +550,280 @@ function renderKineticsChart(symbol, tfKey, data) {
     ctx.fillText(badgeText.replace('R$ ', ''), bx + bw / 2, by + bh / 2);
     ctx.restore();
   }
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+  // ----------------------------------------------------------------------------
+  // 3. SUB-PAINEL DE VELOCIDADE (dP/dt) & SEPARADORES
+  // ----------------------------------------------------------------------------
+  const derivY0 = padTop + chartH + 20; // Centro das barras dP/dt (~310px)
+  const timeAxisY = h - 28; // Linha base do eixo de tempo (~352px)
+
+  // Linha divisória sutil entre área de preço e velocidade
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padLeft, padTop + chartH);
+  ctx.lineTo(w - padRight, padTop + chartH);
+  ctx.stroke();
+
+  // Linha zero da velocidade
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(padLeft, derivY0);
   ctx.lineTo(w - padRight, derivY0);
   ctx.stroke();
 
-  ctx.fillStyle = '#9CA3AF';
-  ctx.font = '9px JetBrains Mono';
+  ctx.fillStyle = '#6B7280';
+  ctx.font = '8px JetBrains Mono, monospace';
   ctx.textAlign = 'left';
-  ctx.fillText('VELOCIDADE RELATIVA dP/dt (NORMALIZADA POR JANELA)', padLeft, derivY0 - 24);
+  ctx.fillText('VELOCIDADE dP/dt', padLeft, derivY0 - 10);
 
   const maxAbsVel = Math.max(...velocities.map(v => Math.abs(v)), 0.0001);
-  const maxBarH = 22;
-  const barW = (w - padLeft - padRight) / velocities.length;
+  const maxBarH = 13;
+  const barW = (w - padLeft - padRight) / Math.max(1, velocities.length);
 
   for (let i = 0; i < velocities.length; i++) {
     const vel = velocities[i];
     const normRatio = Math.abs(vel) / maxAbsVel;
-    const barH = Math.max(3, normRatio * maxBarH);
+    const barH = Math.max(2, normRatio * maxBarH);
     const x = padLeft + i * barW;
     const y = vel >= 0 ? derivY0 - barH : derivY0;
     ctx.fillStyle = vel >= 0 ? '#10B981' : '#EF4444';
-    ctx.fillRect(x, y, Math.max(1.5, barW - 1), barH);
+    ctx.fillRect(x, y, Math.max(1.2, barW - 0.8), barH);
   }
 
-  // Rótulos de tempo no eixo X
-  ctx.fillStyle = '#6B7280';
-  ctx.font = '9px JetBrains Mono';
-  ctx.textAlign = 'center';
+  // Linha base do eixo de tempo
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+  ctx.beginPath();
+  ctx.moveTo(padLeft, timeAxisY);
+  ctx.lineTo(w - padRight, timeAxisY);
+  ctx.stroke();
+
+  // ----------------------------------------------------------------------------
+  // 3.5 RÓTULOS DE DATA E HORÁRIO NO EIXO X (COM GRIDLINES & TICKS)
+  // ----------------------------------------------------------------------------
   const totalPoints = timestamps.length;
-  const numLabels = Math.min(7, totalPoints);
-  const step = Math.max(1, Math.floor(totalPoints / (numLabels - 1)));
+  if (totalPoints > 0) {
+    const plotW = w - padLeft - padRight;
+    const minLabelDist = 88; // Distância mínima entre rótulos para zero sobreposição
+    const numLabels = Math.max(3, Math.min(8, Math.floor(plotW / minLabelDist)));
 
-  for (let i = 0; i < totalPoints; i += step) {
-    const x = getX(i);
-    ctx.fillText(timestamps[i], x, h - 8);
+    const labelIndices = [];
+    for (let k = 0; k < numLabels - 1; k++) {
+      labelIndices.push(Math.round(k * (totalPoints - 1) / (numLabels - 1)));
+    }
+    if (!labelIndices.includes(totalPoints - 1)) {
+      labelIndices.push(totalPoints - 1);
+    }
+
+    labelIndices.forEach(i => {
+      const x = getX(i);
+      const rawLabel = String(timestamps[i] || '');
+      const fullDateStr = (dates && dates[i]) ? String(dates[i]) : '';
+
+      // Gridline vertical pontilhada sutil atravessando a área do gráfico de preço
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 4]);
+      ctx.beginPath();
+      ctx.moveTo(x, padTop);
+      ctx.lineTo(x, timeAxisY);
+      ctx.stroke();
+      ctx.restore();
+
+      // Tick mark na linha base
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, timeAxisY);
+      ctx.lineTo(x, timeAxisY + 4);
+      ctx.stroke();
+
+      // Decompor Horário e Data para exibição estética em duas linhas
+      let timeStr = '';
+      let dateStr = '';
+
+      if (rawLabel.includes(' ')) {
+        const parts = rawLabel.split(' ');
+        dateStr = parts[0];
+        timeStr = parts[1];
+      } else if (rawLabel.includes(':')) {
+        timeStr = rawLabel;
+        if (fullDateStr) {
+          const dp = fullDateStr.split(' ');
+          dateStr = dp[0].substring(0, 5); // 'DD/MM'
+        }
+      } else {
+        dateStr = rawLabel;
+      }
+
+      ctx.textAlign = 'center';
+      if (timeStr && dateStr) {
+        // Linha 1: Horário nítido
+        ctx.fillStyle = '#E2E8F0';
+        ctx.font = 'bold 9px JetBrains Mono, monospace';
+        ctx.fillText(timeStr, x, timeAxisY + 13);
+
+        // Linha 2: Data em ciano suave
+        ctx.fillStyle = '#06B6D4';
+        ctx.font = '8px JetBrains Mono, monospace';
+        ctx.fillText(dateStr, x, timeAxisY + 23);
+      } else {
+        // Linha única centrada
+        ctx.fillStyle = '#CBD5E1';
+        ctx.font = 'bold 9px JetBrains Mono, monospace';
+        ctx.fillText(rawLabel, x, timeAxisY + 16);
+      }
+    });
   }
 
-  // 4. CROSSHAIR & INSPEÇÃO INTERATIVA
+  // ----------------------------------------------------------------------------
+  // 4. CROSSHAIR & TOOLTIP ESTÉTICA DE ALTA RESOLUÇÃO
+  // ----------------------------------------------------------------------------
   if (hoveredDataIndex >= 0 && hoveredDataIndex < prices.length && !isDraggingKineticsZoom) {
     const i = hoveredDataIndex;
     const x = getX(i);
     const y = getY(prices[i]);
+    const rawLabel = String(timestamps[i] || '');
+    const fullDateStr = (dates && dates[i]) ? String(dates[i]) : rawLabel;
 
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+    // Crosshair Vertical (Ciano Neon translúcido)
+    ctx.save();
+    ctx.strokeStyle = 'rgba(6, 182, 212, 0.45)';
     ctx.lineWidth = 1;
-    ctx.setLineDash([2, 2]);
+    ctx.setLineDash([3, 3]);
     ctx.beginPath();
     ctx.moveTo(x, padTop);
-    ctx.lineTo(x, h - padBottom + 10);
+    ctx.lineTo(x, timeAxisY);
     ctx.stroke();
 
+    // Crosshair Horizontal (Âmbar translúcido)
+    ctx.strokeStyle = 'rgba(245, 158, 11, 0.35)';
+    ctx.beginPath();
+    ctx.moveTo(padLeft, y);
+    ctx.lineTo(w - padRight, y);
+    ctx.stroke();
+
+    // Floating Badge no Eixo X (Pill de Data/Hora no Rodapé)
+    const hoverBadgeText = fullDateStr || rawLabel;
     ctx.setLineDash([]);
+    ctx.font = 'bold 9px JetBrains Mono, monospace';
+    const tbw = ctx.measureText(hoverBadgeText).width + 14;
+    const tbh = 18;
+    const tbx = Math.max(padLeft, Math.min(w - padRight - tbw, x - tbw / 2));
+    const tby = timeAxisY + 2;
+
+    ctx.fillStyle = 'rgba(5, 8, 17, 0.95)';
+    ctx.strokeStyle = '#06B6D4';
+    ctx.lineWidth = 1.2;
+    if (ctx.roundRect) {
+      ctx.beginPath();
+      ctx.roundRect(tbx, tby, tbw, tbh, 4);
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.fillRect(tbx, tby, tbw, tbh);
+      ctx.strokeRect(tbx, tby, tbw, tbh);
+    }
+    ctx.fillStyle = '#38BDF8';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(hoverBadgeText, tbx + tbw / 2, tby + tbh / 2);
+
+    // Floating Badge no Eixo Y (Pill de Preço Hover no Eixo Direito)
+    const hoverPriceText = isFx ? prices[i].toFixed(4) : Math.round(prices[i]).toLocaleString('pt-BR');
+    const pbw = 64;
+    const pbh = 18;
+    const pbx = w - padRight + 3;
+    const pby = Math.max(padTop, Math.min(padTop + chartH - pbh, y - pbh / 2));
+
+    ctx.fillStyle = '#050811';
+    ctx.strokeStyle = '#F59E0B';
+    ctx.lineWidth = 1.2;
+    if (ctx.roundRect) {
+      ctx.beginPath();
+      ctx.roundRect(pbx, pby, pbw, pbh, 4);
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.fillRect(pbx, pby, pbw, pbh);
+      ctx.strokeRect(pbx, pby, pbw, pbh);
+    }
+    ctx.fillStyle = '#FBBF24';
+    ctx.font = 'bold 9px JetBrains Mono, monospace';
+    ctx.fillText(hoverPriceText, pbx + pbw / 2, pby + pbh / 2);
+
+    // Halo pulsante no ponto sob o cursor
+    ctx.fillStyle = 'rgba(245, 158, 11, 0.25)';
+    ctx.beginPath();
+    ctx.arc(x, y, 9, 0, Math.PI * 2);
+    ctx.fill();
+
     ctx.fillStyle = '#F59E0B';
     ctx.beginPath();
-    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.arc(x, y, 4.5, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#FFFFFF';
-    ctx.lineWidth = 2;
-    ctx.stroke();
 
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    // Tooltip HTML Flutuante de Alta Resolução
     const badge = document.getElementById('chartInspectBadge');
     if (badge) {
-      const pVal = isFx ? `R$ ${prices[i].toFixed(4)}` : `R$ ${prices[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-      const upVal = isFx ? `R$ ${upper[i].toFixed(4)}` : `R$ ${upper[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-      const lowVal = isFx ? `R$ ${lower[i].toFixed(4)}` : `R$ ${lower[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-      const zlUpVal = zlUpper && zlUpper[i] ? (isFx ? `R$ ${zlUpper[i].toFixed(4)}` : `R$ ${zlUpper[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`) : null;
-      const zlLowVal = zlLower && zlLower[i] ? (isFx ? `R$ ${zlLower[i].toFixed(4)}` : `R$ ${zlLower[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`) : null;
-      const ssVal = supersmoother && supersmoother[i] ? (isFx ? `R$ ${supersmoother[i].toFixed(4)}` : `R$ ${supersmoother[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`) : null;
-      const velVal = `${velocities[i] >= 0 ? '+' : ''}${velocities[i].toFixed(3)}%`;
+      const pVal = isFx ? `${prices[i].toFixed(4)} reais` : `${prices[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })} reais`;
+      const upVal = isFx ? `${upper[i].toFixed(4)}` : `${upper[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+      const lowVal = isFx ? `${lower[i].toFixed(4)}` : `${lower[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+      const zlUpVal = zlUpper && zlUpper[i] ? (isFx ? `${zlUpper[i].toFixed(4)}` : `${zlUpper[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`) : null;
+      const zlLowVal = zlLower && zlLower[i] ? (isFx ? `${zlLower[i].toFixed(4)}` : `${zlLower[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`) : null;
+      const ssVal = supersmoother && supersmoother[i] ? (isFx ? `${supersmoother[i].toFixed(4)}` : `${supersmoother[i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`) : null;
+      const velVal = `${velocities[i] >= 0 ? '+' : ''}${velocities[i].toFixed(3)}%/min`;
 
       badge.style.display = 'block';
       let badgeContent = `
-        <div class="ib-time">⏱️ ${timestamps[i]}</div>
-        <div class="ib-price">Cotação: <b>${pVal}</b></div>
+        <div class="ib-header">
+          <span class="ib-status-dot"></span>
+          <span class="ib-time">📅 ${fullDateStr}</span>
+        </div>
+        <div class="ib-price-row">
+          <span class="ib-price-label">COTAÇÃO</span>
+          <span class="ib-price-val">${pVal}</span>
+        </div>
+        <div class="ib-metrics-grid">
+          <div class="ib-metric">
+            <span class="ib-metric-lbl">Velocidade (dP/dt)</span>
+            <span class="ib-metric-val ${velocities[i] >= 0 ? 'pos' : 'neg'}">${velVal}</span>
+          </div>
+        </div>
       `;
-      if (showZl) {
-        badgeContent += `
-          <div class="ib-bands" style="color: #F0ABFC; font-weight: bold;">Curva Lilás ZL: ${ssVal || pVal}</div>
-          <div class="ib-bands" style="color: #C084FC; font-size: 11px;">Envelopes ZL (±2σ): ${zlLowVal || lowVal} ↔ ${zlUpVal || upVal}</div>
-        `;
-      }
+
       if (showBb) {
         badgeContent += `
-          <div class="ib-bands" style="color: #06B6D4; font-size: 10px;">Bollinger (SMA): ${lowVal} ↔ ${upVal}</div>
+          <div class="ib-band-box bb">
+            <div class="ib-band-title"><span>🔹</span> Bandas Bollinger (SMA 20)</div>
+            <div class="ib-band-range">${lowVal} ↔ ${upVal}</div>
+          </div>
         `;
       }
-      badgeContent += `
-        <div class="ib-vel">Velocidade: <b style="color: ${velocities[i] >= 0 ? '#10B981' : '#EF4444'}">${velVal}</b></div>
-      `;
+
+      if (showZl) {
+        badgeContent += `
+          <div class="ib-band-box zl">
+            <div class="ib-band-title"><span>⚡</span> Zero-Lag SuperSmoother (±2σ)</div>
+            <div class="ib-band-range">${zlLowVal || lowVal} ↔ ${zlUpVal || upVal}</div>
+            ${ssVal ? `<div class="ib-band-sub">Eixo Zero-Lag: ${ssVal}</div>` : ''}
+          </div>
+        `;
+      }
+
       badge.innerHTML = badgeContent;
 
-      const badgeW = 200;
-      let badgeLeft = x + 15;
-      if (badgeLeft + badgeW > w - 10) badgeLeft = x - badgeW - 15;
+      const badgeW = 230;
+      let badgeLeft = x + 16;
+      if (badgeLeft + badgeW > w - 12) badgeLeft = x - badgeW - 16;
       badge.style.left = `${badgeLeft}px`;
-      badge.style.top = `${Math.max(10, Math.min(h - 130, y - 20))}px`;
+      badge.style.top = `${Math.max(12, Math.min(h - 170, y - 30))}px`;
     }
   } else {
     const badge = document.getElementById('chartInspectBadge');
@@ -675,14 +853,14 @@ function initCanvasInteractions() {
   const canvas = document.getElementById('kineticsMainCanvas');
   if (!canvas) return;
 
-  const padLeft = 75;
-  const padRight = 30;
+  const padLeft = 70;
+  const padRight = 75;
 
   const getActiveSeriesLength = () => {
     const assetsData = window.ASSETS_KINETICS_DATA || {};
     const asset = assetsData[currentKineticsAsset] || {};
     const tfData = (asset.timeframes && asset.timeframes[currentKineticsTimeframe]) || {};
-    const fullPrices = tfData.precos || (tfData.series && tfData.series.prices) || [];
+    const fullPrices = tfData.precos || (tfData.series && tfData.series.prices) || (tfData.series && tfData.series.precos) || [];
     if (!kineticsZoomRange) return fullPrices.length;
     return kineticsZoomRange[1] - kineticsZoomRange[0] + 1;
   };
