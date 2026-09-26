@@ -1074,6 +1074,16 @@ obter_lote_aberto_binance_ssot <- function(ativo) {
       }
     }
     
+    # 🛡️ Trava de Sanidade Física: Checar se o ativo realmente existe na carteira Spot
+    carr <- if (exists("carteira")) tryCatch(carteira(silent = TRUE), error = function(e) NULL) else NULL
+    if (is.data.frame(carr)) {
+      saldo_fisico <- sum(carr$total[carr$asset == ativo], na.rm = TRUE)
+      if (is.na(saldo_fisico) || saldo_fisico <= 1e-5) {
+        return(list(tem_lote = FALSE, minutos_posse = 0.0, qtd_aberta = 0.0, valor_total_aberto = 0.0))
+      }
+      total_rem <- min(total_rem, saldo_fisico)
+    }
+    
     if (total_rem > 1e-4 && custo_total > 5.0) {
       vwap_real <- custo_total / total_rem
       min_posse <- if (!is.na(primeiro_ts)) (as.numeric(Sys.time()) - (primeiro_ts / 1000)) / 60 else 999.0
