@@ -1021,8 +1021,12 @@ calcular_lotes_abertos_fifo <- function(compras, vendas, ativo = "") {
 obter_lote_aberto_binance_ssot <- function(ativo) {
   if (!exists("call_binance")) return(NULL)
   tryCatch({
-    sym <- sprintf("%sBRL", ativo)
-    trades <- call_binance("/api/v3/myTrades", list(symbol = sym, limit = 40))
+    sym <- if (ativo %in% c("NVDAB", "SPYB", "SQQQB", "TLT", "TSLAB", "AAPLB", "PAXG")) {
+      sprintf("%sUSDT", ativo)
+    } else {
+      sprintf("%sBRL", ativo)
+    }
+    trades <- call_binance("/api/v3/myTrades", list(symbol = sym, limit = 100))
     if (is.null(trades) || length(trades) == 0) return(NULL)
     
     df <- if (is.data.frame(trades)) trades else dplyr::bind_rows(trades)
@@ -1091,8 +1095,8 @@ obter_lote_aberto_binance_ssot <- function(ativo) {
 }
 
 obter_lote_aberto_estrategia <- function(estrategia_nome, ativo) {
-  # 🛡️ SSOT BINANCE API: Prioridade absoluta para apuração real de lotes abertos Spot
-  if (ativo %in% c("NEAR", "LINK", "SOL", "BNB", "ETH")) {
+  # 🛡️ SSOT BINANCE API: Prioridade absoluta para apuração real de lotes abertos Spot (Imune a desyncs locais)
+  if (ativo %in% c("NEAR", "LINK", "SOL", "BNB", "ETH", "BTC", "PAXG", "TSLAB", "SPYB", "NVDAB", "SQQQB")) {
     lote_binance <- obter_lote_aberto_binance_ssot(ativo)
     if (!is.null(lote_binance) && isTRUE(lote_binance$tem_lote)) {
       return(lote_binance)
@@ -2444,8 +2448,13 @@ executar_radar_labtrader <- function() {
           }
         }
       } else {
-        # TRANCHE 2 (40% restante): Surfa rali até +2.50% OU saída por exaustão/trailing (Z >= 0.70 e d2Z < -0.05 com retorno >= +1.00%)
-        cond_tranche_2 <- (retorno_real_link >= 2.50) || (z_link_4h >= 0.70 && acc_link < -0.05 && retorno_real_link >= 1.00)
+        # TRANCHE 2 (40% restante / Trailer):
+        # 🛡️ Trailing Ratchet: se o retorno atingir >= +1.50% (evita devolver ganhos), dispara realização
+        # OU exaustão cinemática real (Z >= 0.70 e acc_link < 0.0 com retorno >= +0.80%)
+        # OU rali máximo >= +2.50%
+        cond_tranche_2 <- (retorno_real_link >= 1.50) || 
+                          (z_link_4h >= 0.70 && acc_link < 0.0 && retorno_real_link >= 0.80) || 
+                          (retorno_real_link >= 2.50)
         if (cond_tranche_2) {
           deve_vender_link <- TRUE
           valor_venda_link <- saldo_link_brl # Desova 100% da tranche residual
