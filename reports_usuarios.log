@@ -1,5 +1,14 @@
-# ==============================================================================
-# MONEYLAB TELEGRAM BOT (LabInvest) — LOG DE REPORTS, BUGS E SUGESTÕES
-# Status permitidos: 'em análise', 'resolvido', 'anulado'
-# ==============================================================================
+================================================================================
+ID: REP-20260920-143534
+DATA: 2026-09-20 14:35:34
+USUARIO: Guilherme (@sem_username | ID: 7805501689 | CHAT_ID: 7805501689)
+STATUS: resolvido
+PARECER: Auditoria concluída e correções aplicadas. 1) O lucro de 23 reais em NEAR era fictício (o real foi +1,18 reais). As ordens subsequentes das 13:49 e 14:50 foram canibalizações com prejuízos de -2,46 e -2,34 reais, devidamente corrigidos no histórico oficial RDS. 2) A desova de altcoins legadas no Plano Adeus Perry foi extirpada do LabTrader e o Gatekeeper foi blindado para vetar qualquer ativo diferente de PAXG pelo Perry. 3) A custódia de NEAR e LINK agora é 100% segregada e exclusiva dos planos Farol de Near e Caboclo dos Oráculos.
+NOTIFICADO: SIM
+MENSAGEM:
+ADM aqui.
+[20/09, 12:29] Guilherme Santos: Por volta deste horário, 12:28h, o bot acionou o plano Adeus, Perry com NEAR alegando lucro. Verificar se houve lucro de fato. O valor de lucro parece alto demais para estar correto (23 reais de lucro)
+[20/09, 14:32] Guilherme Santos: O plano Adeus perry foi executado novamente com erro provável 13:49
+[20/09, 14:35] Guilherme Santos: O plano farol de near tentou ser acionado sem mesmo ter near, porque foi esvaziado pelo Adeus Perry.  Checar o que acontece quando diferentes planos partilham do mesmo ativo e se ainda há necessidade do plano adeus perry para o near ou também os demais ativos
+================================================================================
 

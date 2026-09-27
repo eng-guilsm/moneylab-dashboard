@@ -1868,8 +1868,9 @@ executar_radar_labtrader <- function() {
     
     # Gestão de Tranches (Cap Máximo de 2 tranches = ~8,0% de Et)
     teto_eth_brl     <- VALOR_ETH_TRANCHE_BRL * 2.0
-    lote_tranche_eth <- min(VALOR_ETH_TRANCHE_BRL * fator_lote_fsr, caixa_brl_livre_cripto)
-    pode_comprar_eth <- (saldo_eth_brl < teto_eth_brl) && (lote_tranche_eth >= 25.0) && (caixa_brl_livre_cripto >= lote_tranche_eth)
+    folga_teto_eth   <- max(0.0, teto_eth_brl - saldo_eth_brl)
+    lote_tranche_eth <- min(VALOR_ETH_TRANCHE_BRL * fator_lote_fsr, caixa_brl_livre_cripto, folga_teto_eth)
+    pode_comprar_eth <- (saldo_eth_brl < (teto_eth_brl - 15.0)) && (lote_tranche_eth >= 25.0) && (caixa_brl_livre_cripto >= lote_tranche_eth)
     
     # Cooldown anti-spam entre tranches (mínimo 30 minutos ou nova queda Z significativa)
     lote_info_eth <- obter_lote_aberto_estrategia("PLANO_SENTINELA_DE_ETER", "ETH")
@@ -2009,18 +2010,18 @@ executar_radar_labtrader <- function() {
     acc_sol  <- if (!is.null(dsp_sol$d2Z)) dsp_sol$d2Z else 0.0
     
     # Calibração Otimizada: Z <= -0.65 com inflexão d2Z >= 0.0
-    cond_compra_sol <- (z_sol_1h <= -0.65) && (acc_sol >= 0.0) && (caixa_brl_livre_cripto >= 25.0) && (saldo_sol_brl < teto_sol_brl)
+    folga_teto_sol  <- max(0.0, teto_sol_brl - saldo_sol_brl)
+    lote_sol        <- min(VALOR_SOL_SENTINELA_BRL * fator_lote, caixa_brl_livre_cripto, folga_teto_sol)
+    cond_compra_sol <- (z_sol_1h <= -0.65) && (acc_sol >= 0.0) && (caixa_brl_livre_cripto >= 25.0) && 
+                       (saldo_sol_brl < (teto_sol_brl - 15.0)) && (lote_sol >= 25.0)
     
     if (cond_compra_sol) {
-      lote_sol <- min(VALOR_SOL_SENTINELA_BRL * fator_lote, caixa_brl_livre_cripto)
-      if (lote_sol >= 25.0) {
-        pedido <- list(
-          estrategia = "PLANO_SENTINELA_DO_SOL",
-          origem = "BRL", destino = "SOL",
-          valor_brl = lote_sol,
-          lucro_esperado_pct = 0.50, timestamp = agora_ts
-        )
-      }
+      pedido <- list(
+        estrategia = "PLANO_SENTINELA_DO_SOL",
+        origem = "BRL", destino = "SOL",
+        valor_brl = lote_sol,
+        lucro_esperado_pct = 0.50, timestamp = agora_ts
+      )
     } else if (saldo_sol_brl >= 25.0) {
       # Saída sob Trava 6 com Z >= 0.15 OU Take Profit por Lucro Real Expressivo (>= +1.20%)
       # 🛡️ Subtrava 6.2: Target Decay Ratchet (48h a 72h decaindo suavemente até +0.40% piso)
@@ -2405,18 +2406,18 @@ executar_radar_labtrader <- function() {
     tempo_compra_link_ok <- !isTRUE(lote_info_link$tem_lote) || is.null(lote_info_link$minutos_posse) || is.na(lote_info_link$minutos_posse) || lote_info_link$minutos_posse >= 12.0
     
     # Gatilho de Entrada Sniper: Z <= -0.75 com Inflexão d2Z >= 0.0 (respeitando cooldown e posse mínima de 12 min)
-    cond_compra_link <- !em_cooldown_link && tempo_compra_link_ok && (z_link_4h <= -0.75) && (acc_link >= 0.0) && (caixa_brl_livre_cripto >= 25.0) && (saldo_link_brl < teto_link_brl)
+    folga_teto_link  <- max(0.0, teto_link_brl - saldo_link_brl)
+    lote_link        <- min(VALOR_CABOCLO_BRL * fator_lote, caixa_brl_livre_cripto, folga_teto_link)
+    cond_compra_link <- !em_cooldown_link && tempo_compra_link_ok && (z_link_4h <= -0.75) && (acc_link >= 0.0) && 
+                        (caixa_brl_livre_cripto >= 25.0) && (saldo_link_brl < (teto_link_brl - 15.0)) && (lote_link >= 25.0)
     
     if (cond_compra_link) {
-      lote_link <- min(VALOR_CABOCLO_BRL * fator_lote, caixa_brl_livre_cripto)
-      if (lote_link >= 25.0) {
-        pedido <- list(
-          estrategia = "PLANO_CABOCLO_DOS_ORACULOS",
-          origem = "BRL", destino = "LINK",
-          valor_brl = lote_link,
-          lucro_esperado_pct = 1.00, timestamp = agora_ts
-        )
-      }
+      pedido <- list(
+        estrategia = "PLANO_CABOCLO_DOS_ORACULOS",
+        origem = "BRL", destino = "LINK",
+        valor_brl = lote_link,
+        lucro_esperado_pct = 1.00, timestamp = agora_ts
+      )
     } else if (saldo_link_brl >= 25.0) {
       # Saída em Duas Tranches sob Trava 6:
       # Tranche 1 (60% da posição): Realização rápida em Z >= 0.20 e retorno >= +1.00% (elimina risco e devolve caixa)
@@ -2500,18 +2501,18 @@ executar_radar_labtrader <- function() {
     acc_near  <- if (!is.null(dsp_near$d2Z)) dsp_near$d2Z else 0.0
     
     # Gatilho de Entrada: Z_6h <= -0.75 com Inflexão d2Z >= 0.0
-    cond_compra_near <- (z_near_6h <= -0.75) && (acc_near >= 0.0) && (caixa_brl_livre_cripto >= 25.0) && (saldo_near_brl < teto_near_brl)
+    folga_teto_near  <- max(0.0, teto_near_brl - saldo_near_brl)
+    lote_near        <- min(VALOR_NEAR_BRL * fator_lote, caixa_brl_livre_cripto, folga_teto_near)
+    cond_compra_near <- (z_near_6h <= -0.75) && (acc_near >= 0.0) && (caixa_brl_livre_cripto >= 25.0) && 
+                        (saldo_near_brl < (teto_near_brl - 15.0)) && (lote_near >= 25.0)
     
     if (cond_compra_near) {
-      lote_near <- min(VALOR_NEAR_BRL * fator_lote, caixa_brl_livre_cripto)
-      if (lote_near >= 25.0) {
-        pedido <- list(
-          estrategia = "PLANO_FAROL_DE_NEAR",
-          origem = "BRL", destino = "NEAR",
-          valor_brl = lote_near,
-          lucro_esperado_pct = 0.80, timestamp = agora_ts
-        )
-      }
+      pedido <- list(
+        estrategia = "PLANO_FAROL_DE_NEAR",
+        origem = "BRL", destino = "NEAR",
+        valor_brl = lote_near,
+        lucro_esperado_pct = 0.80, timestamp = agora_ts
+      )
     } else if (saldo_near_brl >= 25.0) {
       # Saída sob Trava 6 FIFO com Z >= 0.20 OU Take Profit por Lucro Real Expressivo (>= +1.20%)
       # 🛡️ Subtrava 6.2: Target Decay Ratchet (48h a 72h decaindo suavemente até +0.40% piso)

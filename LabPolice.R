@@ -1177,19 +1177,9 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           }
         }
         
-        # Trava 2: Teto de Volume por Estratégia (Apenas para Compras / Aportes de Caixa)
+        # Trava 2: Teto de Volume por Estratégia e Governança Dinâmica de Carteira
         if (aprovado) {
-          if (pedido$origem == "BRL") {
-            teto_permitido <- ifelse(!is.null(tetos_volume[[estrategia_nome]]), tetos_volume[[estrategia_nome]], 200.00)
-            if (is.null(pedido$valor_brl) || pedido$valor_brl > teto_permitido) {
-              aprovado <- FALSE
-              motivo_veto <- sprintf("Teto de Compra Excedido\nValor solicitado: R$ %.2f\nTeto permitido: R$ %.2f", 
-                                     pedido$valor_brl, teto_permitido)
-            }
-          }
-          # Vendas / Realização de Lucro (Origem != BRL): Autorização de 100% da custódia do ativo
-          
-          # Cálculo do Patrimônio Total Consolidado
+          # Cálculo do Patrimônio Total Consolidado (Módulo 37 & SSOT)
           patrimonio_total_brl <- 2000.0
           if (exists("df_wallet") && !is.null(df_wallet) && is.data.frame(df_wallet) && nrow(df_wallet) > 0) {
             p_btc_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=BTCBRL"), "parsed")$price), error = function(e) 407000.0)
@@ -1203,7 +1193,19 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
             p_near_tmp <- 9.60
             p_avax_tmp <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=AVAXBRL"), "parsed")$price), error = function(e) 37.0)
             
-            cotacoes <- list(BRL=1.0, BTC=p_btc_tmp, ETH=p_eth_tmp, SOL=p_sol_tmp, PAXG=p_paxg_tmp, LDPAXG=p_paxg_tmp, USDT=p_usdt_tmp, LDUSDT=p_usdt_tmp, LINK=p_link_tmp, BNB=p_bnb_tmp, ADA=p_ada_tmp, NEAR=p_near_tmp, AVAX=p_avax_tmp)
+            p_nv_tmp <- 178.0 * p_usdt_tmp
+            p_sp_tmp <- 658.0 * p_usdt_tmp
+            p_sq_tmp <- 40.5  * p_usdt_tmp
+            p_tl_tmp <- 95.0  * p_usdt_tmp
+            p_ts_tmp <- 380.0 * p_usdt_tmp
+            p_ap_tmp <- 340.0 * p_usdt_tmp
+            
+            cotacoes <- list(
+              BRL=1.0, BTC=p_btc_tmp, ETH=p_eth_tmp, SOL=p_sol_tmp, PAXG=p_paxg_tmp, LDPAXG=p_paxg_tmp, 
+              USDT=p_usdt_tmp, LDUSDT=p_usdt_tmp, LINK=p_link_tmp, BNB=p_bnb_tmp, ADA=p_ada_tmp, NEAR=p_near_tmp, AVAX=p_avax_tmp,
+              TSLAB=p_ts_tmp, TSLA=p_ts_tmp, NVDAB=p_nv_tmp, NVDA=p_nv_tmp, SPYB=p_sp_tmp, SP500=p_sp_tmp, 
+              SQQQB=p_sq_tmp, BITI=p_sq_tmp, TLT=p_tl_tmp, TLTB=p_tl_tmp, AAPLB=p_ap_tmp, AAPL=p_ap_tmp
+            )
             
             valores_ativos <- sapply(seq_len(nrow(df_wallet)), function(i) {
               ast <- df_wallet$asset[i]
@@ -1217,17 +1219,33 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           # 🛡️ Subtrava 2.1: Tetos Dinâmicos Harmonizados por Ativo (Otimização Markowitz / Paridade de Risco)
           # Orçamento Fechado Cripto: 42.0% consolidado | Regra Estrita: Acima do teto, apenas vendas são aceitas.
           teto_pct_map <- list(
-            BTC  = 0.12, # 12.0% (~389 reais)
-            ETH  = 0.08, #  8.0% (~259 reais)
-            SOL  = 0.07, #  7.0% (~227 reais)
-            LINK = 0.06, #  6.0% (~195 reais)
-            BNB  = 0.05, #  5.0% (~162 reais)
-            NEAR = 0.04, #  4.0% (~130 reais)
-            ADA  = 0.02, #  2.0% (~65 reais)
-            AVAX = 0.02, #  2.0% (~65 reais)
+            BTC  = 0.12, # 12.0% (~540 reais em 4.5k)
+            ETH  = 0.08, #  8.0% (~360 reais em 4.5k)
+            SOL  = 0.07, #  7.0% (~315 reais em 4.5k)
+            LINK = 0.06, #  6.0% (~270 reais em 4.5k)
+            BNB  = 0.05, #  5.0% (~225 reais em 4.5k)
+            NEAR = 0.04, #  4.0% (~180 reais em 4.5k)
+            ADA  = 0.02, #  2.0% (~90 reais em 4.5k)
+            AVAX = 0.02, #  2.0% (~90 reais em 4.5k)
             PAXG = 0.20, # 20.0% Trava 2.6 (Ouro Físico)
             USDT = 0.60  # 60.0% Trava 2.7 (Dólar FX)
           )
+          
+          # Trava 2: Teto de Volume por Estratégia (Apenas para Compras / Aportes de Caixa)
+          # Dimensionamento Proporcional Dinâmico (Módulo 37 & Framework SSOT)
+          if (pedido$origem == "BRL") {
+            dest_ast <- as.character(pedido$destino)
+            pct_classe <- if (!is.null(dest_ast) && dest_ast %in% names(teto_pct_map)) teto_pct_map[[dest_ast]] else 0.08
+            teto_permitido_base <- ifelse(!is.null(tetos_volume[[estrategia_nome]]), tetos_volume[[estrategia_nome]], 200.00)
+            teto_permitido <- max(teto_permitido_base, patrimonio_total_brl * pct_classe * 1.05)
+            
+            if (is.null(pedido$valor_brl) || pedido$valor_brl > teto_permitido) {
+              aprovado <- FALSE
+              motivo_veto <- sprintf("Teto de Compra Excedido\nValor solicitado: %.2f reais\nTeto permitido: %.2f reais", 
+                                     pedido$valor_brl, teto_permitido)
+            }
+          }
+          # Vendas / Realização de Lucro (Origem != BRL): Autorização de 100% da custódia do ativo
           
           dest_ast <- as.character(pedido$destino)
           if (aprovado && dest_ast %in% names(teto_pct_map) && dest_ast != as.character(pedido$origem)) {
