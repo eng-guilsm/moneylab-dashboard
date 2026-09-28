@@ -1363,6 +1363,12 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           p_u_tmp <- if (exists("cotacoes") && !is.null(cotacoes[["USDT"]])) cotacoes[["USDT"]] else 5.175
           saldo_usdt_total_brl <- saldo_usdt_total_usd * p_u_tmp
           
+          # Veto de desovas especulativas USDT -> BRL pelo Plano Pátria Volátil (Fluxo extinto por churn destrutivo)
+          if (estrategia_nome == "PLANO_PATRIA_VOLATIL" && pedido$origem == "USDT" && pedido$destino == "BRL") {
+            aprovado <- FALSE
+            motivo_veto <- "Descontinuação de Fluxo Especulativo\nO Pátria Volátil opera exclusivamente como One-Way Sweeper no Simple Earn (6,88% a.a.). Resgates de USDT são exclusivos para liquidação cirúrgica de compras de altcoins em dip."
+          }
+          
           # Piso: Vendas de USDT para BRL não podem furar o piso de 40%
           if (pedido$origem == "USDT" && pedido$destino == "BRL") {
             saldo_remanescente_usdt_brl <- saldo_usdt_total_brl - as.numeric(pedido$valor_brl)
@@ -1519,7 +1525,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                   compras_todas <- exec_reais[exec_reais$Destino == as.character(pedido$origem), ]
                   vendas_todas  <- exec_reais[exec_reais$Origem == as.character(pedido$origem), ]
                 } else {
-                  filtro_patria <- if (estrategia_nome == "PLANO_PATRIA_VOLATIL") exec_reais$Valor_BRL <= 350.0 else TRUE
+                  filtro_patria <- TRUE
                   compras_todas <- exec_reais[exec_reais$Destino == as.character(pedido$origem) & 
                                               exec_reais$Estrategia == estrategia_nome & 
                                               filtro_patria, ]

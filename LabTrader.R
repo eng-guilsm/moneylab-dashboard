@@ -1134,7 +1134,7 @@ obter_lote_aberto_estrategia <- function(estrategia_nome, ativo) {
     compras <- exec_reais[exec_reais$Destino == ativo, ]
     vendas  <- exec_reais[exec_reais$Origem == ativo, ]
   } else {
-    filtro_patria <- if (estrategia_nome == "PLANO_PATRIA_VOLATIL") exec_reais$Valor_BRL <= 350.0 else TRUE
+    filtro_patria <- TRUE
     compras <- exec_reais[exec_reais$Destino == ativo & exec_reais$Estrategia == estrategia_nome & filtro_patria, ]
     vendas <- exec_reais[exec_reais$Origem == ativo & (exec_reais$Estrategia == estrategia_nome | exec_reais$Estrategia %in% c("PLANO_ADEUS_PERRY", "PLANO_BRUCE_WAYNE")), ]
   }
@@ -1542,67 +1542,23 @@ executar_radar_labtrader <- function() {
   # Lucro Médio: +7,54 a +10,45 reais/mês (+0,37% a +0,515%/mês) | Mediana: +8,20 reais/mês
   # Trades/mês: 1,17 | Tempo Médio de Posse: 487,6h (~20,3d) | Max DD MTM: -2,56%
   # Janela de Regime: 24 horas (288 candles de 5m / 1440 min)
-  # Entrada Dip: Z_24h <= -1.50 | Saída Trava 6: Z_24h >= +0.40 com Retorno FIFO >= +0.40%
-  # Rendimento Duplo: USDT adquirido rende juros diários no Simple Earn (6,88% a.a.) durante a posse
   # ----------------------------------------------------------------------------
-  stats_u_24h <- obter_stats_usdt_24h()
-  z_patria    <- stats_u_24h$z
-  
+  # MOTOR 3: PLANO PÁTRIA VOLÁTIL (ONE-WAY SWEEPER ANTI-ÓCIO + SIMPLE EARN 6,88% A.A.)
+  # [VENCEDOR DO TORNEIO QUANTITATIVO HEAD-TO-HEAD // +10,18 a +10,60 REAIS/MÊS PASSIVOS]
+  # Arquitetura: O fluxo especulativo USDT -> BRL foi extinto por gerar destruição de valor (churn).
+  # Atuação: Varredor Unidirecional de BRL -> USDT quando o caixa fiduciário ultrapassa
+  # o teto dinâmico de 20%, alocando 100% no Simple Earn a 6,88% a.a. sem risco de corretagem.
+  # Resgates de USDT para BRL ocorrem cirurgicamente sob demanda exclusiva para compras de altcoins em dip.
+  # ----------------------------------------------------------------------------
   if (is.null(pedido) && !is.null(p_usdt_brl) && p_usdt_brl > 0) {
-    # 1. Checagem de Lote em Aberto para Realização de Lucro sob Trava 6
-    pm_patria <- 0.0
-    tem_lote_patria <- FALSE
-    hist_exec_file <- "ordens_executadas.rds"
-    if (file.exists(hist_exec_file)) {
-      h_exec <- tryCatch(readRDS(hist_exec_file), error = function(e) NULL)
-      if (!is.null(h_exec) && nrow(h_exec) > 0 && "Destino" %in% names(h_exec)) {
-        exec_reais <- h_exec[grepl("EXECUTADO_REAL", h_exec$Status), ]
-        # Considera apenas lotes de swing intradiário (Valor_BRL <= 350), preservando o colchão estrutural do Simple Earn
-        compras_todas <- exec_reais[exec_reais$Destino == "USDT" & 
-                                    exec_reais$Estrategia == "PLANO_PATRIA_VOLATIL" & 
-                                    exec_reais$Valor_BRL <= 350.0, ]
-        vendas_todas  <- exec_reais[exec_reais$Origem == "USDT" & 
-                                    exec_reais$Estrategia == "PLANO_PATRIA_VOLATIL", ]
-        compras_abertas <- calcular_lotes_abertos_fifo(compras_todas, vendas_todas)
-        if (nrow(compras_abertas) > 0) {
-          validos <- compras_abertas[!is.na(compras_abertas$Preco_Exec) & compras_abertas$Preco_Exec > 0 & !is.na(compras_abertas$Valor_BRL), ]
-          if (nrow(validos) > 0) {
-            pm_patria <- sum(validos$Valor_BRL) / sum(validos$qtd)
-            tem_lote_patria <- TRUE
-          }
-        }
-      }
-    }
-    
-    # 2. REALIZAÇÃO DE LUCRO: Venda USDT -> BRL (Z >= +0.40 e Trava 6 >= +0.40%)
-    if (tem_lote_patria && pm_patria > 0 && usdt_livre_rotacao >= 20.0) {
-      ret_patria <- (p_usdt_brl - pm_patria) / pm_patria
-      em_cooldown_patria <- verificar_cooldown_veto("PLANO_PATRIA_VOLATIL", timeout_seg = 300)
-      if (z_patria >= 0.40 && ret_patria >= 0.0040 && !em_cooldown_patria) {
-        val_desova_patria <- min(usdt_livre_rotacao * p_usdt_brl, VALOR_PATRIA_BRL * fator_lote * (1 + ret_patria))
-        if (val_desova_patria >= 25.0) {
-          pedido <- list(
-            estrategia = "PLANO_PATRIA_VOLATIL",
-            origem = "USDT", destino = "BRL",
-            valor_brl = val_desova_patria,
-            lucro_esperado_pct = round(ret_patria * 100, 2), timestamp = agora_ts
-          )
-        }
-      }
-    } else if (saldo_usdt_brl < teto_usdt_brl_dinamico) {
-      # 3. ENTRADA EM DIP CAMBIAL OU SWEEP ANTI-OCIOSIDADE DO EXCESSO DE BRL (CENÁRIO B)
-      # Se o caixa BRL exceder o teto dinâmico de 20% (~640 reais), varre o excesso para USDT Simple Earn (6,88% a.a.)
+    if (saldo_usdt_brl < teto_usdt_brl_dinamico) {
       excesso_caixa_brl <- max(0.0, saldo_caixa_brl - teto_brl_dinamico)
       cond_sweep_ociosidade <- excesso_caixa_brl >= 50.0
-      cond_dip_cambial <- (!tem_lote_patria) && (z_patria <= -1.50) && (caixa_brl_livre_patria >= 80.0)
+      espaco_usdt_teto <- max(0.0, teto_usdt_brl_dinamico - saldo_usdt_brl)
       
       em_cooldown_patria <- verificar_cooldown_veto("PLANO_PATRIA_VOLATIL", timeout_seg = 300)
-      if ((cond_dip_cambial || cond_sweep_ociosidade) && !em_cooldown_patria) {
-        val_compra <- if (cond_sweep_ociosidade) {
-          min(excesso_caixa_brl, VALOR_PATRIA_BRL * 1.5 * fator_lote, 480.0)
-        } else {
-          min(VALOR_PATRIA_BRL * fator_lote, caixa_brl_livre_patria, 480.0)
-        }
+      if (cond_sweep_ociosidade && espaco_usdt_teto >= 50.0 && !em_cooldown_patria) {
+        val_compra <- min(excesso_caixa_brl, espaco_usdt_teto, VALOR_PATRIA_BRL * 1.5 * fator_lote, 480.0)
         if (val_compra >= 50.0) {
           pedido <- list(
             estrategia = "PLANO_PATRIA_VOLATIL",
