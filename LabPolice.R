@@ -1912,19 +1912,26 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           c_quote <- if (!is.null(resultado_binance$cummulativeQuoteQty)) as.numeric(resultado_binance$cummulativeQuoteQty) else NA
           e_qty   <- if (!is.null(resultado_binance$executedQty)) as.numeric(resultado_binance$executedQty) else NA
           
+          p_usdt_brl_live <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) 5.22)
+          if (is.null(p_usdt_brl_live) || is.na(p_usdt_brl_live) || p_usdt_brl_live <= 0) p_usdt_brl_live <- 5.22
+
           if (!is.na(c_quote) && c_quote > 0 && !is.na(e_qty) && e_qty > 0) {
             # Preço unitário real exato preenchido pela Binance
             p_calc_exec <- c_quote / e_qty
-            valor_brl_exec <- c_quote
+            if (pedido$destino == "USDT" && pedido$origem != "BRL") {
+              valor_brl_exec <- c_quote * p_usdt_brl_live
+            } else {
+              valor_brl_exec <- c_quote
+            }
           } else if (!is.na(e_qty) && e_qty > 0) {
             p_calc_exec <- as.numeric(pedido$valor_brl) / e_qty
             valor_brl_exec <- as.numeric(pedido$valor_brl)
           } else {
             # Para pares cruzados ou fallbacks, obtém a cotação real fiduciária de mercado no momento
             if (ativo_adquirido == "PAXG") {
-              p_calc_exec <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT"), "parsed")$price) * as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) 24000.0)
+              p_calc_exec <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT"), "parsed")$price) * p_usdt_brl_live, error = function(e) 24000.0)
             } else if (ativo_adquirido %in% c("NVDAB", "SPYB", "SQQQB", "TLT", "TSLAB", "QQQB", "AAPLB")) {
-              p_calc_exec <- tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%sUSDT", ativo_adquirido)), "parsed")$price) * as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) 1150.0)
+              p_calc_exec <- tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%sUSDT", ativo_adquirido)), "parsed")$price) * p_usdt_brl_live, error = function(e) 1150.0)
             } else {
               p_calc_exec <- tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%sBRL", ativo_adquirido)), "parsed")$price), error = function(e) 0.0)
             }
@@ -1972,8 +1979,18 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
             if (resultado_binance$sucesso) {
               if (pedido$origem %in% c("BRL", "USDT") && !(pedido$origem == "USDT" && pedido$destino == "BRL")) {
                 str_lucro_obt <- "Posição aberta (aquisição)"
-              } else if (pedido$destino %in% c("BRL", "USDT")) {
-                # Liquidação efetiva em Fiat (BRL ou USDT) -> Lucro FIFO Real Realizado
+              } else if (pedido$destino == "USDT") {
+                # Liquidação efetiva em Dólar USDT -> Lucro FIFO Real Realizado em USDT e convertido para BRL
+                if (!is.na(ret_obtido_real)) {
+                  val_quote_u <- if (!is.na(c_quote) && c_quote > 0) c_quote else (as.numeric(valor_brl_exec) / p_usdt_brl_live)
+                  lucro_obt_usdt <- val_quote_u * (ret_obtido_real / 100)
+                  lucro_obt_brl <- as.numeric(valor_brl_exec) * (ret_obtido_real / 100)
+                  str_lucro_obt <- sprintf("%+.2f%% | %+.2f USDT (%+.2f reais) [FIFO Real]", ret_obtido_real, lucro_obt_usdt, lucro_obt_brl)
+                } else {
+                  str_lucro_obt <- "Posição desovada em USDT"
+                }
+              } else if (pedido$destino == "BRL") {
+                # Liquidação efetiva em Reais Fiat -> Lucro FIFO Real Realizado
                 if (!is.na(ret_obtido_real)) {
                   lucro_obt_brl <- as.numeric(valor_brl_exec) * (ret_obtido_real / 100)
                   str_lucro_obt <- sprintf("%+.2f%% | %+.2f reais [FIFO Real]", ret_obtido_real, lucro_obt_brl)
