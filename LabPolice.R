@@ -1390,7 +1390,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           }
         }
         
-        # Trava 2.8: Corredor Dinâmico de Caixa Fiduciário BRL (Piso de 10% e Teto de 20% com Válvula de Dip Cripto - Opção 2)
+        # Trava 2.8: Corredor Dinâmico de Caixa Fiduciário BRL (Piso de 10% e Teto de 40% com Válvula de Dip Cripto - Opção 2)
         # Preserva liquidez em reais contra rotinas fiduciárias e dolarização (Pátria Volátil BRL -> USDT),
         # mas permite perfuração controlada do piso de 10% (até piso residual de 20 reais)
         # EXCLUSIVAMENTE para compras calibradas de dip/crash cripto (BTC, SOL, BNB, LINK, ETH, NEAR)
