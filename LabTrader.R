@@ -1597,17 +1597,17 @@ executar_radar_labtrader <- function() {
       
       ret_nvda <- if (!is.null(p_custo_nvda_usdt) && p_custo_nvda_usdt > 0) (p_nvda_live / p_custo_nvda_usdt) - 1.0 else ((p_nvda_live * p_usdt_brl) / pm_nvda) - 1.0
       
-      # Target Adaptativo por FSP / Largura de Banda ou Saída Ágil Trava 6
-      tp_adaptativo_nvda <- 0.0060
+      # Target Adaptativo por FSP / Largura de Banda ou Desengasgo Trava 6
+      tp_adaptativo_nvda <- 0.0070
       if (exists("dsp_nvda_cache") && !is.null(dsp_nvda_cache$bandwidth)) {
-        ampliacao_tp <- min(1.0, max(0.0, (0.042 - dsp_nvda_cache$bandwidth) / 0.042))
-        tp_adaptativo_nvda <- 0.0060 + 0.0060 * ampliacao_tp
+        ampliacao_tp <- min(1.0, max(0.0, (0.045 - dsp_nvda_cache$bandwidth) / 0.045))
+        tp_adaptativo_nvda <- 0.0070 + 0.0055 * ampliacao_tp
       }
       
-      # Saída ágil Trava 6: após 60 min de posse se ret >= +0.45%, ou alvo pleno adaptativo (+0.60% a +1.20%)
-      tempo_posse_min <- if (lote_nvda$tem_lote) lote_nvda$minutos_posse else 60.0
+      # Saída desengasgo Trava 6: após 24h (1.440 min) de posse se ret >= +0.50%, ou alvo pleno adaptativo (+0.70% a +1.25%)
+      tempo_posse_min <- if (lote_nvda$tem_lote) lote_nvda$minutos_posse else 1440.0
       atingiu_alvo_pleno <- (ret_nvda >= tp_adaptativo_nvda)
-      atingiu_saida_agil <- (tempo_posse_min >= 60.0 && ret_nvda >= 0.0045)
+      atingiu_saida_agil <- (tempo_posse_min >= 1440.0 && ret_nvda >= 0.0050)
       
       if (atingiu_alvo_pleno || atingiu_saida_agil) {
         val_venda_brl <- saldo_nvdab_usd * p_nvda_live * p_usdt_brl
