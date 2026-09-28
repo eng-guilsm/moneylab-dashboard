@@ -1908,14 +1908,17 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           p_calc_exec <- 0.0
           ativo_adquirido <- if (pedido$origem %in% c("BRL", "USDT")) as.character(pedido$destino) else as.character(pedido$origem)
           
-          if (!is.null(resultado_binance$executedQty) && !is.na(as.numeric(resultado_binance$executedQty)) && as.numeric(resultado_binance$executedQty) > 0) {
-            # Preço unitário em BRL baseado na quantidade real executada na Binance (elimina distorção cambial)
-            p_calc_exec <- as.numeric(pedido$valor_brl) / as.numeric(resultado_binance$executedQty)
-          } else if (pedido$origem == "BRL" && !is.null(resultado_binance$cummulativeQuoteQty) && !is.null(resultado_binance$executedQty)) {
-            e_qty <- as.numeric(resultado_binance$executedQty)
-            if (!is.na(e_qty) && e_qty > 0) {
-              p_calc_exec <- as.numeric(resultado_binance$cummulativeQuoteQty) / e_qty
-            }
+          # Apuração exata do preço e valor executado na Binance API
+          c_quote <- if (!is.null(resultado_binance$cummulativeQuoteQty)) as.numeric(resultado_binance$cummulativeQuoteQty) else NA
+          e_qty   <- if (!is.null(resultado_binance$executedQty)) as.numeric(resultado_binance$executedQty) else NA
+          
+          if (!is.na(c_quote) && c_quote > 0 && !is.na(e_qty) && e_qty > 0) {
+            # Preço unitário real exato preenchido pela Binance
+            p_calc_exec <- c_quote / e_qty
+            valor_brl_exec <- c_quote
+          } else if (!is.na(e_qty) && e_qty > 0) {
+            p_calc_exec <- as.numeric(pedido$valor_brl) / e_qty
+            valor_brl_exec <- as.numeric(pedido$valor_brl)
           } else {
             # Para pares cruzados ou fallbacks, obtém a cotação real fiduciária de mercado no momento
             if (ativo_adquirido == "PAXG") {
@@ -1925,10 +1928,10 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
             } else {
               p_calc_exec <- tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%sBRL", ativo_adquirido)), "parsed")$price), error = function(e) 0.0)
             }
+            valor_brl_exec <- as.numeric(pedido$valor_brl)
           }
           if (is.null(p_calc_exec) || length(p_calc_exec) == 0 || is.na(p_calc_exec) || p_calc_exec <= 0) {
-            p_calc_exec <- ifelse(!is.null(resultado_binance$executedQty) && as.numeric(resultado_binance$executedQty) > 0,
-                                  as.numeric(pedido$valor_brl) / as.numeric(resultado_binance$executedQty), 0.0)
+            p_calc_exec <- ifelse(!is.na(e_qty) && e_qty > 0, as.numeric(pedido$valor_brl) / e_qty, 0.0)
           }
           
           registro_exec <- data.frame(
@@ -1936,7 +1939,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
             Estrategia = as.character(pedido$estrategia),
             Origem = as.character(pedido$origem),
             Destino = as.character(pedido$destino),
-            Valor_BRL = as.numeric(pedido$valor_brl),
+            Valor_BRL = as.numeric(valor_brl_exec),
             Preco_Exec = as.numeric(p_calc_exec[1]),
             Lucro_Proj = as.numeric(pedido$lucro_esperado_pct),
             Status = as.character(status_final),
@@ -1972,7 +1975,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
               } else if (pedido$destino %in% c("BRL", "USDT")) {
                 # Liquidação efetiva em Fiat (BRL ou USDT) -> Lucro FIFO Real Realizado
                 if (!is.na(ret_obtido_real)) {
-                  lucro_obt_brl <- as.numeric(pedido$valor_brl) * (ret_obtido_real / 100)
+                  lucro_obt_brl <- as.numeric(valor_brl_exec) * (ret_obtido_real / 100)
                   str_lucro_obt <- sprintf("%+.2f%% | %+.2f reais [FIFO Real]", ret_obtido_real, lucro_obt_brl)
                 } else {
                   str_lucro_obt <- "Posição desovada em Fiat"
@@ -1988,7 +1991,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
               }
               
               msg_tg <- sprintf("🟢 <b>[ORDEM EXECUTADA]</b>\n━━━━━━━━━━━━━━━━━━━━\n🎯 <b>Plano:</b> %s\n🔄 <b>Operação:</b> %s ➔ %s\n💰 <b>Valor:</b> %.2f reais (Qtd: %s %s)\n📈 <b>Lucro Projetado:</b> %s\n💵 <b>Lucro Obtido:</b> %s\n🆔 <b>Order ID:</b> <code>%s</code>\n⏱️ <b>Data:</b> %s\n📝 <b>Status:</b> Preenchido na Corretora (FILLED)\n━━━━━━━━━━━━━━━━━━━━",
-                                estrategia_nome, pedido$origem, pedido$destino, pedido$valor_brl,
+                                estrategia_nome, pedido$origem, pedido$destino, valor_brl_exec,
                                 ifelse(!is.null(resultado_binance$executedQty), resultado_binance$executedQty, "--"), ativo_qtd_label,
                                 str_lucro_proj, str_lucro_obt, resultado_binance$orderId, ts_str)
               notificar_telegram_trade(msg_tg)
