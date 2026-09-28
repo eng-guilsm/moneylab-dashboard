@@ -1395,9 +1395,9 @@ executar_radar_labtrader <- function() {
   piso_usdt_usd_dinamico <- piso_usdt_brl_dinamico / p_usdt_brl
   usdt_livre_rotacao     <- max(0.0, saldo_usdt_usd - piso_usdt_usd_dinamico)
   
-  # 🇧🇷 Corredor Dinâmico de Caixa BRL: Piso de 10% e Teto de 20% (Anti-Ociosidade - Cenário B)
+  # 🇧🇷 Corredor Dinâmico de Caixa BRL: Piso de 10% e Teto de 40% (Anti-Ociosidade com Ampla Reserva Cripto)
   piso_brl_dinamico      <- max(200.0, total_patrimonio_est * 0.10)
-  teto_brl_dinamico      <- max(400.0, total_patrimonio_est * 0.20)
+  teto_brl_dinamico      <- max(800.0, total_patrimonio_est * 0.40)
   caixa_brl_livre_patria <- max(0.0, saldo_caixa_brl - piso_brl_dinamico)
   caixa_brl_livre_cripto <- max(0.0, saldo_caixa_brl - 20.0) # Válvula de Dip Cripto (Opção 2)
   caixa_brl_livre        <- caixa_brl_livre_patria
@@ -1547,9 +1547,12 @@ executar_radar_labtrader <- function() {
   # [VENCEDOR DO TORNEIO QUANTITATIVO HEAD-TO-HEAD // +10,18 a +10,60 REAIS/MÊS PASSIVOS]
   # Arquitetura: O fluxo especulativo USDT -> BRL foi extinto por gerar destruição de valor (churn).
   # Atuação: Varredor Unidirecional de BRL -> USDT quando o caixa fiduciário ultrapassa
-  # o teto dinâmico de 20%, alocando 100% no Simple Earn a 6,88% a.a. sem risco de corretagem.
-  # Resgates de USDT para BRL ocorrem cirurgicamente sob demanda exclusiva para compras de altcoins em dip.
+  # o teto dinâmico de 40%, preservando até 40% em BRL como reserva tática para compras
+  # de BTC e altcoins em dip, e alocando o excesso estrutural no Simple Earn a 6,88% a.a.
   # ----------------------------------------------------------------------------
+  stats_u_24h <- obter_stats_usdt_24h()
+  z_patria    <- if (!is.null(stats_u_24h$z)) stats_u_24h$z else 0.0
+  
   if (is.null(pedido) && !is.null(p_usdt_brl) && p_usdt_brl > 0) {
     if (saldo_usdt_brl < teto_usdt_brl_dinamico) {
       excesso_caixa_brl <- max(0.0, saldo_caixa_brl - teto_brl_dinamico)
