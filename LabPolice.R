@@ -824,8 +824,12 @@ enviar_ordem_binance_market <- function(origem, destino, valor_brl) {
 obter_lote_aberto_binance_ssot <- function(ativo) {
   if (!exists("call_binance")) return(NULL)
   tryCatch({
-    sym <- sprintf("%sBRL", ativo)
-    trades <- call_binance("/api/v3/myTrades", list(symbol = sym, limit = 40))
+    sym <- if (ativo %in% c("NVDAB", "SPYB", "SQQQB", "TLT", "TSLAB", "AAPLB", "PAXG")) {
+      sprintf("%sUSDT", ativo)
+    } else {
+      sprintf("%sBRL", ativo)
+    }
+    trades <- call_binance("/api/v3/myTrades", list(symbol = sym, limit = 100))
     if (is.null(trades) || length(trades) == 0) return(NULL)
     
     df <- if (is.data.frame(trades)) trades else dplyr::bind_rows(trades)
@@ -1915,17 +1919,25 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           p_usdt_brl_live <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=USDTBRL"), "parsed")$price), error = function(e) 5.22)
           if (is.null(p_usdt_brl_live) || is.na(p_usdt_brl_live) || p_usdt_brl_live <= 0) p_usdt_brl_live <- 5.22
 
+          operacao_envolve_usdt <- (as.character(pedido$origem) == "USDT" || as.character(pedido$destino) == "USDT") &&
+                                   (as.character(pedido$origem) != "BRL" && as.character(pedido$destino) != "BRL")
+
           if (!is.na(c_quote) && c_quote > 0 && !is.na(e_qty) && e_qty > 0) {
             # Preço unitário real exato preenchido pela Binance
-            p_calc_exec <- c_quote / e_qty
-            if (pedido$destino == "USDT" && pedido$origem != "BRL") {
-              valor_brl_exec <- c_quote * p_usdt_brl_live
+            if (operacao_envolve_usdt) {
+              # Em pares USDT (ex: NVDABUSDT, SPYBUSDT, PAXGUSDT), cummulativeQuoteQty é em USDT
+              valor_usdt_exec <- c_quote
+              valor_brl_exec  <- c_quote * p_usdt_brl_live
+              p_calc_exec     <- (c_quote / e_qty) * p_usdt_brl_live
             } else {
-              valor_brl_exec <- c_quote
+              valor_brl_exec  <- c_quote
+              valor_usdt_exec <- c_quote / p_usdt_brl_live
+              p_calc_exec     <- c_quote / e_qty
             }
           } else if (!is.na(e_qty) && e_qty > 0) {
-            p_calc_exec <- as.numeric(pedido$valor_brl) / e_qty
-            valor_brl_exec <- as.numeric(pedido$valor_brl)
+            valor_brl_exec  <- as.numeric(pedido$valor_brl)
+            valor_usdt_exec <- valor_brl_exec / p_usdt_brl_live
+            p_calc_exec     <- valor_brl_exec / e_qty
           } else {
             # Para pares cruzados ou fallbacks, obtém a cotação real fiduciária de mercado no momento
             if (ativo_adquirido == "PAXG") {
@@ -1935,7 +1947,8 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
             } else {
               p_calc_exec <- tryCatch(as.numeric(content(GET(sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%sBRL", ativo_adquirido)), "parsed")$price), error = function(e) 0.0)
             }
-            valor_brl_exec <- as.numeric(pedido$valor_brl)
+            valor_brl_exec  <- as.numeric(pedido$valor_brl)
+            valor_usdt_exec <- valor_brl_exec / p_usdt_brl_live
           }
           if (is.null(p_calc_exec) || length(p_calc_exec) == 0 || is.na(p_calc_exec) || p_calc_exec <= 0) {
             p_calc_exec <- ifelse(!is.na(e_qty) && e_qty > 0, as.numeric(pedido$valor_brl) / e_qty, 0.0)
@@ -1971,11 +1984,32 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           
           # Alerta Telegram Instantâneo (DM Privada)
           lucro_proj_pct <- as.numeric(pedido$lucro_esperado_pct)
-          lucro_proj_brl <- as.numeric(pedido$valor_brl) * (lucro_proj_pct / 100)
-          str_lucro_proj <- sprintf("+%.2f%% | %.2f reais", lucro_proj_pct, lucro_proj_brl)
+          if (operacao_envolve_usdt) {
+            val_u <- if (exists("valor_usdt_exec") && !is.na(valor_usdt_exec) && valor_usdt_exec > 0) valor_usdt_exec else (valor_brl_exec / p_usdt_brl_live)
+            str_valor_tg   <- sprintf("%.2f USDT (~%.2f reais)", val_u, valor_brl_exec)
+            lucro_proj_u   <- val_u * (lucro_proj_pct / 100)
+            lucro_proj_b   <- valor_brl_exec * (lucro_proj_pct / 100)
+            str_lucro_proj <- sprintf("+%.2f%% | +%.2f USDT (~+%.2f reais)", lucro_proj_pct, lucro_proj_u, lucro_proj_b)
+          } else {
+            str_valor_tg   <- sprintf("%.2f reais", valor_brl_exec)
+            lucro_proj_b   <- valor_brl_exec * (lucro_proj_pct / 100)
+            str_lucro_proj <- sprintf("+%.2f%% | +%.2f reais", lucro_proj_pct, lucro_proj_b)
+          }
           
           if (executar_real_efetivo) {
-            ativo_qtd_label <- ifelse(pedido$origem == "BRL", pedido$destino, pedido$origem)
+            if (as.character(pedido$origem) %in% c("BRL", "USDT") && as.character(pedido$destino) %in% c("BRL", "USDT")) {
+              ativo_qtd_label <- "USDT"
+            } else if (as.character(pedido$origem) %in% c("BRL", "USDT")) {
+              ativo_qtd_label <- as.character(pedido$destino)
+            } else if (as.character(pedido$destino) %in% c("BRL", "USDT")) {
+              ativo_qtd_label <- as.character(pedido$origem)
+            } else if (as.character(pedido$origem) == "BTC" && as.character(pedido$destino) == "PAXG") {
+              ativo_qtd_label <- "PAXG"
+            } else if (as.character(pedido$origem) == "PAXG" && as.character(pedido$destino) == "BTC") {
+              ativo_qtd_label <- "PAXG"
+            } else {
+              ativo_qtd_label <- as.character(pedido$destino)
+            }
             if (resultado_binance$sucesso) {
               if (pedido$origem %in% c("BRL", "USDT") && !(pedido$origem == "USDT" && pedido$destino == "BRL")) {
                 str_lucro_obt <- "Posição aberta (aquisição)"
@@ -2007,8 +2041,8 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                 }
               }
               
-              msg_tg <- sprintf("🟢 <b>[ORDEM EXECUTADA]</b>\n━━━━━━━━━━━━━━━━━━━━\n🎯 <b>Plano:</b> %s\n🔄 <b>Operação:</b> %s ➔ %s\n💰 <b>Valor:</b> %.2f reais (Qtd: %s %s)\n📈 <b>Lucro Projetado:</b> %s\n💵 <b>Lucro Obtido:</b> %s\n🆔 <b>Order ID:</b> <code>%s</code>\n⏱️ <b>Data:</b> %s\n📝 <b>Status:</b> Preenchido na Corretora (FILLED)\n━━━━━━━━━━━━━━━━━━━━",
-                                estrategia_nome, pedido$origem, pedido$destino, valor_brl_exec,
+              msg_tg <- sprintf("🟢 <b>[ORDEM EXECUTADA]</b>\n━━━━━━━━━━━━━━━━━━━━\n🎯 <b>Plano:</b> %s\n🔄 <b>Operação:</b> %s ➔ %s\n💰 <b>Valor:</b> %s (Qtd: %s %s)\n📈 <b>Lucro Projetado:</b> %s\n💵 <b>Lucro Obtido:</b> %s\n🆔 <b>Order ID:</b> <code>%s</code>\n⏱️ <b>Data:</b> %s\n📝 <b>Status:</b> Preenchido na Corretora (FILLED)\n━━━━━━━━━━━━━━━━━━━━",
+                                estrategia_nome, pedido$origem, pedido$destino, str_valor_tg,
                                 ifelse(!is.null(resultado_binance$executedQty), resultado_binance$executedQty, "--"), ativo_qtd_label,
                                 str_lucro_proj, str_lucro_obt, resultado_binance$orderId, ts_str)
               notificar_telegram_trade(msg_tg)
@@ -2065,8 +2099,13 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
               }
             }
           } else {
-            msg_tg <- sprintf("🧪 <b>[SIMULAÇÃO]</b>\n━━━━━━━━━━━━━━━━━━━━\n🎯 <b>Plano:</b> %s\n🔄 <b>Operação:</b> %s ➔ %s\n💰 <b>Lote Calculado:</b> %.2f reais\n📈 <b>Lucro Projetado:</b> %s\n⏱️ <b>Data:</b> %s\n📝 <b>Status:</b> TESTE\n━━━━━━━━━━━━━━━━━━━━",
-                              estrategia_nome, pedido$origem, pedido$destino, pedido$valor_brl, str_lucro_proj, ts_str)
+            str_lote_sim <- if (operacao_envolve_usdt) {
+              sprintf("%.2f USDT (~%.2f reais)", as.numeric(pedido$valor_brl) / p_usdt_brl_live, as.numeric(pedido$valor_brl))
+            } else {
+              sprintf("%.2f reais", as.numeric(pedido$valor_brl))
+            }
+            msg_tg <- sprintf("🧪 <b>[SIMULAÇÃO]</b>\n━━━━━━━━━━━━━━━━━━━━\n🎯 <b>Plano:</b> %s\n🔄 <b>Operação:</b> %s ➔ %s\n💰 <b>Lote Calculado:</b> %s\n📈 <b>Lucro Projetado:</b> %s\n⏱️ <b>Data:</b> %s\n📝 <b>Status:</b> TESTE\n━━━━━━━━━━━━━━━━━━━━",
+                              estrategia_nome, pedido$origem, pedido$destino, str_lote_sim, str_lucro_proj, ts_str)
             notificar_telegram_trade(msg_tg)
           }
           
