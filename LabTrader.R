@@ -1591,11 +1591,11 @@ executar_radar_labtrader <- function() {
         tr_nv <- call_binance("/api/v3/myTrades", list(symbol = "NVDABUSDT", limit = 5))
         if (!is.null(tr_nv) && length(tr_nv) > 0) {
           buys_nv <- tr_nv[sapply(tr_nv, function(x) isTRUE(x$isBuyer))]
-          if (length(buys_nv) > 0) as.numeric(tail(buys_nv, 1)[[1]]$price) else (pm_nvda / p_usdt_brl)
-        } else (pm_nvda / p_usdt_brl)
-      }, error = function(e) (pm_nvda / p_usdt_brl))
+          if (length(buys_nv) > 0) as.numeric(tail(buys_nv, 1)[[1]]$price) else ifelse(pm_nvda > 500, pm_nvda / p_usdt_brl, pm_nvda)
+        } else ifelse(pm_nvda > 500, pm_nvda / p_usdt_brl, pm_nvda)
+      }, error = function(e) ifelse(pm_nvda > 500, pm_nvda / p_usdt_brl, pm_nvda))
       
-      ret_nvda <- if (!is.null(p_custo_nvda_usdt) && p_custo_nvda_usdt > 0) (p_nvda_live / p_custo_nvda_usdt) - 1.0 else ((p_nvda_live * p_usdt_brl) / pm_nvda) - 1.0
+      ret_nvda <- if (!is.null(p_custo_nvda_usdt) && p_custo_nvda_usdt > 0) (p_nvda_live / p_custo_nvda_usdt) - 1.0 else (p_nvda_live / ifelse(pm_nvda > 500, pm_nvda / p_usdt_brl, pm_nvda)) - 1.0
       
       # Target Adaptativo por FSP / Largura de Banda ou Desengasgo Trava 6
       tp_adaptativo_nvda <- 0.0070
