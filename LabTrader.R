@@ -2097,10 +2097,18 @@ executar_radar_labtrader <- function() {
       pm_tlt <- if (lote_tlt$tem_lote && !is.null(lote_tlt$preco_compra) && lote_tlt$preco_compra > 0) lote_tlt$preco_compra else obter_vwap_ativo("TLT")
       p_tlt_live <- tryCatch(as.numeric(tail(getQuote("TLT")$Last, 1)), error = function(e) 95.0)
       if (pm_tlt > 0 && p_tlt_live > 0) {
-        p_tlt_live_brl <- p_tlt_live * p_usdt_brl
-        ret_tlt <- (p_tlt_live_brl / pm_tlt) - 1.0
+        p_custo_tlt_usdt <- tryCatch({
+          tr_tlt <- call_binance("/api/v3/myTrades", list(symbol = "TLTBUSDT", limit = 5))
+          if (!is.null(tr_tlt) && length(tr_tlt) > 0) {
+            buys_tlt <- tr_tlt[sapply(tr_tlt, function(x) isTRUE(x$isBuyer))]
+            if (length(buys_tlt) > 0) as.numeric(tail(buys_tlt, 1)[[1]]$price) else ifelse(pm_tlt > 200, pm_tlt / p_usdt_brl, pm_tlt)
+          } else ifelse(pm_tlt > 200, pm_tlt / p_usdt_brl, pm_tlt)
+        }, error = function(e) ifelse(pm_tlt > 200, pm_tlt / p_usdt_brl, pm_tlt))
+        
+        ret_tlt <- if (!is.null(p_custo_tlt_usdt) && p_custo_tlt_usdt > 0) (p_tlt_live / p_custo_tlt_usdt) - 1.0 else (p_tlt_live / ifelse(pm_tlt > 200, pm_tlt / p_usdt_brl, pm_tlt)) - 1.0
         tempo_ok <- !lote_tlt$tem_lote || lote_tlt$minutos_posse >= 15.0 || ret_tlt >= 0.015
-        if (ret_tlt >= 0.0052 && tempo_ok) {
+        em_cooldown_tlt <- verificar_cooldown_veto("PLANO_ESCUDO_DE_WASHINGTON", timeout_seg = 300)
+        if (!em_cooldown_tlt && ret_tlt >= 0.0052 && tempo_ok) {
           pedido <- list(
             estrategia = "PLANO_ESCUDO_DE_WASHINGTON",
             origem = "TLT", destino = "USDT",
@@ -2151,15 +2159,23 @@ executar_radar_labtrader <- function() {
       p_sqqq_live <- tryCatch(as.numeric(content(GET("https://api.binance.com/api/v3/ticker/price?symbol=SQQQBUSDT"), "parsed")$price), error = function(e) NULL)
       pm_sqqq <- if (lote_anti$tem_lote && !is.null(lote_anti$preco_compra) && lote_anti$preco_compra > 0) lote_anti$preco_compra else obter_vwap_ativo("SQQQB")
       if (!is.null(p_sqqq_live) && p_sqqq_live > 0 && pm_sqqq > 0) {
-        p_sqqq_live_brl <- p_sqqq_live * p_usdt_brl
-        ret_sqqq <- (p_sqqq_live_brl / pm_sqqq) - 1.0
+        p_custo_sqqq_usdt <- tryCatch({
+          tr_s <- call_binance("/api/v3/myTrades", list(symbol = "SQQQBUSDT", limit = 5))
+          if (!is.null(tr_s) && length(tr_s) > 0) {
+            buys_s <- tr_s[sapply(tr_s, function(x) isTRUE(x$isBuyer))]
+            if (length(buys_s) > 0) as.numeric(tail(buys_s, 1)[[1]]$price) else ifelse(pm_sqqq > 100, pm_sqqq / p_usdt_brl, pm_sqqq)
+          } else ifelse(pm_sqqq > 100, pm_sqqq / p_usdt_brl, pm_sqqq)
+        }, error = function(e) ifelse(pm_sqqq > 100, pm_sqqq / p_usdt_brl, pm_sqqq))
+        
+        ret_sqqq <- if (!is.null(p_custo_sqqq_usdt) && p_custo_sqqq_usdt > 0) (p_sqqq_live / p_custo_sqqq_usdt) - 1.0 else (p_sqqq_live / ifelse(pm_sqqq > 100, pm_sqqq / p_usdt_brl, pm_sqqq)) - 1.0
         tempo_ok <- !lote_anti$tem_lote || lote_anti$minutos_posse >= 15.0 || ret_sqqq >= 0.015
         
         # 🛡️ Regra B (Blindagem Absoluta do Lote Legado de 16/09):
         # Lotes históricos com custo >= 38.0 USDT NUNCA podem ser vendidos no prejuízo!
         # Saída estritamente sob Trava 6: Take Profit de +0,85% líquido (ou saída ágil em Z >= +0,20 com ganho >= +0,50%)
         z_sqqq_exit <- if (!is.null(stats_sqqqb_1h$media) && !is.null(stats_sqqqb_1h$sd) && stats_sqqqb_1h$sd > 0) (p_sqqq_live - stats_sqqqb_1h$media) / stats_sqqqb_1h$sd else 0.0
-        cond_saida_sqqq <- (ret_sqqq >= 0.0085 || (ret_sqqq >= 0.0050 && z_sqqq_exit >= 0.20)) && tempo_ok
+        em_cooldown_anti <- verificar_cooldown_veto("PLANO_SENTINELA_ANTIFRAGIL", timeout_seg = 300)
+        cond_saida_sqqq <- !em_cooldown_anti && (ret_sqqq >= 0.0085 || (ret_sqqq >= 0.0050 && z_sqqq_exit >= 0.20)) && tempo_ok
         
         if (cond_saida_sqqq) {
           val_venda_brl <- saldo_sqqqb_usd * p_sqqq_live * p_usdt_brl
