@@ -1473,10 +1473,25 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                               ifelse(estrategia_nome == "PLANO_SENTINELA_DE_ETER", 0.50,
                               ifelse(grepl("GRAVIDADE", estrategia_nome), 0.16, 1.0)))))))))))))
               
-              # Se for realização de lucro / rotação oposta, zera o cooldown
+              # Governança de Cooldown em Rotação Oposta (Anti-Churning / Anti-Whipsaw Intradiário):
               ultimo_reg <- tail(hist_est, 1)
               if (!is.null(ultimo_reg$Origem) && ultimo_reg$Origem != as.character(pedido$origem)) {
-                cooldown_req <- 0.0
+                # Caso A: Última ordem foi VENDA (Origem != BRL/USDT) e nova ordem é RECOMPRA (Origem == BRL/USDT)
+                # Exige resfriamento mínimo pós-venda (mínimo 20 min / 0.33h) para evitar recompra apressada no topo
+                if (ultimo_reg$Origem != "BRL" && ultimo_reg$Origem != "USDT" && (as.character(pedido$origem) == "BRL" || as.character(pedido$origem) == "USDT")) {
+                  cooldown_req <- max(0.33, cooldown_req)
+                } else if ((ultimo_reg$Origem == "BRL" || ultimo_reg$Origem == "USDT") && (as.character(pedido$origem) != "BRL" && as.character(pedido$origem) != "USDT")) {
+                  # Caso B: Última ordem foi COMPRA (Origem == BRL/USDT) e nova ordem é VENDA (Origem != BRL/USDT)
+                  # Exige tempo mínimo de maturação (mínimo 10 min / 0.167h) para evitar micro-churn, salvo Take Profit explosivo (>= +1.50%)
+                  lucro_solic <- if (!is.null(pedido$lucro_esperado_pct)) as.numeric(pedido$lucro_esperado_pct) else 0.0
+                  if (lucro_solic < 1.50) {
+                    cooldown_req <- 0.167
+                  } else {
+                    cooldown_req <- 0.0
+                  }
+                } else {
+                  cooldown_req <- 0.0
+                }
               }
               
               if (horas_dif < cooldown_req) {

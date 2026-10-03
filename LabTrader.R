@@ -1057,48 +1057,64 @@ obter_lote_aberto_binance_ssot <- function(ativo) {
       }
     }
     
-    total_rem <- 0
-    custo_total <- 0
+    # 🛡️ Trava de Sanidade Física: Checar saldo real na carteira Spot
+    carr <- if (exists("carteira")) tryCatch(carteira(silent = TRUE), error = function(e) NULL) else NULL
+    saldo_fisico <- if (is.data.frame(carr)) sum(carr$total[carr$asset == ativo], na.rm = TRUE) else NA
+    
+    vendas_df <- df[!df$is_buy, ]
+    min_desde_venda <- if (nrow(vendas_df) > 0) (as.numeric(Sys.time()) - (max(vendas_df$time_num) / 1000)) / 60 else 999.0
+    
+    if (!is.na(saldo_fisico) && saldo_fisico <= 1e-5) {
+      return(list(
+        tem_lote = FALSE,
+        n_lotes_abertos = 0,
+        minutos_posse = 0.0,
+        minutos_desde_venda = min_desde_venda,
+        preco_compra = 0.0,
+        vwap_abertos = 0.0,
+        valor_compra = 0.0,
+        data_compra = as.character(Sys.time()),
+        qtd_aberta = 0.0,
+        valor_total_aberto = 0.0
+      ))
+    }
+    
+    alvo_qtd <- if (!is.na(saldo_fisico) && saldo_fisico > 1e-5) saldo_fisico else sum(sapply(compras, function(x) x$rem))
+    
+    alocado <- 0
+    custo_alocado <- 0
     primeiro_preco <- NA
     primeiro_ts <- NA
     n_abertos <- 0
     
-    for (c in compras) {
-      if (c$rem > 1e-6) {
-        if (is.na(primeiro_preco)) {
-          primeiro_preco <- c$price
-          primeiro_ts <- c$time
-        }
-        total_rem <- total_rem + c$rem
-        custo_total <- custo_total + (c$rem * c$price)
+    # Aloca as compras mais recentes primeiro (reverso) até completar o saldo físico real vivo
+    for (k in rev(seq_along(compras))) {
+      c <- compras[[k]]
+      if (c$rem > 1e-6 && alocado < alvo_qtd) {
+        take_q <- min(c$rem, alvo_qtd - alocado)
+        alocado <- alocado + take_q
+        custo_alocado <- custo_alocado + (take_q * c$price)
+        primeiro_preco <- c$price
+        primeiro_ts <- c$time
         n_abertos <- n_abertos + 1
+        if (abs(alocado - alvo_qtd) < 1e-6) break
       }
     }
     
-    # 🛡️ Trava de Sanidade Física: Checar se o ativo realmente existe na carteira Spot
-    carr <- if (exists("carteira")) tryCatch(carteira(silent = TRUE), error = function(e) NULL) else NULL
-    if (is.data.frame(carr)) {
-      saldo_fisico <- sum(carr$total[carr$asset == ativo], na.rm = TRUE)
-      if (is.na(saldo_fisico) || saldo_fisico <= 1e-5) {
-        return(list(tem_lote = FALSE, minutos_posse = 0.0, qtd_aberta = 0.0, valor_total_aberto = 0.0))
-      }
-      total_rem <- min(total_rem, saldo_fisico)
-    }
-    
-    if (total_rem > 1e-4 && custo_total > 5.0) {
-      vwap_real <- custo_total / total_rem
+    if (alocado > 1e-4 && custo_alocado > 5.0) {
+      vwap_real <- custo_alocado / alocado
       min_posse <- if (!is.na(primeiro_ts)) (as.numeric(Sys.time()) - (primeiro_ts / 1000)) / 60 else 999.0
       return(list(
         tem_lote = TRUE,
         n_lotes_abertos = n_abertos,
         minutos_posse = min_posse,
-        minutos_desde_venda = 999.0,
+        minutos_desde_venda = min_desde_venda,
         preco_compra = primeiro_preco,
         vwap_abertos = vwap_real,
-        valor_compra = primeiro_preco * total_rem,
+        valor_compra = primeiro_preco * alocado,
         data_compra = if (!is.na(primeiro_ts)) as.character(as.POSIXct(primeiro_ts / 1000, origin = "1970-01-01", tz = "America/Sao_Paulo")) else as.character(Sys.time()),
-        qtd_aberta = total_rem,
-        valor_total_aberto = custo_total
+        qtd_aberta = alocado,
+        valor_total_aberto = custo_alocado
       ))
     }
   }, error = function(e) NULL)
@@ -1109,7 +1125,21 @@ obter_lote_aberto_estrategia <- function(estrategia_nome, ativo) {
   # 🛡️ SSOT BINANCE API: Prioridade absoluta para apuração real de lotes abertos Spot (Imune a desyncs locais)
   if (ativo %in% c("NEAR", "LINK", "SOL", "BNB", "ETH", "BTC", "PAXG", "TSLAB", "SPYB", "NVDAB", "SQQQB")) {
     lote_binance <- obter_lote_aberto_binance_ssot(ativo)
-    if (!is.null(lote_binance) && isTRUE(lote_binance$tem_lote)) {
+    if (!is.null(lote_binance)) {
+      if (!isTRUE(lote_binance$tem_lote)) {
+        return(list(
+          tem_lote = FALSE,
+          n_lotes_abertos = 0,
+          minutos_posse = 0.0,
+          minutos_desde_venda = 999.0,
+          preco_compra = 0.0,
+          vwap_abertos = 0.0,
+          valor_compra = 0.0,
+          data_compra = as.character(Sys.time()),
+          qtd_aberta = 0.0,
+          valor_total_aberto = 0.0
+        ))
+      }
       return(lote_binance)
     }
   }
@@ -2034,7 +2064,8 @@ executar_radar_labtrader <- function() {
     # 1. Tranche 1: Dip Harmonicus no Vale (Roofing <= -0.85 ou Classic Z <= -1.00 com pureza espectral e d2Z >= 0)
     cond_fourier_t1 <- (roof_z_bnb <= -0.85) && (fhri_bnb >= 0.12) && (fsp_bnb >= 0.30)
     cond_classic_t1 <- (z_bnb_1h <= -1.00)
-    cond_compra_bnb_t1 <- !em_cooldown_bnb && (cond_fourier_t1 || cond_classic_t1) && (acc_bnb >= 0.0) && 
+    cooldown_recompra_bnb_ok <- if (!is.null(lote_info_bnb$minutos_desde_venda)) lote_info_bnb$minutos_desde_venda >= 30.0 else TRUE
+    cond_compra_bnb_t1 <- !em_cooldown_bnb && cooldown_recompra_bnb_ok && (cond_fourier_t1 || cond_classic_t1) && (acc_bnb >= 0.0) && 
                           (pc1_atual <= 0.60) && (caixa_brl_livre_cripto >= 25.0) && 
                           (saldo_bnb_brl < VALOR_BNB_TRANCHE_BRL) && (saldo_bnb_brl < teto_bnb_brl)
     
@@ -2073,7 +2104,10 @@ executar_radar_labtrader <- function() {
       tempo_posse_min_bnb <- if (!is.null(lote_info_bnb$minutos_posse)) lote_info_bnb$minutos_posse else 0.0
       saida_piso_decay_ok <- (retorno_real_bnb >= 0.40 && tempo_posse_min_bnb >= 5760.0)
       
-      deve_vender_bnb <- isTRUE(lote_info_bnb$tem_lote) && !em_cooldown_bnb && (take_profit_bnb_ok || (z_bnb_1h >= 0.15 && margem_minima_bnb_ok) || saida_piso_decay_ok)
+      # 🛡️ Cooldown Anti-Churning: Exige pelo menos 15 minutos de maturação para swing intradiário (salvo Take Profit expressivo >= +1.20%)
+      tempo_minimo_posse_ok <- (tempo_posse_min_bnb >= 15.0) || take_profit_bnb_ok
+      
+      deve_vender_bnb <- isTRUE(lote_info_bnb$tem_lote) && !em_cooldown_bnb && tempo_minimo_posse_ok && (take_profit_bnb_ok || (z_bnb_1h >= 0.15 && margem_minima_bnb_ok) || saida_piso_decay_ok)
       
       if (deve_vender_bnb) {
         pedido <- list(
