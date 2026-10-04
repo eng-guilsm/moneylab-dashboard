@@ -178,6 +178,7 @@ obter_stats_btc_dual_scale <- function() {
       p_macro <- tail(p_5m, min(288, n_5m))
       smooth_macro <- mean(p_macro)
       sd_macro <- max(200.0, sd(p_macro))
+      dsp_macro <- obter_dsp_ativo(p_macro)
       # Harmonicus Fourier DSP para BTC (32p STFT + Roofing Filter)
       dsp_fourier <- if (exists("obter_dsp_fourier_eth")) obter_dsp_fourier_eth(p_5m) else list(roof_z = 0, fsp = 0, fhri = 0, phi_dom = 0, d2Z = 0)
       
@@ -195,11 +196,12 @@ obter_stats_btc_dual_scale <- function() {
       ))
     }
   }, error = function(e) NULL)
+  p_fallback <- if (exists("p_btc_brl") && !is.null(p_btc_brl) && p_btc_brl > 100000) p_btc_brl else 450000.0
   return(list(
-    media_fast = 405000.0, sd_fast = 500.0, dsp_fast = list(theta = 0, d2Z = 0),
-    media_macro = 405000.0, sd_macro = 2000.0, dsp_macro = list(theta = 0, d2Z = 0),
+    media_fast = p_fallback, sd_fast = 1200.0, dsp_fast = list(theta = 0, d2Z = 0),
+    media_macro = p_fallback, sd_macro = 2500.0, dsp_macro = list(theta = 0, d2Z = 0),
     fourier = list(roof_z = 0, fsp = 0, fhri = 0, phi_dom = 0, d2Z = 0),
-    media = 405000.0, sd = 1500.0, serie = rep(405000.0, 30)
+    media = p_fallback, sd = 1200.0, serie = rep(p_fallback, 30)
   ))
 }
 obter_stats_btc_6h <- obter_stats_btc_dual_scale
@@ -2012,9 +2014,9 @@ executar_radar_labtrader <- function() {
         lucro_esperado_pct = 0.50, timestamp = agora_ts
       )
     } else if (saldo_sol_brl >= 25.0) {
-      # Saída sob Trava 6 com Z >= 0.15 OU Take Profit por Lucro Real Expressivo (>= +1.20%)
+      # Saída sob Trava 6 com Z >= 0.02 OU Take Profit por Lucro Real Ágil (>= +0.65%)
       # 🛡️ Subtrava 6.2: Target Decay Ratchet (48h a 72h decaindo suavemente até +0.40% piso)
-      em_cooldown_sol9 <- verificar_cooldown_veto("PLANO_SENTINELA_DO_SOL", timeout_seg = 300)
+      em_cooldown_sol9 <- verificar_cooldown_veto("PLANO_SENTINELA_DO_SOL", timeout_seg = 60)
       lote_info_sol <- obter_lote_aberto_estrategia("PLANO_SENTINELA_DO_SOL", "SOL")
       preco_ref_sol <- if (isTRUE(lote_info_sol$tem_lote)) {
         if (!is.null(lote_info_sol$vwap_abertos) && !is.na(lote_info_sol$vwap_abertos) && lote_info_sol$vwap_abertos > 0) lote_info_sol$vwap_abertos else lote_info_sol$preco_compra
@@ -2023,9 +2025,9 @@ executar_radar_labtrader <- function() {
       retorno_real_sol <- if (!is.na(preco_ref_sol) && preco_ref_sol > 0) ((p_sol_brl - preco_ref_sol) / preco_ref_sol) * 100 else 0.0
       meta_alvo_sol <- calcular_meta_lucro_decay(lote_info_sol$minutos_posse, meta_base = 0.50, horas_inicio_decay = 48.0, horas_fim_decay = 72.0, piso_minimo = 0.40)
       margem_minima_sol_ok <- (retorno_real_sol >= meta_alvo_sol)
-      take_profit_sol_ok <- (retorno_real_sol >= 1.20)
+      take_profit_sol_ok <- (retorno_real_sol >= 0.65) # Take Profit ágil a +0.65% (para capturar repiques sem devolução)
       
-      deve_vender_sol <- isTRUE(lote_info_sol$tem_lote) && !em_cooldown_sol9 && (take_profit_sol_ok || (z_sol_1h >= 0.15 && margem_minima_sol_ok))
+      deve_vender_sol <- isTRUE(lote_info_sol$tem_lote) && !em_cooldown_sol9 && (take_profit_sol_ok || (z_sol_1h >= 0.02 && margem_minima_sol_ok))
       
       if (deve_vender_sol) {
         pedido <- list(
