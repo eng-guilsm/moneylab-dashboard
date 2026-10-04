@@ -1124,8 +1124,10 @@ obter_lote_aberto_binance_ssot <- function(ativo) {
 }
 
 obter_lote_aberto_estrategia <- function(estrategia_nome, ativo) {
-  # 🛡️ SSOT BINANCE API: Prioridade absoluta para apuração real de lotes abertos Spot (Imune a desyncs locais)
-  if (ativo %in% c("NEAR", "LINK", "SOL", "BNB", "ETH", "BTC", "PAXG", "TSLAB", "SPYB", "NVDAB", "SQQQB")) {
+  # 🛡️ SSOT BINANCE API: Prioridade absoluta para apuração real de lotes abertos Spot de ativos mono-estratégia (Imune a desyncs locais)
+  # Ativos com múltiplas estratégias concorrentes (BTC, PAXG) exigem segregação estrita por histórico de ordens
+  ativos_mono_estrategia <- c("NEAR", "LINK", "SOL", "BNB", "ETH", "TSLAB", "SPYB", "NVDAB", "SQQQB")
+  if (ativo %in% ativos_mono_estrategia) {
     lote_binance <- obter_lote_aberto_binance_ssot(ativo)
     if (!is.null(lote_binance)) {
       if (!isTRUE(lote_binance$tem_lote)) {
@@ -1464,17 +1466,11 @@ executar_radar_labtrader <- function() {
   lote_guiana_btc  <- obter_lote_aberto_estrategia("PLANO_GUIANA_BRASILEIRA", "BTC")
   lote_guiana_paxg <- obter_lote_aberto_estrategia("PLANO_GUIANA_BRASILEIRA", "PAXG")
   
-  # Ponta A: Bitcoin eufórico / Ouro com desconto -> Vende BTC e compra PAXG (exige lote aberto próprio de BTC)
-  can_sell_btc_guiana <- isTRUE(lote_guiana_btc$tem_lote) && saldo_btc_brl >= 28.0 && saldo_paxg_brl < teto_ouro_dinamico
-  if (z_guiana <= -1.50 && dsp_guiana$d2Z >= -0.015 && can_sell_btc_guiana) {
-    lote_g <- min(75.0 * fator_lote, max(28.0, saldo_btc_brl * 0.95))
-    if (lote_g >= 28.0 && lote_g <= saldo_btc_brl) {
-      pedido <- list(
-        estrategia = "PLANO_GUIANA_BRASILEIRA",
-        origem = "BTC", destino = "PAXG",
-        valor_brl = lote_g, lucro_esperado_pct = 1.20, timestamp = agora_ts
-      )
-    }
+  # Ponta A: Rota BTC -> PAXG DESATIVADA por governança patrimonial.
+  # Todo Bitcoin é liquidado exclusivamente para BRL (Flecha de Sagarana e Escudo de Aquiles), garantindo caixa fiduciário e evitando travar capital em ouro.
+  can_sell_btc_guiana <- FALSE
+  if (FALSE && can_sell_btc_guiana) {
+    # Rota desativada
   } else if (z_guiana >= 1.50 && isTRUE(lote_guiana_paxg$tem_lote)) {
     # Ponta B: Ouro valorizado / Bitcoin em dip -> Vende PAXG e compra BTC (preservando piso estrutural de 10%)
     # 🛡️ Pré-filtro Satoshis Lock: Só dispara se o retorno do lote de PAXG em Satoshis for >= +0.40% (TP: +1.20%)

@@ -173,3 +173,18 @@ O ecossistema opera com dois dashboards web totalmente distintos, com propósito
 * **Ao atualizar APENAS o `moneylab-dashboard`:** Modificar exclusivamente a Página 3 aberta, `charts-kinetics.js`, `data/charts_data.js` ou `index.html` público. **JAMAIS adicionar senha, PIN ou copiar arquivos confidenciais do Harmonicus.** Realizar o push no repositório `moneylab-dashboard`.
 * **Ao atualizar APENAS o `harmonicus-sx`:** Atualizar os dados dos motores, planos, custódia e suíte completa no repositório `harmonicus-sx`, mantendo o `gatekeeper-lock.js` ativo. Realizar o push no repositório `harmonicus-sx`.
 * **Ao atualizar AMBOS:** Sincronizar as melhorias do motor gráfico (`charts-kinetics.js`) e dados de mercado (`data/charts_data.js`) em ambos os repositórios, mas **preservar rigorosamente a segregação**: `moneylab-dashboard` permanece aberto e sem dados sigilosos; `harmonicus-sx` permanece fechado com PIN e suíte completa.
+
+---
+
+## 🎯 8. Marco de Escalação Patrimonial dos 10k BRL: Transição para Bandas de Arnott & MultiSwing (3 a 15 Dias)
+* **Gatilho de Ativação Soberano:** Sempre que for apurado, durante a auditoria em tempo real ou prestação de contas, que o patrimônio consolidado vivo atingiu a casa dos **10.000,00 reais** (10k BRL), o assistente DEVE compulsoriamente levantar e discutir proativamente com o usuário a implementação das novas mangas de investimento com escala de 3 a 15 dias.
+* **Racional Estrutural de Escala:** O ecossistema NÃO deve inflar os lotes intradiários até saturar os livros de ofertas da Binance em pares BRL (onde ordens > 300 reais em altcoins geram slippage severo). Aos 10k BRL, o modelo preserva os 8 motores intradiários em seu tamanho ótimo de alta frequência e inaugura as mangas institucionais de horizonte mais longo.
+* **Documentos e Relatórios Oficiais que Abrem Esta Nova Etapa:**
+  1. `relatorio_simulacao_multiday_vs_intradiario.md`: Demonstra a superioridade de uma arquitetura multi-manga frente a modelos ingênuos de livro-texto (Smart Bollinger com stop loss e pairs trading SOL/ETH).
+  2. `relatorio_torneio_arnott_multiswing_vs_intradiario.md`: Torneio quantitativo oficial em 184.305 candles de 5m (21,1 meses reais no `MoneyBot_Local.db`), comprovando que as Bandas de Arnott Otimizadas (Cadência 3d / Banda $\pm 2,5\%$) geram **+259,53 reais/mês (+4,89%/mês)** com 10 trades/mês, e o MultiSwing NEAR Trava 6 gera **+156,71 reais/mês** com 100% Win Rate.
+  3. `planos_de_investimento.md`: Arquitetura de governança e alocação de ativos do ecossistema.
+* **Arquitetura Tri-Horizonte Alvo para os 10k BRL:**
+  - **Manga 1: Intradiário LabTrader (Alpha Engine):** 50% da carteira (~5.000 reais), mantendo os 8 motores com tranches ágeis de 50 a 100 reais, retenção de 2h a 12h e proteção Trava 6 Breakeven FIFO ($\ge +0,40\%$).
+  - **Manga 2: Bandas de Arnott Multi-Day (Volatility Pumping Engine):** 30% da carteira (~3.000 reais), com cadência de 3 dias, tolerância de $\pm 2,5\%$, rebalanceamento sobre a cesta High-Beta (`USDT`, `PAXG`, `BTC`, `SOL`, `NEAR`, `LINK`) e *Simple Earn Shield* (6,88% a.a.).
+  - **Manga 3: Colchão Defensivo & Yield Passivo:** 20% da carteira (~2.000 reais), alocado em USDT Simple Earn (6,88% a.a.) e Ouro PAXG físico.
+
