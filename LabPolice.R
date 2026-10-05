@@ -1554,21 +1554,32 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                 
                 compras_abertas <- calcular_lotes_abertos_fifo(compras_todas, vendas_todas, ativo = as.character(pedido$origem))
                 
-                # 🛡️ SSOT BINANCE API: Sincronização direta com a custódia real na corretora para altcoins
-                if (as.character(pedido$origem) %in% c("NEAR", "LINK", "SOL", "BNB", "ETH")) {
+                # 🛡️ SSOT BINANCE API: Sincronização direta com a custódia real na corretora (Altcoins e BTC)
+                if (as.character(pedido$origem) %in% c("NEAR", "LINK", "SOL", "BNB", "ETH", "BTC")) {
                   ssot_lote <- tryCatch(obter_lote_aberto_binance_ssot(as.character(pedido$origem)), error = function(e) NULL)
                   if (!is.null(ssot_lote) && isTRUE(ssot_lote$tem_lote) && !is.null(ssot_lote$vwap_abertos) && ssot_lote$vwap_abertos > 0) {
-                    compras_abertas <- data.frame(
-                      Data_Hora = ssot_lote$data_compra,
-                      Estrategia = estrategia_nome,
-                      Origem = "BRL",
-                      Destino = as.character(pedido$origem),
-                      Valor_BRL = ssot_lote$valor_total_aberto,
-                      Preco_Exec = ssot_lote$vwap_abertos,
-                      qtd = ssot_lote$qtd_aberta,
-                      Status = "EXECUTADO_REAL_BINANCE",
-                      stringsAsFactors = FALSE
-                    )
+                    # 🛡️ Segregação Estrita para Ativos Multi-Estratégia (BTC):
+                    # Se o lote na Binance existe, mas a estratégia solicitante não possui lote próprio de compra aberto no RDS, VETA!
+                    if (as.character(pedido$origem) == "BTC" && nrow(compras_abertas) == 0) {
+                      aprovado <- FALSE
+                      motivo_veto <- sprintf("Segregação Estrita de Custódia\n%s não possui lote próprio de compra para BTC vivo.", estrategia_nome)
+                    }
+                    if (aprovado) {
+                      compras_abertas <- data.frame(
+                        Data_Hora = ssot_lote$data_compra,
+                        Estrategia = estrategia_nome,
+                        Origem = "BRL",
+                        Destino = as.character(pedido$origem),
+                        Valor_BRL = ssot_lote$valor_total_aberto,
+                        Preco_Exec = ssot_lote$vwap_abertos,
+                        qtd = ssot_lote$qtd_aberta,
+                        Status = "EXECUTADO_REAL_BINANCE",
+                        stringsAsFactors = FALSE
+                      )
+                    }
+                  } else if (!is.null(ssot_lote) && !isTRUE(ssot_lote$tem_lote)) {
+                    # 🛡️ Anti-Lote Fantasma: Se a custódia física na Binance é ZERO, limpa qualquer lote zumbi no RDS!
+                    compras_abertas <- data.frame()
                   }
                 }
               }

@@ -1124,18 +1124,17 @@ obter_lote_aberto_binance_ssot <- function(ativo) {
 }
 
 obter_lote_aberto_estrategia <- function(estrategia_nome, ativo) {
-  # 🛡️ SSOT BINANCE API: Prioridade absoluta para apuração real de lotes abertos Spot de ativos mono-estratégia (Imune a desyncs locais)
-  # Ativos com múltiplas estratégias concorrentes (BTC, PAXG) exigem segregação estrita por histórico de ordens
-  ativos_mono_estrategia <- c("NEAR", "LINK", "SOL", "BNB", "ETH", "TSLAB", "SPYB", "NVDAB", "SQQQB")
-  if (ativo %in% ativos_mono_estrategia) {
+  # 🛡️ SSOT BINANCE API: Checagem Física Suprema (Imune a desyncs locais e lotes fantasmas)
+  if (ativo %in% c("NEAR", "LINK", "SOL", "BNB", "ETH", "BTC", "PAXG", "TSLAB", "SPYB", "NVDAB", "SQQQB")) {
     lote_binance <- obter_lote_aberto_binance_ssot(ativo)
     if (!is.null(lote_binance)) {
+      # 🛡️ Trava de Sanidade Física: Se o saldo na Binance é ZERO (ou poeira <= 1e-5), NENHUMA estratégia tem lote aberto!
       if (!isTRUE(lote_binance$tem_lote)) {
         return(list(
           tem_lote = FALSE,
           n_lotes_abertos = 0,
           minutos_posse = 0.0,
-          minutos_desde_venda = 999.0,
+          minutos_desde_venda = lote_binance$minutos_desde_venda,
           preco_compra = 0.0,
           vwap_abertos = 0.0,
           valor_compra = 0.0,
@@ -1144,7 +1143,11 @@ obter_lote_aberto_estrategia <- function(estrategia_nome, ativo) {
           valor_total_aberto = 0.0
         ))
       }
-      return(lote_binance)
+      # Ativos mono-estratégia pertencem 100% à sua única estratégia
+      ativos_mono_estrategia <- c("NEAR", "LINK", "SOL", "BNB", "ETH", "TSLAB", "SPYB", "NVDAB", "SQQQB")
+      if (ativo %in% ativos_mono_estrategia) {
+        return(lote_binance)
+      }
     }
   }
   
