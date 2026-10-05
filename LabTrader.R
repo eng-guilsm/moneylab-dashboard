@@ -1148,6 +1148,81 @@ obter_lote_aberto_estrategia <- function(estrategia_nome, ativo) {
       if (ativo %in% ativos_mono_estrategia) {
         return(lote_binance)
       }
+      
+      # 🛡️ Ativos Multi-Estratégia (BTC, PAXG): Alocação Reversa Estrita Bounded SSOT (Anti-Canibalização & Anti-Lotes Zumbis)
+      if (ativo %in% c("BTC", "PAXG")) {
+        saldo_fisico_vivo <- as.numeric(lote_binance$qtd_aberta)
+        min_trade_unit <- if (ativo == "BTC") 0.00005 else 0.001
+        
+        hist_exec_file <- if (file.exists("ordens_executadas.rds")) "ordens_executadas.rds" else "/app/ordens_executadas.rds"
+        hist_exec <- if (file.exists(hist_exec_file)) tryCatch(readRDS(hist_exec_file), error = function(e) NULL) else NULL
+        
+        if (!is.null(hist_exec) && nrow(hist_exec) > 0 && "Status" %in% names(hist_exec)) {
+          idx_reais <- which(!is.na(hist_exec$Status) & grepl("EXECUTADO_REAL", hist_exec$Status))
+          exec_reais <- hist_exec[idx_reais, ]
+          compras_ativo <- exec_reais[which(exec_reais$Destino == ativo), ]
+          
+          if (nrow(compras_ativo) > 0) {
+            compras_ativo <- compras_ativo[order(as.POSIXct(compras_ativo$Data_Hora), decreasing = TRUE), ]
+            saldo_rem <- saldo_fisico_vivo
+            lotes_estrategia <- list()
+            
+            for (i_ca in seq_len(nrow(compras_ativo))) {
+              if (saldo_rem <= min_trade_unit) break
+              c_row <- compras_ativo[i_ca, ]
+              p_u <- as.numeric(c_row$Preco_Exec)
+              if (is.na(p_u) || p_u <= 0) p_u <- if (ativo == "BTC") 450000.0 else 24000.0
+              q_compra <- as.numeric(c_row$Valor_BRL) / p_u
+              q_aloc <- min(q_compra, saldo_rem)
+              
+              if (as.character(c_row$Estrategia) == as.character(estrategia_nome) && q_aloc >= min_trade_unit) {
+                lotes_estrategia <- append(lotes_estrategia, list(list(
+                  qtd = q_aloc,
+                  preco = p_u,
+                  valor_brl = q_aloc * p_u,
+                  data_hora = c_row$Data_Hora
+                )))
+              }
+              saldo_rem <- saldo_rem - q_aloc
+            }
+            
+            if (length(lotes_estrategia) > 0) {
+              qtd_tot <- sum(sapply(lotes_estrategia, function(x) x$qtd))
+              val_tot <- sum(sapply(lotes_estrategia, function(x) x$valor_brl))
+              vwap_est <- val_tot / qtd_tot
+              primeiro_lote <- lotes_estrategia[[1]]
+              minutos_posse <- as.numeric(difftime(Sys.time(), as.POSIXct(primeiro_lote$data_hora), units = "mins"))
+              
+              return(list(
+                tem_lote = TRUE,
+                n_lotes_abertos = length(lotes_estrategia),
+                minutos_posse = minutos_posse,
+                minutos_desde_venda = 999.0,
+                preco_compra = primeiro_lote$preco,
+                vwap_abertos = vwap_est,
+                valor_compra = val_tot,
+                data_compra = as.character(primeiro_lote$data_hora),
+                qtd_aberta = qtd_tot,
+                valor_total_aberto = val_tot
+              ))
+            } else {
+              # Saldo físico existe na corretora, mas pertence a outra estratégia!
+              return(list(
+                tem_lote = FALSE,
+                n_lotes_abertos = 0,
+                minutos_posse = 0.0,
+                minutos_desde_venda = lote_binance$minutos_desde_venda,
+                preco_compra = 0.0,
+                vwap_abertos = 0.0,
+                valor_compra = 0.0,
+                data_compra = as.character(Sys.time()),
+                qtd_aberta = 0.0,
+                valor_total_aberto = 0.0
+              ))
+            }
+          }
+        }
+      }
     }
   }
   

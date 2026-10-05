@@ -1585,12 +1585,51 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
                   ssot_lote <- tryCatch(obter_lote_aberto_binance_ssot(as.character(pedido$origem)), error = function(e) NULL)
                   if (!is.null(ssot_lote) && isTRUE(ssot_lote$tem_lote) && !is.null(ssot_lote$vwap_abertos) && ssot_lote$vwap_abertos > 0) {
                     # 🛡️ Segregação Estrita para Ativos Multi-Estratégia (BTC):
-                    # Se o lote na Binance existe, mas a estratégia solicitante não possui lote próprio de compra aberto no RDS, VETA!
-                    if (as.character(pedido$origem) == "BTC" && nrow(compras_abertas) == 0) {
-                      aprovado <- FALSE
-                      motivo_veto <- sprintf("Segregação Estrita de Custódia\n%s não possui lote próprio de compra para BTC vivo.", estrategia_nome)
-                    }
-                    if (aprovado) {
+                    # Alocação reversa bounded estrita: verifica se a custódia física na Binance pertence a esta estratégia
+                    if (as.character(pedido$origem) == "BTC") {
+                      saldo_fisico_vivo <- as.numeric(ssot_lote$qtd_aberta)
+                      compras_btc_all <- exec_reais[which(exec_reais$Destino == "BTC"), ]
+                      compras_btc_all <- compras_btc_all[order(as.POSIXct(compras_btc_all$Data_Hora), decreasing = TRUE), ]
+                      saldo_rem <- saldo_fisico_vivo
+                      lote_est_proprio <- list()
+                      
+                      for (i_cb in seq_len(nrow(compras_btc_all))) {
+                        if (saldo_rem <= 0.00005) break
+                        c_b <- compras_btc_all[i_cb, ]
+                        p_u_b <- as.numeric(c_b$Preco_Exec)
+                        if (is.na(p_u_b) || p_u_b <= 0) p_u_b <- 450000.0
+                        q_c_b <- as.numeric(c_b$Valor_BRL) / p_u_b
+                        q_aloc_b <- min(q_c_b, saldo_rem)
+                        
+                        if (as.character(c_b$Estrategia) == as.character(estrategia_nome) && q_aloc_b >= 0.00005) {
+                          lote_est_proprio <- append(lote_est_proprio, list(list(
+                            qtd = q_aloc_b, preco = p_u_b, valor_brl = q_aloc_b * p_u_b, data_hora = c_b$Data_Hora
+                          )))
+                        }
+                        saldo_rem <- saldo_rem - q_aloc_b
+                      }
+                      
+                      if (length(lote_est_proprio) == 0) {
+                        aprovado <- FALSE
+                        motivo_veto <- sprintf("Segregação Estrita de Custódia\n%s não possui custódia física viva de BTC (saldo atual pertence a outra estratégia).", estrategia_nome)
+                        compras_abertas <- data.frame()
+                      } else {
+                        qtd_propria <- sum(sapply(lote_est_proprio, function(x) x$qtd))
+                        val_proprio <- sum(sapply(lote_est_proprio, function(x) x$valor_brl))
+                        vwap_proprio <- val_proprio / qtd_propria
+                        compras_abertas <- data.frame(
+                          Data_Hora = as.character(lote_est_proprio[[1]]$data_hora),
+                          Estrategia = estrategia_nome,
+                          Origem = "BRL",
+                          Destino = "BTC",
+                          Valor_BRL = val_proprio,
+                          Preco_Exec = vwap_proprio,
+                          qtd = qtd_propria,
+                          Status = "EXECUTADO_REAL_BINANCE",
+                          stringsAsFactors = FALSE
+                        )
+                      }
+                    } else if (aprovado) {
                       compras_abertas <- data.frame(
                         Data_Hora = ssot_lote$data_compra,
                         Estrategia = estrategia_nome,
