@@ -46,6 +46,16 @@ VALOR_NEAR_BRL              <- 130.0  # 4.0% - Plano 17: Farol de Near (NEAR 6h 
 # NOTA: O valor 0.72 é uma instância empírica calibrada do modelo (caso representativo para reaproveitamento modular).
 PC1_CORTE_SECULAR           <- 0.72
 
+# Subtrava 2.9: Janela Operacional NYSE (Pregão Regular Seg-Sex 10:30 às 17:00 BRT)
+# Preserva dólares no Simple Earn (6,88% a.a.) fora do horário de mercado
+is_nyse_open <- function() {
+  agora_brt <- Sys.time()
+  attr(agora_brt, "tzone") <- "America/Sao_Paulo"
+  hora_dec <- as.numeric(format(agora_brt, "%H")) + as.numeric(format(agora_brt, "%M")) / 60.0
+  dia_sem  <- as.integer(format(agora_brt, "%u")) # 1=Segunda, 5=Sexta
+  return(dia_sem >= 1 && dia_sem <= 5 && hora_dec >= 10.5 && hora_dec <= 17.0)
+}
+
 obter_stats_macro_btc_30d <- function() {
   db_path <- if (file.exists("MoneyBot_Local.db")) "MoneyBot_Local.db" else "/home/ubuntu/moneylab-dashboard/MoneyBot_Local.db"
   tryCatch({
@@ -1779,7 +1789,7 @@ executar_radar_labtrader <- function() {
         regime_nvda <- "CRASH_CONVEXO"
       }
       
-      if (lote_base_nvda > 0.0) {
+      if (is_nyse_open() && lote_base_nvda > 0.0) {
         lote_usdt_nv <- min(lote_base_nvda * fator_lote, usdt_livre_rotacao)
         if (lote_usdt_nv >= 15.0) {
           ampliacao_tp <- min(1.0, max(0.0, (0.042 - dsp_nvda$bandwidth) / 0.042))
@@ -2244,8 +2254,8 @@ executar_radar_labtrader <- function() {
       if (is.na(s_tlt) || s_tlt <= 0) s_tlt <- 1.2
       z_tlt <- (tail(tlt_serie, 1) - m_tlt) / s_tlt
       
-      # Calibração G500: Z <= -1.11 com aceleração d2Z >= 0.015
-      if (z_tlt <= -1.11 && dsp_tlt$d2Z >= 0.015) {
+      # Calibração G500: Z <= -1.11 com aceleração d2Z >= 0.015 (Pregão NYSE)
+      if (is_nyse_open() && z_tlt <= -1.11 && dsp_tlt$d2Z >= 0.015) {
         lote_usdt_tlt <- min(16.0 * fator_lote, usdt_livre_rotacao)
         pedido <- list(
           estrategia = "PLANO_ESCUDO_DE_WASHINGTON",
@@ -2323,7 +2333,7 @@ executar_radar_labtrader <- function() {
       
       cond_entrada_anti <- (z_sqqq <= -0.60 && acc_sqqq >= 0.0 && (z_qqq >= 1.20 || z_qqq <= -0.80)) && tempo_pos_venda_ok
       
-      if (cond_entrada_anti) {
+      if (is_nyse_open() && cond_entrada_anti) {
         lote_usdt_anti <- min(VALOR_SQQQB_BRL / p_usdt_brl * fator_lote, usdt_livre_rotacao)
         if (lote_usdt_anti >= 15.0) {
           pedido <- list(
@@ -2416,13 +2426,13 @@ executar_radar_labtrader <- function() {
                         (dsp_fourier_spy$roof_z <= -1.40) && 
                         (!is.null(dsp_fourier_spy$d2Z) && dsp_fourier_spy$d2Z >= 0.0)
       
-      if ((cond_harm_spy || cond_crash_spy) && usdt_livre_rotacao >= VALOR_WALLSTREET_USDT && tempo_pos_venda_spy_ok) {
+      if (is_nyse_open() && (cond_harm_spy || cond_crash_spy) && usdt_livre_rotacao >= VALOR_WALLSTREET_USDT && tempo_pos_venda_spy_ok) {
         lote_usdt_ws <- min(VALOR_WALLSTREET_USDT * fator_lote, usdt_livre_rotacao)
         pedido <- list(
           estrategia = "PLANO_SENTINELA_WALLSTREET",
           origem = "USDT", destino = "SPYB",
           valor_brl = lote_usdt_ws * p_usdt_brl,
-          lucro_esperado_pct = 0.40, timestamp = agora_ts
+          lucro_esperado_pct = 0.50, timestamp = agora_ts
         )
       }
     }
@@ -2675,7 +2685,7 @@ executar_radar_labtrader <- function() {
       
       tempo_pos_venda_tsla_ok <- is.null(lote_tsla$minutos_desde_venda) || is.na(lote_tsla$minutos_desde_venda) || lote_tsla$minutos_desde_venda >= 30.0
       
-      if (z_tsla <= -1.00 && acc_tsla >= 0.0 && tempo_pos_venda_tsla_ok) {
+      if (is_nyse_open() && z_tsla <= -1.00 && acc_tsla >= 0.0 && tempo_pos_venda_tsla_ok) {
         lote_usdt_tsla <- min(VALOR_TESLA_USDT * fator_lote, usdt_livre_rotacao, 50.0)
         if (lote_usdt_tsla >= 18.0) {
           pedido <- list(

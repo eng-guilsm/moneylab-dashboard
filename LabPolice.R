@@ -1089,7 +1089,7 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           "PLANO_SERTAO_VALENTE" = 0.45,
           "PLANO_FAROL_DE_NEAR" = 0.80,
           "PLANO_BRUCE_WAYNE" = 0.00,
-          "PLANO_SENTINELA_WALLSTREET" = 0.48,
+          "PLANO_SENTINELA_WALLSTREET" = 0.40,
           "PLANO_DOLLARUS_QUANTUM_PEG" = 0.50,
           "PLANO_TITA_DO_SILICIO" = 0.40,
           "PLANO_CHOQUE_ENERGETICO" = 0.43,
@@ -1458,8 +1458,39 @@ processar_solicitacoes_gatekeeper <- function(modo_continuo = FALSE, executar_re
           }
         }
         
-        # Trava 3: Validação de Lucro Mínimo Esperado (Com Suporte à Subtrava 6.2 Target Decay Ratchet)
-        if (aprovado && estrategia_nome %in% names(lucros_minimos)) {
+        # Subtrava 2.9: Janela Operacional de Ações Americanas / Veto de Compra Fora da NYSE (Preservação de Dólares no Simple Earn a 6,88% a.a.)
+        # Compras de tokens de ações dos EUA (SPYB, NVDAB, TSLAB, SQQQB, TLT, XLE) com USDT só são autorizadas
+        # de Segunda a Sexta-feira durante o pregão regular da NYSE (10:30 às 17:00 BRT).
+        # Fora desse horário (e fins de semana), as compras são vetadas para manter os dólares no Simple Earn rendendo juros compostos diários.
+        # Vendas de realização de lucro (Take Profit) continuam 100% livres 24/7.
+        is_equity_buy <- (pedido$origem == "USDT") && 
+          (as.character(pedido$destino) %in% c("SPYB", "NVDAB", "TSLAB", "SQQQB", "TLT", "XLE") ||
+           estrategia_nome %in% c("PLANO_SENTINELA_WALLSTREET", "PLANO_TITA_DO_SILICIO", "PLANO_RAIO_DE_TESLA", 
+                                  "PLANO_ESCUDO_DE_WASHINGTON", "PLANO_SENTINELA_ANTIFRAGIL", "PLANO_CHOQUE_ENERGETICO"))
+        
+        if (aprovado && is_equity_buy) {
+          agora_brt <- Sys.time()
+          attr(agora_brt, "tzone") <- "America/Sao_Paulo"
+          hora_decimal <- as.numeric(format(agora_brt, "%H")) + as.numeric(format(agora_brt, "%M")) / 60.0
+          dia_semana <- as.integer(format(agora_brt, "%u")) # 1=Segunda, 5=Sexta, 6=Sábado, 7=Domingo
+          
+          is_nyse_rth <- (dia_semana >= 1 && dia_semana <= 5) && (hora_decimal >= 10.5 && hora_decimal <= 17.0)
+          
+          if (!is_nyse_rth) {
+            aprovado <- FALSE
+            motivo_veto <- sprintf("Janela Operacional NYSE Fechada (Pregão: Seg-Sex 10:30 às 17:00 BRT)\nHorário atual: %s\nPreservando Dólar USDT no Simple Earn a 6,88%% a.a.",
+                                   format(agora_brt, "%a %H:%M"))
+          }
+        }
+        
+        # Trava 3: Validação de Lucro Mínimo Esperado em Liquidações (Com Suporte à Subtrava 6.2 Target Decay Ratchet)
+        # Aplica-se exclusivamente a ordens de REALIZAÇÃO DE LUCRO / VENDA (onde destino é BRL/USDT ou arbitragem de saída).
+        # Compras (origem BRL/USDT) representam entrada em posição e NÃO devem ser vetadas por lucro insuficiente.
+        is_venda_realizacao <- (pedido$destino %in% c("BRL", "USDT") && !(pedido$origem %in% c("BRL", "USDT"))) || 
+                               (pedido$origem == "PAXG" && pedido$destino == "BTC") || 
+                               (pedido$origem == "BTC" && pedido$destino == "PAXG")
+        
+        if (aprovado && is_venda_realizacao && estrategia_nome %in% names(lucros_minimos)) {
           min_lucro_base <- ifelse(!is.null(lucros_minimos[[estrategia_nome]]), lucros_minimos[[estrategia_nome]], 0.80)
           is_decay_strategy <- estrategia_nome %in% c("PLANO_SENTINELA_DO_SOL", "PLANO_SENTINELA_DE_MINAS", "PLANO_FAROL_DE_NEAR", "PLANO_CABOCLO_DOS_ORACULOS", "PLANO_SENTINELA_DE_ETER")
           min_lucro <- if (is_decay_strategy && !is.null(pedido$lucro_esperado_pct) && as.numeric(pedido$lucro_esperado_pct) >= 0.40) {
