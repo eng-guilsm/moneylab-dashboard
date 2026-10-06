@@ -13,3 +13,9 @@ scratch/
 Backup/
 MoneyLab_Interacoes_Log.txt
 log_bot.txt
+*.key
+*.pem
+*.crt
+.env
+.env.*
+*.log
