@@ -12,3 +12,14 @@ ADM aqui.
 [20/09, 14:35] Guilherme Santos: O plano farol de near tentou ser acionado sem mesmo ter near, porque foi esvaziado pelo Adeus Perry.  Checar o que acontece quando diferentes planos partilham do mesmo ativo e se ainda há necessidade do plano adeus perry para o near ou também os demais ativos
 ================================================================================
 
+================================================================================
+ID: REP-20261005-230149
+DATA: 2026-10-05 23:01:49
+USUARIO: Carol Loman (@CarolLoman | ID: 1544343665 | CHAT_ID: 1544343665)
+STATUS: resolvido
+PARECER: O repositório passou por uma breve manutenção programada de segurança e atualização de infraestrutura na noite de ontem, o que suspendeu temporariamente o GitHub Pages. O acesso público ao Radar Cinético (/dash) já foi plenamente restabelecido e está online. Agradecemos pelo reporte!
+NOTIFICADO: SIM
+MENSAGEM:
+O site do /dash está fora do ar ou não está mais vinculado ao site, ele leva a um site que dá o erro 404
+================================================================================
+
