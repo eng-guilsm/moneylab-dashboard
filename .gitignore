@@ -1,0 +1,26 @@
+# Public Dashboard Repo — Strictly block ALL bot code, strategies, databases, secrets & private data
+*.R
+*.py
+*.sh
+*.md
+*.rds
+*.csv
+*.db
+*.db-*
+*.log
+*.txt
+*.png
+*.key
+*.pem
+*.crt
+.env
+.env.*
+.secrets/
+keys/
+scratch/
+Backup/
+r-lib/
+harmonicus-sx/
+data/planos_data.js
+data/harmonicus_sx_data.js
+data/MoneyBot_Local.db
